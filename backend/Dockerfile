@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     ca-certificates \
     fonts-liberation \
+    fonts-noto-color-emoji \
+    fonts-unifont \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -26,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxfixes3 \
     libxrandr2 \
+    libxshmfence1 \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,10 +38,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright and Chromium
+# Install Playwright
 RUN pip install playwright==1.40.0
+
+# Install Chromium browser
 RUN playwright install chromium
-RUN playwright install-deps chromium
 
 # Copy application code
 COPY . .
