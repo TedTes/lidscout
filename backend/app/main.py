@@ -12,16 +12,11 @@ app = FastAPI(
     description="API for scraping and searching business information",
     version="1.0.0"
 )
-
+allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "https://*.railway.app", 
-        "https://*.vercel.app",    # For frontend
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
