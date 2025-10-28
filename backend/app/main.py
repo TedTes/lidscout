@@ -5,7 +5,7 @@ Entry point for the backend service.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.businesses import router as businesses_router
-
+import os
 # Create FastAPI app
 app = FastAPI(
     title="Business Scraper API",
