@@ -32,7 +32,6 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (for better caching)
 COPY requirements.txt .
 
 # Install Python dependencies
@@ -45,10 +44,16 @@ RUN pip install playwright==1.40.0
 RUN playwright install chromium
 
 # Copy application code
-COPY . .
+COPY api ./api
+COPY application ./application
+COPY domain ./domain
+COPY adapters ./adapters
+COPY infrastructure ./infrastructure
+COPY shared ./shared
+COPY workers ./workers
 
 # Expose port
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
