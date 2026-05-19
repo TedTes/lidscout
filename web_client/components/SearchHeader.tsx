@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { SearchCriteria } from '@/types/business';
+import { SearchCriteria } from '@/lib/types/business';
 
 interface SearchHeaderProps {
   onSearch: (criteria: SearchCriteria) => void;

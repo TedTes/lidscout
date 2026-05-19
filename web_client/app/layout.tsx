@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import './globals.css';
+import '../styles/globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Business Scraper',
-  description: 'Find local businesses with contact information',
+  title: 'LidScout Interaction Extractor',
+  description: 'Extract structured JSON, comments, and negative signals from public pages',
 };
 
 export default function RootLayout({

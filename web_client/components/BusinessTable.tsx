@@ -1,6 +1,6 @@
 'use client';
 
-import { Business } from '@/types/business';
+import { Business } from '@/lib/types/business';
 import { useState } from 'react';
 
 interface BusinessTableProps {
