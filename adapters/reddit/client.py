@@ -15,12 +15,13 @@ class RedditActivityAdapter:
         self.timeout_seconds = settings.request_timeout_seconds
         self.headers = {"User-Agent": settings.http_user_agent}
 
-    def search_subreddit(self, subreddit: str, query: str, limit: int = 25) -> list[RawPost]:
-        """Search a subreddit and return normalized raw posts."""
-        url = f"https://www.reddit.com/r/{subreddit}/search.json"
+    def fetch_posts(self, subreddit: str, limit: int = 25) -> list[RawPost]:
+        """Fetch subreddit posts and return normalized raw posts."""
+        normalized_subreddit = subreddit.strip().removeprefix("r/").strip("/")
+        url = f"https://www.reddit.com/r/{normalized_subreddit}/hot.json"
         response = requests.get(
             url,
-            params={"q": query, "restrict_sr": 1, "limit": limit},
+            params={"limit": limit},
             headers=self.headers,
             timeout=self.timeout_seconds,
         )
