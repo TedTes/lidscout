@@ -1,19 +1,17 @@
 """Signal extraction service."""
 import json
 from dataclasses import dataclass
-from typing import Protocol
 
 from domain.post import RawPost
 from domain.signal import Signal
+from infrastructure.llm import LLMClient
 from shared.errors import ExtractionError
 
 
-class SignalExtractionLLMClient(Protocol):
-    """LLM boundary for structured signal extraction."""
-
-    def extract_signal_json(self, post: RawPost) -> str:
-        """Return structured signal JSON for a raw post."""
-        ...
+SIGNAL_EXTRACTION_PROMPT = (
+    "Extract one market or pain signal from this post. "
+    "Return only structured JSON with has_signal and optional signal fields."
+)
 
 
 @dataclass(frozen=True)
@@ -28,11 +26,14 @@ class SignalExtractionResult:
 class ExtractionService:
     """Extracts structured signal candidates from raw posts using an LLM client."""
 
-    def __init__(self, llm_client: SignalExtractionLLMClient):
+    def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
 
     def extract(self, post: RawPost) -> SignalExtractionResult:
-        raw_json = self.llm_client.extract_signal_json(post)
+        raw_json = self.llm_client.generate_structured_response(
+            SIGNAL_EXTRACTION_PROMPT,
+            self._post_content(post),
+        )
         payload = self._parse_json(raw_json)
 
         if payload.get("has_signal") is False:
@@ -78,3 +79,12 @@ class ExtractionService:
             raise ExtractionError("Extraction JSON must be an object")
 
         return payload
+
+    def _post_content(self, post: RawPost) -> str:
+        return "\n".join(
+            [
+                f"source: {post.source}",
+                f"title: {post.title}",
+                f"body: {post.body}",
+            ]
+        )

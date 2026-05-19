@@ -1,11 +1,11 @@
-"""LLM client boundary for future extraction enrichment."""
+"""LLM client interface for structured model responses."""
 from abc import ABC, abstractmethod
 
 
 class LLMClient(ABC):
-    """Minimal LLM interface for signal enrichment."""
+    """Boundary for LLM providers used by application services."""
 
     @abstractmethod
-    async def summarize(self, text: str) -> str:
-        """Summarize text for reporting or enrichment."""
+    def generate_structured_response(self, prompt: str, post_content: str) -> str:
+        """Return a raw structured model response for the prompt and post content."""
         raise NotImplementedError

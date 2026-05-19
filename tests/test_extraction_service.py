@@ -2,40 +2,32 @@ import unittest
 
 from application.extraction import ExtractionService
 from domain.post import RawPost
+from infrastructure.llm import MockLLMClient
 from shared.errors import ExtractionError
-
-
-class FakeLLMClient:
-    def __init__(self, response: str):
-        self.response = response
-
-    def extract_signal_json(self, post: RawPost) -> str:
-        return self.response
 
 
 class ExtractionServiceTests(unittest.TestCase):
     def test_extracts_signal_candidate(self):
         post = RawPost.create(source="reddit", source_id="abc", title="Reporting pain")
-        service = ExtractionService(
-            FakeLLMClient(
-                """
-                {
-                  "has_signal": true,
-                  "signal": {
-                    "pain": "Manual reporting is slow",
-                    "user_type": "founder",
-                    "job_to_be_done": "understand revenue trends",
-                    "current_workaround": "spreadsheets",
-                    "urgency": "high",
-                    "severity": "medium",
-                    "willingness_to_pay": true,
-                    "category": "reporting",
-                    "confidence": 0.9
-                  }
-                }
-                """
-            )
+        llm_client = MockLLMClient(
+            """
+            {
+              "has_signal": true,
+              "signal": {
+                "pain": "Manual reporting is slow",
+                "user_type": "founder",
+                "job_to_be_done": "understand revenue trends",
+                "current_workaround": "spreadsheets",
+                "urgency": "high",
+                "severity": "medium",
+                "willingness_to_pay": true,
+                "category": "reporting",
+                "confidence": 0.9
+              }
+            }
+            """
         )
+        service = ExtractionService(llm_client)
 
         result = service.extract(post)
 
@@ -44,10 +36,13 @@ class ExtractionServiceTests(unittest.TestCase):
         self.assertEqual(result.post_id, "reddit:abc")
         self.assertEqual(result.signal.post_id, "reddit:abc")
         self.assertEqual(result.signal.pain, "Manual reporting is slow")
+        self.assertEqual(len(llm_client.calls), 1)
+        self.assertIn("Extract one market or pain signal", llm_client.calls[0][0])
+        self.assertIn("title: Reporting pain", llm_client.calls[0][1])
 
     def test_returns_no_signal_result(self):
         post = RawPost.create(source="hackernews", source_id="123")
-        service = ExtractionService(FakeLLMClient('{"has_signal": false}'))
+        service = ExtractionService(MockLLMClient('{"has_signal": false}'))
 
         result = service.extract(post)
 
@@ -57,7 +52,7 @@ class ExtractionServiceTests(unittest.TestCase):
 
     def test_raises_extraction_error_for_invalid_json(self):
         post = RawPost.create(source="reddit", source_id="abc")
-        service = ExtractionService(FakeLLMClient("not json"))
+        service = ExtractionService(MockLLMClient("not json"))
 
         with self.assertRaises(ExtractionError):
             service.extract(post)
