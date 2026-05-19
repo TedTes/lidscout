@@ -3,7 +3,6 @@ from collections import defaultdict
 from typing import Iterable, Protocol
 
 from domain.cluster.models import SignalCluster
-from domain.score.severity import severity_for_frequency
 
 
 class ClusterableInteraction(Protocol):
@@ -25,14 +24,16 @@ class NegativeSignalClusterer:
                 buckets[topic].append(interaction)
 
         clusters = [
-            SignalCluster(
+            SignalCluster.create(
+                id=f"negative:{theme}",
                 theme=theme,
-                frequency=len(clustered),
-                severity=severity_for_frequency(len(clustered)),
-                interaction_ids=[
+                summary=theme,
+                signal_ids=[
                     interaction.interaction_id for interaction in clustered[:10]
                 ],
-                excerpts=[interaction.body for interaction in clustered[:5]],
+                frequency=len(clustered),
+                average_score=0.0,
+                top_examples=[interaction.body for interaction in clustered[:5]],
             )
             for theme, clustered in buckets.items()
         ]
