@@ -1,21 +1,10 @@
 """Reddit public activity adapter."""
-from dataclasses import dataclass
 from typing import Any
 
 import requests
 
+from domain.post import RawPost
 from shared.config import get_settings
-
-
-@dataclass(frozen=True)
-class RedditActivity:
-    """Normalized Reddit post/comment activity."""
-
-    source_id: str
-    title: str
-    text: str
-    url: str
-    score: int | None = None
 
 
 class RedditActivityAdapter:
@@ -26,8 +15,8 @@ class RedditActivityAdapter:
         self.timeout_seconds = settings.request_timeout_seconds
         self.headers = {"User-Agent": settings.http_user_agent}
 
-    def search_subreddit(self, subreddit: str, query: str, limit: int = 25) -> list[RedditActivity]:
-        """Search a subreddit and return normalized activity records."""
+    def search_subreddit(self, subreddit: str, query: str, limit: int = 25) -> list[RawPost]:
+        """Search a subreddit and return normalized raw posts."""
         url = f"https://www.reddit.com/r/{subreddit}/search.json"
         response = requests.get(
             url,
@@ -39,12 +28,22 @@ class RedditActivityAdapter:
         children = response.json().get("data", {}).get("children", [])
         return [self._normalize_post(child.get("data", {})) for child in children]
 
-    def _normalize_post(self, post: dict[str, Any]) -> RedditActivity:
+    def _normalize_post(self, post: dict[str, Any]) -> RawPost:
         permalink = post.get("permalink") or ""
-        return RedditActivity(
-            source_id=post.get("id") or permalink,
+        source_id = post.get("id") or permalink
+        return RawPost.create(
+            source="reddit",
+            source_id=source_id,
             title=post.get("title") or "",
-            text=post.get("selftext") or "",
+            body=post.get("selftext") or "",
+            author=post.get("author"),
             url=f"https://www.reddit.com{permalink}" if permalink.startswith("/") else permalink,
-            score=post.get("score"),
+            created_at=post.get("created_utc"),
+            upvotes=post.get("score"),
+            comments_count=post.get("num_comments"),
+            metadata={
+                "subreddit": post.get("subreddit"),
+                "permalink": permalink,
+                "post_hint": post.get("post_hint"),
+            },
         )

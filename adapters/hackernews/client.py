@@ -1,21 +1,10 @@
 """Hacker News public activity adapter."""
-from dataclasses import dataclass
 from typing import Any
 
 import requests
 
+from domain.post import RawPost
 from shared.config import get_settings
-
-
-@dataclass(frozen=True)
-class HackerNewsActivity:
-    """Normalized Hacker News activity."""
-
-    source_id: str
-    title: str
-    text: str
-    url: str
-    score: int | None = None
 
 
 class HackerNewsActivityAdapter:
@@ -27,7 +16,7 @@ class HackerNewsActivityAdapter:
         settings = get_settings()
         self.timeout_seconds = settings.request_timeout_seconds
 
-    def top_items(self, limit: int = 25) -> list[HackerNewsActivity]:
+    def top_items(self, limit: int = 25) -> list[RawPost]:
         """Return normalized top HN stories."""
         ids_response = requests.get(
             f"{self.base_url}/topstories.json",
@@ -40,17 +29,30 @@ class HackerNewsActivityAdapter:
             for item_id in item_ids
         ]
 
-    def _fetch_item(self, item_id: int) -> HackerNewsActivity:
+    def _fetch_item(self, item_id: int) -> RawPost:
         response = requests.get(
             f"{self.base_url}/item/{item_id}.json",
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
         item: dict[str, Any] = response.json()
-        return HackerNewsActivity(
-            source_id=str(item.get("id") or item_id),
+        return self._normalize_item(item, fallback_item_id=item_id)
+
+    def _normalize_item(self, item: dict[str, Any], fallback_item_id: int | None = None) -> RawPost:
+        source_id = str(item.get("id") or fallback_item_id or "")
+        return RawPost.create(
+            source="hackernews",
+            source_id=source_id,
             title=item.get("title") or "",
-            text=item.get("text") or "",
-            url=item.get("url") or f"https://news.ycombinator.com/item?id={item_id}",
-            score=item.get("score"),
+            body=item.get("text") or "",
+            author=item.get("by"),
+            url=item.get("url") or f"https://news.ycombinator.com/item?id={source_id}",
+            created_at=item.get("time"),
+            upvotes=item.get("score"),
+            comments_count=item.get("descendants"),
+            metadata={
+                "type": item.get("type"),
+                "kids": item.get("kids", []),
+                "parent": item.get("parent"),
+            },
         )
