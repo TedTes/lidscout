@@ -1,0 +1,1 @@
+"""LidScout test package."""
