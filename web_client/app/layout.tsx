@@ -5,8 +5,8 @@ import '../styles/globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'LidScout Interaction Extractor',
-  description: 'Extract structured JSON, comments, and negative signals from public pages',
+  title: 'LidScout Dashboard',
+  description: 'Signal detection dashboard for online market activity',
 };
 
 export default function RootLayout({
