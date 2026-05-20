@@ -3,17 +3,63 @@
 import { useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import {
+  Chip,
   ClusterLink,
   EmptyPanel,
   ErrorPanel,
   LoadingPanel,
   Metric,
   ScoreBadge,
+  UrgencyBadge,
 } from '@/components/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Signal, SignalCluster } from '@/lib/types/signals';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
+
+function urgencyBarColor(urgency: Signal['urgency']) {
+  return {
+    high: 'bg-rose-500',
+    medium: 'bg-amber-500',
+    low: 'bg-slate-700',
+  }[urgency];
+}
+
+function FilterIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  );
+}
 
 export default function SignalsPage() {
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -21,6 +67,7 @@ export default function SignalsPage() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [urgencyFilter, setUrgencyFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
 
   const load = async () => {
     setStatus('loading');
@@ -34,7 +81,7 @@ export default function SignalsPage() {
       setClusters(clustersData.clusters);
       setStatus('ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+      setError(err instanceof Error ? err.message : 'Failed to load signals');
       setStatus('error');
     }
   };
@@ -43,118 +90,183 @@ export default function SignalsPage() {
     load();
   }, []);
 
-  const filteredSignals = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return signals;
-
-    return signals.filter(signal =>
-      [
-        signal.pain,
-        signal.category,
-        signal.user_type,
-        signal.job_to_be_done,
-        signal.current_workaround,
-      ]
-        .filter(Boolean)
-        .some(value => value!.toLowerCase().includes(normalized))
-    );
-  }, [signals, query]);
-
   const clusterBySignalId = useMemo(() => {
-    const lookup = new Map<string, SignalCluster>();
+    const map = new Map<string, SignalCluster>();
     clusters.forEach(cluster => {
-      cluster.signal_ids.forEach(signalId => lookup.set(signalId, cluster));
+      cluster.signal_ids.forEach(id => map.set(id, cluster));
     });
-    return lookup;
+    return map;
   }, [clusters]);
+
+  const filteredSignals = useMemo(() => {
+    let result = signals;
+    if (urgencyFilter !== 'all') {
+      result = result.filter(s => s.urgency === urgencyFilter);
+    }
+    const q = query.trim().toLowerCase();
+    if (q) {
+      result = result.filter(s =>
+        [s.pain, s.category, s.user_type, s.job_to_be_done, s.current_workaround]
+          .filter(Boolean)
+          .some(v => v!.toLowerCase().includes(q)),
+      );
+    }
+    return result;
+  }, [signals, query, urgencyFilter]);
+
+  const highCount = signals.filter(s => s.urgency === 'high').length;
+  const wtpCount = signals.filter(s => s.willingness_to_pay).length;
 
   return (
     <DashboardShell
       title="Signals"
-      subtitle="Extracted market and product signals from online activity"
+      subtitle="Extracted market and pain signals from online activity"
       actions={
         <button
           onClick={load}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:border-sky-300 hover:text-sky-700"
+          disabled={status === 'loading'}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-300 shadow-sm transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-50"
         >
+          <RefreshIcon />
           Refresh
         </button>
       }
     >
+      {/* Metrics row */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Signals" value={signals.length} />
+        <Metric label="Total signals" value={signals.length} />
+        <Metric label="High urgency" value={highCount} accent={highCount > 0} />
         <Metric label="Clusters" value={clusters.length} />
-        <Metric
-          label="High urgency"
-          value={signals.filter(signal => signal.urgency === 'high').length}
-        />
       </div>
 
-      <div className="mt-5 rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">Signal list</h2>
-          <input
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-            placeholder="Filter signals"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 sm:max-w-xs"
-          />
+      {/* Signal list */}
+      <div className="mt-5 rounded-xl border border-slate-800/80 bg-slate-900/40">
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 border-b border-slate-800/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-200">Signal list</h2>
+            {status === 'ready' && (
+              <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs tabular-nums text-slate-500">
+                {filteredSignals.length}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Urgency filter chips */}
+            <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
+              {(['all', 'high', 'medium', 'low'] as const).map(level => (
+                <button
+                  key={level}
+                  onClick={() => setUrgencyFilter(level)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${
+                    urgencyFilter === level
+                      ? 'bg-slate-700 text-slate-100 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  {level === 'all' ? 'All' : level}
+                </button>
+              ))}
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600">
+                <FilterIcon />
+              </span>
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Filter signals…"
+                className="w-full rounded-lg border border-slate-700/80 bg-slate-800/60 py-2 pl-8 pr-3 text-xs text-slate-200 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10 sm:w-52"
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="p-4">
+        {/* Body */}
+        <div className="p-3">
           {status === 'loading' && <LoadingPanel label="Loading signals" />}
           {status === 'error' && error && <ErrorPanel message={error} />}
           {status === 'ready' && filteredSignals.length === 0 && (
-            <EmptyPanel title="No signals found" detail="Run the pipeline to populate this list." />
+            <EmptyPanel
+              title="No signals found"
+              detail="Run the pipeline to populate this list, or clear your filters."
+            />
           )}
+
           {filteredSignals.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100 text-sm">
-                <thead>
-                  <tr className="text-left text-xs font-semibold uppercase text-gray-400">
-                    <th className="px-3 py-2">Pain</th>
-                    <th className="px-3 py-2">Category</th>
-                    <th className="px-3 py-2">Urgency</th>
-                    <th className="px-3 py-2">Severity</th>
-                    <th className="px-3 py-2">Confidence</th>
-                    <th className="px-3 py-2">Cluster</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredSignals.map(signal => {
-                    const cluster = clusterBySignalId.get(signal.id);
-                    return (
-                      <tr key={signal.id} className="align-top">
-                        <td className="max-w-md px-3 py-3 font-medium text-gray-900">
-                          {signal.pain}
+            <div className="space-y-2">
+              {filteredSignals.map(signal => {
+                const cluster = clusterBySignalId.get(signal.id);
+                return (
+                  <div
+                    key={signal.id}
+                    className="group flex overflow-hidden rounded-xl border border-slate-800/70 transition-colors hover:border-slate-700/80 hover:bg-white/[0.01]"
+                  >
+                    {/* Urgency left bar */}
+                    <div className={`w-1 shrink-0 ${urgencyBarColor(signal.urgency)}`} />
+
+                    {/* Content */}
+                    <div className="flex-1 px-4 py-3.5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium leading-snug text-slate-200">
+                            {signal.pain}
+                          </p>
                           {signal.job_to_be_done && (
-                            <p className="mt-1 text-xs font-normal text-gray-500">
+                            <p className="mt-1 text-xs leading-relaxed text-slate-500">
                               {signal.job_to_be_done}
                             </p>
                           )}
-                        </td>
-                        <td className="px-3 py-3 text-gray-600">{signal.category || 'Uncategorized'}</td>
-                        <td className="px-3 py-3 capitalize text-gray-700">{signal.urgency}</td>
-                        <td className="px-3 py-3 capitalize text-gray-700">{signal.severity}</td>
-                        <td className="px-3 py-3">
+                        </div>
+
+                        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                           <ScoreBadge value={signal.confidence * 10} />
-                        </td>
-                        <td className="px-3 py-3">
-                          {cluster ? (
+                          {cluster && (
                             <ClusterLink id={cluster.id}>{cluster.theme}</ClusterLink>
-                          ) : (
-                            <span className="text-gray-400">Unclustered</span>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+                      </div>
+
+                      {/* Tags row */}
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        <UrgencyBadge urgency={signal.urgency} />
+                        {signal.category && <Chip label={signal.category} />}
+                        {signal.user_type && (
+                          <Chip label={signal.user_type} />
+                        )}
+                        {signal.current_workaround && (
+                          <span className="rounded-md bg-slate-800/50 px-2 py-0.5 text-xs text-slate-600">
+                            ↪ {signal.current_workaround}
+                          </span>
+                        )}
+                        {signal.willingness_to_pay && (
+                          <span className="rounded-md border border-emerald-500/20 bg-emerald-500/[0.07] px-2 py-0.5 text-xs font-medium text-emerald-400">
+                            WTP
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
+
+      {/* WTP callout */}
+      {wtpCount > 0 && status === 'ready' && (
+        <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.04] px-4 py-3">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_7px_rgba(52,211,153,0.8)]" />
+          <p className="text-xs text-slate-400">
+            <span className="font-semibold text-emerald-400">{wtpCount}</span>
+            {wtpCount === 1 ? ' signal indicates' : ' signals indicate'} willingness to pay
+          </p>
+        </div>
+      )}
     </DashboardShell>
   );
 }

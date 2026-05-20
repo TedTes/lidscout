@@ -9,11 +9,68 @@ import {
   LoadingPanel,
   Metric,
   ScoreBadge,
+  SectionCard,
 } from '@/components/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { MarketSignalReport } from '@/lib/types/signals';
 
 type Status = 'loading' | 'ready' | 'error';
+
+function RefreshIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  );
+}
+
+function TrendingIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+      <polyline points="17 6 23 6 23 12" />
+    </svg>
+  );
+}
+
+function LightbulbIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="9" y1="18" x2="15" y2="18" />
+      <line x1="10" y1="22" x2="14" y2="22" />
+      <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14" />
+    </svg>
+  );
+}
 
 export default function LatestReportPage() {
   const [report, setReport] = useState<MarketSignalReport | null>(null);
@@ -43,47 +100,84 @@ export default function LatestReportPage() {
       actions={
         <button
           onClick={load}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:border-sky-300 hover:text-sky-700"
+          disabled={status === 'loading'}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-300 shadow-sm transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-50"
         >
+          <RefreshIcon />
           Refresh
         </button>
       }
     >
       {status === 'loading' && <LoadingPanel label="Loading latest report" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
+
       {status === 'ready' && report && (
-        <div className="space-y-5">
+        <div className="space-y-5 animate-fade-in">
+          {/* Metrics */}
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric label="Top clusters" value={report.top_clusters.length} />
             <Metric label="Emerging pains" value={report.emerging_pains.length} />
-            <Metric label="Opportunities" value={report.recommended_opportunities.length} />
+            <Metric label="Opportunities" value={report.recommended_opportunities.length} accent />
           </div>
 
-          <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-900">Ranked clusters</h2>
+          {/* Ranked clusters */}
+          <SectionCard title="Ranked clusters">
             {report.top_clusters.length === 0 ? (
-              <EmptyPanel title="No clusters in report" detail="Run the pipeline to generate report content." />
+              <EmptyPanel
+                title="No clusters in report"
+                detail="Run the pipeline to generate report content."
+              />
             ) : (
-              <div className="mt-3 divide-y divide-gray-100">
-                {report.top_clusters.map(cluster => (
-                  <div key={cluster.id} className="py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="font-semibold text-gray-900">
-                        <ClusterLink id={cluster.id}>{cluster.theme}</ClusterLink>
-                      </h3>
-                      <ScoreBadge value={cluster.average_score} />
+              <div className="space-y-2">
+                {report.top_clusters.map((cluster, i) => (
+                  <div
+                    key={cluster.id}
+                    className="flex gap-4 rounded-lg border border-slate-800/60 bg-slate-800/20 px-4 py-3.5 transition-colors hover:border-slate-700/80"
+                  >
+                    {/* Rank number */}
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold tabular-nums text-slate-500">
+                      {i + 1}
                     </div>
-                    <p className="mt-1 text-sm text-gray-600">{cluster.summary}</p>
-                    <p className="mt-1 text-xs text-gray-400">{cluster.frequency} mentions</p>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="font-semibold text-slate-200">
+                          <ClusterLink id={cluster.id}>{cluster.theme}</ClusterLink>
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600">{cluster.frequency} mentions</span>
+                          <ScoreBadge value={cluster.average_score} />
+                        </div>
+                      </div>
+                      {cluster.summary && (
+                        <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                          {cluster.summary}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-          </section>
+          </SectionCard>
 
+          {/* Two-column grid */}
           <div className="grid gap-5 lg:grid-cols-2">
-            <ReportList title="Emerging pains" items={report.emerging_pains} />
-            <ReportList title="Recommended opportunities" items={report.recommended_opportunities} />
+            <InsightList
+              title="Emerging pains"
+              items={report.emerging_pains}
+              icon={<TrendingIcon />}
+              iconColor="text-rose-400"
+              emptyMessage="No emerging pains identified."
+            />
+            <InsightList
+              title="Recommended opportunities"
+              items={report.recommended_opportunities}
+              icon={<LightbulbIcon />}
+              iconColor="text-amber-400"
+              emptyMessage="No opportunities recommended yet."
+            />
           </div>
         </div>
       )}
@@ -91,17 +185,44 @@ export default function LatestReportPage() {
   );
 }
 
-function ReportList({ title, items }: { title: string; items: string[] }) {
+function InsightList({
+  title,
+  items,
+  icon,
+  iconColor,
+  emptyMessage,
+}: {
+  title: string;
+  items: string[];
+  icon: React.ReactNode;
+  iconColor: string;
+  emptyMessage: string;
+}) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+    <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <span className={iconColor}>{icon}</span>
+        <h2 className="text-sm font-semibold text-slate-200">{title}</h2>
+        {items.length > 0 && (
+          <span className="ml-auto rounded-full bg-slate-800 px-2 py-0.5 text-xs tabular-nums text-slate-500">
+            {items.length}
+          </span>
+        )}
+      </div>
+
       {items.length === 0 ? (
-        <p className="mt-3 text-sm text-gray-500">No items available.</p>
+        <p className="text-sm text-slate-600">{emptyMessage}</p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {items.map((item, index) => (
-            <li key={`${item}-${index}`} className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
-              {item}
+        <ul className="space-y-2">
+          {items.map((item, i) => (
+            <li
+              key={`${item}-${i}`}
+              className="flex gap-3 rounded-lg border border-slate-800/60 bg-slate-800/30 px-3 py-2.5"
+            >
+              <span className="mt-0.5 shrink-0 text-[10px] font-bold tabular-nums text-slate-700">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <p className="text-sm leading-relaxed text-slate-400">{item}</p>
             </li>
           ))}
         </ul>
