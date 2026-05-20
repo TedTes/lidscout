@@ -8,6 +8,7 @@ from infrastructure.db import (
     PostgresScoreRepository,
     PostgresSignalRepository,
 )
+from infrastructure.email import EmailClient, ResendEmailNotifier
 from infrastructure.llm import OpenAIEmbeddingClient, OpenAIResponsesClient
 from shared.config import AppConfig, get_app_config
 
@@ -30,6 +31,7 @@ def build_signal_api_dependencies(
         hackernews_adapter=HackerNewsActivityAdapter(),
         llm_client=_build_llm_client(app_config),
         embedding_client=_build_embedding_client(app_config),
+        email_client=_build_email_client(app_config),
     )
 
 
@@ -52,4 +54,15 @@ def _build_embedding_client(config: AppConfig) -> OpenAIEmbeddingClient | None:
     return OpenAIEmbeddingClient(
         api_key=config.LLM_API_KEY,
         model=config.OPENAI_EMBEDDING_MODEL,
+    )
+
+
+def _build_email_client(config: AppConfig) -> EmailClient | None:
+    if config.RESEND_API_KEY is None or config.RESEND_FROM_EMAIL is None:
+        return None
+    return EmailClient(
+        ResendEmailNotifier(
+            api_key=config.RESEND_API_KEY,
+            from_email=config.RESEND_FROM_EMAIL,
+        )
     )

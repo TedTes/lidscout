@@ -18,6 +18,8 @@ class ApiDependencyTests(unittest.TestCase):
             REDDIT_CLIENT_ID=None,
             REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
+            RESEND_API_KEY="resend-key",
+            RESEND_FROM_EMAIL="LidScout <alerts@example.com>",
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 
@@ -28,6 +30,8 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
             patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
+            patch("api.dependencies.ResendEmailNotifier") as email_notifier,
+            patch("api.dependencies.EmailClient") as email_client,
         ):
             dependencies = build_signal_api_dependencies(config)
 
@@ -43,6 +47,11 @@ class ApiDependencyTests(unittest.TestCase):
             api_key="llm-key",
             model="embedding-model",
         )
+        email_notifier.assert_called_once_with(
+            api_key="resend-key",
+            from_email="LidScout <alerts@example.com>",
+        )
+        email_client.assert_called_once_with(email_notifier.return_value)
 
         self.assertIsInstance(dependencies.reddit_adapter, RedditActivityAdapter)
         self.assertIsInstance(dependencies.hackernews_adapter, HackerNewsActivityAdapter)
@@ -52,7 +61,7 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.cluster_repository, cluster_repository.return_value)
         self.assertIs(dependencies.llm_client, llm_client.return_value)
         self.assertIs(dependencies.embedding_client, embedding_client.return_value)
-        self.assertIsNone(dependencies.email_client)
+        self.assertIs(dependencies.email_client, email_client.return_value)
 
     def test_leaves_llm_client_empty_without_key(self):
         database_url = "postgresql://postgres.example/lidscout"
@@ -64,6 +73,8 @@ class ApiDependencyTests(unittest.TestCase):
             REDDIT_CLIENT_ID=None,
             REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
+            RESEND_API_KEY=None,
+            RESEND_FROM_EMAIL=None,
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 
@@ -74,13 +85,18 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresClusterRepository"),
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
             patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
+            patch("api.dependencies.ResendEmailNotifier") as email_notifier,
+            patch("api.dependencies.EmailClient") as email_client,
         ):
             dependencies = build_signal_api_dependencies(config)
 
         llm_client.assert_not_called()
         embedding_client.assert_not_called()
+        email_notifier.assert_not_called()
+        email_client.assert_not_called()
         self.assertIsNone(dependencies.llm_client)
         self.assertIsNone(dependencies.embedding_client)
+        self.assertIsNone(dependencies.email_client)
 
     def test_rejects_non_postgres_database_url(self):
         config = AppConfig(
@@ -91,6 +107,8 @@ class ApiDependencyTests(unittest.TestCase):
             REDDIT_CLIENT_ID=None,
             REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
+            RESEND_API_KEY=None,
+            RESEND_FROM_EMAIL=None,
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 

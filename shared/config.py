@@ -37,6 +37,8 @@ class AppConfig:
     REDDIT_CLIENT_ID: str | None
     REDDIT_CLIENT_SECRET: str | None
     EMAIL_API_KEY: str | None
+    RESEND_API_KEY: str | None
+    RESEND_FROM_EMAIL: str | None
     PIPELINE_SCHEDULE: str
 
 
@@ -101,5 +103,7 @@ def get_app_config() -> AppConfig:
         REDDIT_CLIENT_ID=_optional_env("REDDIT_CLIENT_ID"),
         REDDIT_CLIENT_SECRET=_optional_env("REDDIT_CLIENT_SECRET"),
         EMAIL_API_KEY=_optional_env("EMAIL_API_KEY"),
+        RESEND_API_KEY=_optional_env("RESEND_API_KEY") or _optional_env("EMAIL_API_KEY"),
+        RESEND_FROM_EMAIL=_optional_env("RESEND_FROM_EMAIL") or _optional_env("EMAIL_FROM"),
         PIPELINE_SCHEDULE=os.getenv("PIPELINE_SCHEDULE", "0 8 * * *").strip(),
     )
