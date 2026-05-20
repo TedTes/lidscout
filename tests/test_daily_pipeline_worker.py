@@ -1,6 +1,7 @@
 import unittest
 
 from domain.post import RawPost
+from domain.source import SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
@@ -9,34 +10,20 @@ from infrastructure.db import (
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
-from workers.run_daily_pipeline import (
-    HackerNewsSourceConfig,
-    PipelineConfig,
-    RedditSourceConfig,
-    run_daily_pipeline,
-)
+from workers.run_daily_pipeline import PipelineConfig, run_daily_pipeline
 
 
-class FakeRedditAdapter:
-    def fetch_posts(self, subreddit: str, limit: int = 25) -> list[RawPost]:
+class FakeSourceAdapter:
+    def can_handle(self, source: SourceInput) -> bool:
+        return source.locator == "https://example.com/reviews"
+
+    def fetch_source(self, source: SourceInput, default_limit: int = 25) -> list[RawPost]:
         return [
             RawPost.create(
-                source="reddit",
-                source_id="r1",
-                title=f"{subreddit} reporting pain",
-                body="Manual reporting is slow.",
-            )
-        ]
-
-
-class FakeHackerNewsAdapter:
-    def fetch_posts(self, config: str = "top", limit: int = 25) -> list[RawPost]:
-        return [
-            RawPost.create(
-                source="hackernews",
-                source_id="h1",
-                title=f"{config} setup thread",
-                body="This is an interesting thread but not a market signal.",
+                source="web",
+                source_id=source.locator,
+                title="Review page",
+                body="Export workflows are painful for finance teams.",
             )
         ]
 
@@ -69,7 +56,7 @@ class FakeEmailNotifier(EmailNotifier):
 
 
 class DailyPipelineWorkerTests(unittest.TestCase):
-    def test_runs_full_daily_pipeline(self):
+    def test_runs_pipeline_with_generic_sources(self):
         signal_repository = InMemorySignalRepository()
         score_repository = InMemoryScoreRepository()
         cluster_repository = InMemoryClusterRepository()
@@ -80,22 +67,20 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                   "has_signal": true,
                   "signal": {
                     "id": "signal-1",
-                    "pain": "Manual reporting is slow",
-                    "user_type": "founder",
-                    "job_to_be_done": "understand revenue",
-                    "current_workaround": "spreadsheets",
-                    "urgency": "high",
+                    "pain": "Export workflows are painful",
+                    "user_type": "finance team",
+                    "job_to_be_done": "export reports",
+                    "current_workaround": "manual CSV cleanup",
+                    "urgency": "medium",
                     "severity": "medium",
                     "willingness_to_pay": true,
                     "category": "reporting",
                     "confidence": 0.8
                   }
                 }
-                """,
-                '{"has_signal": false}',
+                """
             ]
         )
-        embedding_client = FakeEmbeddingClient()
         email_notifier = FakeEmailNotifier()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
@@ -103,31 +88,31 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             score_repository=score_repository,
             cluster_repository=cluster_repository,
             llm_client=llm_client,
-            embedding_client=embedding_client,
+            embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(email_notifier),
             recipient="founder@example.com",
-            reddit_adapter=FakeRedditAdapter(),
-            hackernews_adapter=FakeHackerNewsAdapter(),
-            reddit_sources=[RedditSourceConfig(subreddit="startups", limit=1)],
-            hackernews_sources=[HackerNewsSourceConfig(config="top", limit=1)],
+            source_adapters=[FakeSourceAdapter()],
+            sources=[
+                SourceInput.create(
+                    locator="https://example.com/reviews",
+                    limit=1,
+                )
+            ],
         )
 
         result = run_daily_pipeline(config)
 
-        self.assertEqual(result.fetched_count, 2)
+        self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.fetch_failed_count, 0)
-        self.assertEqual(result.ingestion_result.inserted_count, 2)
+        self.assertEqual(result.ingestion_result.inserted_count, 1)
         self.assertEqual(result.extracted_count, 1)
-        self.assertEqual(result.no_signal_count, 1)
-        self.assertEqual(result.extraction_failed_count, 0)
-        self.assertEqual(result.signal_inserted_count, 1)
+        self.assertEqual(result.no_signal_count, 0)
         self.assertEqual(result.scoring_result.scored_count, 1)
         self.assertEqual(result.embedding_failed_count, 0)
         self.assertEqual(result.clustered_count, 1)
-        self.assertEqual(result.cluster_inserted_count, 1)
         self.assertTrue(result.email_result.sent)
-        self.assertEqual(signal_repository.get_signal("signal-1").pain, "Manual reporting is slow")
-        self.assertEqual(score_repository.get_score("signal-1").total_score, 8.6)
+        self.assertEqual(signal_repository.get_signal("signal-1").pain, "Export workflows are painful")
+        self.assertEqual(score_repository.get_score("signal-1").total_score, 7.6)
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
 

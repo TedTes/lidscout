@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
 
 from application.clustering import ClusteringService
 from application.extraction import ExtractionService
-from application.ingestion import IngestionResult, IngestionService
+from application.ingestion import (
+    IngestionResult,
+    IngestionService,
+    SourceAdapter,
+    SourceResolver,
+)
 from application.ports import (
     ClusterRepository,
     PostRepository,
@@ -17,40 +21,9 @@ from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
 from domain.post import RawPost
 from domain.signal import Signal
+from domain.source import SourceInput
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
-
-
-class RedditPostAdapter(Protocol):
-    """Source adapter contract for Reddit posts."""
-
-    def fetch_posts(self, subreddit: str, limit: int = 25) -> list[RawPost]:
-        """Fetch posts for a subreddit."""
-        ...
-
-
-class HackerNewsPostAdapter(Protocol):
-    """Source adapter contract for Hacker News posts."""
-
-    def fetch_posts(self, config: str = "top", limit: int = 25) -> list[RawPost]:
-        """Fetch posts for a Hacker News source config."""
-        ...
-
-
-@dataclass(frozen=True)
-class RedditSourceConfig:
-    """Reddit source settings for one pipeline run."""
-
-    subreddit: str
-    limit: int | None = None
-
-
-@dataclass(frozen=True)
-class HackerNewsSourceConfig:
-    """Hacker News source settings for one pipeline run."""
-
-    config: str = "top"
-    limit: int | None = None
 
 
 @dataclass(frozen=True)
@@ -65,10 +38,8 @@ class PipelineConfig:
     embedding_client: EmbeddingClient
     email_client: EmailClient
     recipient: str
-    reddit_adapter: RedditPostAdapter | None = None
-    hackernews_adapter: HackerNewsPostAdapter | None = None
-    reddit_sources: list[RedditSourceConfig] = field(default_factory=list)
-    hackernews_sources: list[HackerNewsSourceConfig] = field(default_factory=list)
+    source_adapters: list[SourceAdapter] = field(default_factory=list)
+    sources: list[SourceInput] = field(default_factory=list)
     default_limit: int = 25
     similarity_threshold: float = 0.82
 
@@ -141,29 +112,13 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
     posts: list[RawPost] = []
     failed_count = 0
 
-    if config.reddit_adapter:
-        for source in config.reddit_sources:
-            try:
-                posts.extend(
-                    config.reddit_adapter.fetch_posts(
-                        source.subreddit,
-                        source.limit or config.default_limit,
-                    )
-                )
-            except Exception:
-                failed_count += 1
-
-    if config.hackernews_adapter:
-        for source in config.hackernews_sources:
-            try:
-                posts.extend(
-                    config.hackernews_adapter.fetch_posts(
-                        source.config,
-                        source.limit or config.default_limit,
-                    )
-                )
-            except Exception:
-                failed_count += 1
+    if config.sources:
+        source_result = SourceResolver(config.source_adapters).fetch(
+            config.sources,
+            config.default_limit,
+        )
+        posts.extend(source_result.posts)
+        failed_count += source_result.failed_count
 
     return posts, failed_count
 

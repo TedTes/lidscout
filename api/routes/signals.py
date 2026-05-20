@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from application.ingestion import SourceAdapter
 from application.ports import (
     ClusterRepository,
     PostRepository,
@@ -14,6 +15,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from domain.cluster import SignalCluster
 from domain.signal import Signal
+from domain.source import SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
@@ -23,38 +25,27 @@ from infrastructure.db import (
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
 from workers.run_daily_pipeline import (
-    HackerNewsPostAdapter,
-    HackerNewsSourceConfig,
     PipelineConfig,
     PipelineRunResult,
-    RedditPostAdapter,
-    RedditSourceConfig,
     run_daily_pipeline,
 )
 
 router = APIRouter(tags=["signals"])
 
 
-class PipelineRedditSourceRequest(BaseModel):
-    """Reddit source request for a pipeline run."""
+class PipelineSourceRequest(BaseModel):
+    """Generic source request for a pipeline run."""
 
-    subreddit: str
+    locator: str = Field(min_length=1)
     limit: int | None = Field(default=None, ge=1)
-
-
-class PipelineHackerNewsSourceRequest(BaseModel):
-    """Hacker News source request for a pipeline run."""
-
-    config: str = "top"
-    limit: int | None = Field(default=None, ge=1)
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 class PipelineRunRequest(BaseModel):
     """HTTP request body for running the signal pipeline."""
 
     recipient: str = Field(min_length=1)
-    reddit_sources: list[PipelineRedditSourceRequest] = Field(default_factory=list)
-    hackernews_sources: list[PipelineHackerNewsSourceRequest] = Field(default_factory=list)
+    sources: list[PipelineSourceRequest] = Field(default_factory=list)
     default_limit: int = Field(default=25, ge=1)
     similarity_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
 
@@ -68,8 +59,7 @@ class SignalApiDependencies:
     score_repository: ScoreRepository = field(default_factory=InMemoryScoreRepository)
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
     reporting_service: ReportingService = field(default_factory=ReportingService)
-    reddit_adapter: RedditPostAdapter | None = None
-    hackernews_adapter: HackerNewsPostAdapter | None = None
+    source_adapters: list[SourceAdapter] = field(default_factory=list)
     llm_client: LLMClient | None = None
     embedding_client: EmbeddingClient | None = None
     email_client: EmailClient | None = None
@@ -143,15 +133,14 @@ async def run_pipeline(
             embedding_client=dependencies.embedding_client,
             email_client=dependencies.email_client,
             recipient=request.recipient,
-            reddit_adapter=dependencies.reddit_adapter,
-            hackernews_adapter=dependencies.hackernews_adapter,
-            reddit_sources=[
-                RedditSourceConfig(source.subreddit, source.limit)
-                for source in request.reddit_sources
-            ],
-            hackernews_sources=[
-                HackerNewsSourceConfig(source.config, source.limit)
-                for source in request.hackernews_sources
+            source_adapters=dependencies.source_adapters,
+            sources=[
+                SourceInput.create(
+                    locator=source.locator,
+                    limit=source.limit,
+                    options=source.options,
+                )
+                for source in request.sources
             ],
             default_limit=request.default_limit,
             similarity_threshold=request.similarity_threshold,
@@ -171,10 +160,8 @@ def _ensure_pipeline_dependencies(
         missing.append("embedding_client")
     if dependencies.email_client is None:
         missing.append("email_client")
-    if request.reddit_sources and dependencies.reddit_adapter is None:
-        missing.append("reddit_adapter")
-    if request.hackernews_sources and dependencies.hackernews_adapter is None:
-        missing.append("hackernews_adapter")
+    if request.sources and not dependencies.source_adapters:
+        missing.append("source_adapters")
 
     if missing:
         raise HTTPException(

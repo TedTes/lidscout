@@ -1,8 +1,6 @@
 import unittest
 from unittest.mock import patch
 
-from adapters.hackernews import HackerNewsActivityAdapter
-from adapters.reddit import RedditActivityAdapter
 from api.dependencies import build_signal_api_dependencies
 from shared.config import AppConfig
 
@@ -15,8 +13,6 @@ class ApiDependencyTests(unittest.TestCase):
             LLM_API_KEY="llm-key",
             OPENAI_RESPONSE_MODEL="response-model",
             OPENAI_EMBEDDING_MODEL="embedding-model",
-            REDDIT_CLIENT_ID=None,
-            REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
             RESEND_API_KEY="resend-key",
             RESEND_FROM_EMAIL="LidScout <alerts@example.com>",
@@ -28,6 +24,8 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository") as signal_repository,
             patch("api.dependencies.PostgresScoreRepository") as score_repository,
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
+            patch("api.dependencies.JsonUrlAdapter") as json_adapter,
+            patch("api.dependencies.StaticUrlAdapter") as static_adapter,
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
             patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
             patch("api.dependencies.ResendEmailNotifier") as email_notifier,
@@ -53,8 +51,13 @@ class ApiDependencyTests(unittest.TestCase):
         )
         email_client.assert_called_once_with(email_notifier.return_value)
 
-        self.assertIsInstance(dependencies.reddit_adapter, RedditActivityAdapter)
-        self.assertIsInstance(dependencies.hackernews_adapter, HackerNewsActivityAdapter)
+        self.assertEqual(
+            dependencies.source_adapters,
+            [
+                json_adapter.return_value,
+                static_adapter.return_value,
+            ],
+        )
         self.assertIs(dependencies.post_repository, post_repository.return_value)
         self.assertIs(dependencies.signal_repository, signal_repository.return_value)
         self.assertIs(dependencies.score_repository, score_repository.return_value)
@@ -70,8 +73,6 @@ class ApiDependencyTests(unittest.TestCase):
             LLM_API_KEY=None,
             OPENAI_RESPONSE_MODEL="response-model",
             OPENAI_EMBEDDING_MODEL="embedding-model",
-            REDDIT_CLIENT_ID=None,
-            REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
             RESEND_API_KEY=None,
             RESEND_FROM_EMAIL=None,
@@ -83,6 +84,8 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository"),
             patch("api.dependencies.PostgresScoreRepository"),
             patch("api.dependencies.PostgresClusterRepository"),
+            patch("api.dependencies.JsonUrlAdapter"),
+            patch("api.dependencies.StaticUrlAdapter"),
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
             patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
             patch("api.dependencies.ResendEmailNotifier") as email_notifier,
@@ -104,8 +107,6 @@ class ApiDependencyTests(unittest.TestCase):
             LLM_API_KEY=None,
             OPENAI_RESPONSE_MODEL="response-model",
             OPENAI_EMBEDDING_MODEL="embedding-model",
-            REDDIT_CLIENT_ID=None,
-            REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
             RESEND_API_KEY=None,
             RESEND_FROM_EMAIL=None,

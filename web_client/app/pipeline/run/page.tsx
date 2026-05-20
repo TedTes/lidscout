@@ -35,11 +35,8 @@ function CheckIcon() {
 
 export default function PipelineRunPage() {
   const [recipient, setRecipient] = useState('');
-  const [subreddit, setSubreddit] = useState('startups');
-  const [hnConfig, setHnConfig] = useState('top');
+  const [sourceLocators, setSourceLocators] = useState('');
   const [limit, setLimit] = useState(10);
-  const [includeReddit, setIncludeReddit] = useState(true);
-  const [includeHackerNews, setIncludeHackerNews] = useState(true);
   const [result, setResult] = useState<PipelineRunResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,10 +47,14 @@ export default function PipelineRunPage() {
     setError(null);
     setResult(null);
     try {
+      const sources = sourceLocators
+        .split('\n')
+        .map(locator => locator.trim())
+        .filter(Boolean)
+        .map(locator => ({ locator, limit }));
       const data = await signalApi.runPipeline({
         recipient,
-        reddit_sources: includeReddit ? [{ subreddit, limit }] : [],
-        hackernews_sources: includeHackerNews ? [{ config: hnConfig, limit }] : [],
+        sources,
         default_limit: limit,
       });
       setResult(data);
@@ -93,90 +94,42 @@ export default function PipelineRunPage() {
             />
           </div>
 
-          {/* Reddit source */}
+          {/* Generic sources */}
           <fieldset className="rounded-lg border border-slate-800/80 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Toggle
-                checked={includeReddit}
-                onChange={setIncludeReddit}
-                id="toggle-reddit"
-              />
-              <label
-                htmlFor="toggle-reddit"
-                className="cursor-pointer text-sm font-semibold text-slate-300"
-              >
-                Reddit
-              </label>
-            </div>
-
-            <div className="grid grid-cols-[1fr_90px] gap-2">
-              <div>
-                <label className="mb-1 block text-xs text-slate-600" htmlFor="subreddit">
-                  Subreddit
-                </label>
-                <input
-                  id="subreddit"
-                  value={subreddit}
-                  onChange={e => setSubreddit(e.target.value)}
-                  disabled={!includeReddit}
-                  placeholder="startups"
-                  className="w-full rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10 disabled:opacity-40"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-slate-600">Limit</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={limit}
-                  onChange={e => setLimit(Number(e.target.value))}
-                  disabled={!includeReddit && !includeHackerNews}
-                  className="w-full rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 outline-none transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10 disabled:opacity-40"
-                />
-              </div>
-            </div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-300" htmlFor="source-locators">
+              Source locators
+            </label>
+            <textarea
+              id="source-locators"
+              value={sourceLocators}
+              onChange={e => setSourceLocators(e.target.value)}
+              rows={4}
+              placeholder={'https://example.com/reviews\nhttps://example.com/thread.json\nhttps://example.com/customer-feedback'}
+              className="w-full resize-none rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10"
+            />
           </fieldset>
 
-          {/* HN source */}
           <fieldset className="rounded-lg border border-slate-800/80 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Toggle
-                checked={includeHackerNews}
-                onChange={setIncludeHackerNews}
-                id="toggle-hn"
-              />
-              <label
-                htmlFor="toggle-hn"
-                className="cursor-pointer text-sm font-semibold text-slate-300"
-              >
-                Hacker News
-              </label>
-            </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600" htmlFor="hn-config">
-                Feed
+              <label className="mb-1 block text-xs text-slate-600" htmlFor="limit">
+                Limit per locator
               </label>
-              <select
-                id="hn-config"
-                value={hnConfig}
-                onChange={e => setHnConfig(e.target.value)}
-                disabled={!includeHackerNews}
+              <input
+                id="limit"
+                type="number"
+                min={1}
+                max={100}
+                value={limit}
+                onChange={e => setLimit(Number(e.target.value))}
                 className="w-full rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 outline-none transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10 disabled:opacity-40"
-              >
-                <option value="top">Top stories</option>
-                <option value="new">New stories</option>
-                <option value="ask">Ask HN</option>
-                <option value="show">Show HN</option>
-                <option value="best">Best stories</option>
-              </select>
+              />
             </div>
           </fieldset>
 
           {/* Submit */}
           <button
             type="submit"
-            disabled={isRunning || (!includeReddit && !includeHackerNews)}
+            disabled={isRunning || !sourceLocators.trim()}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-950 transition hover:bg-violet-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isRunning ? (
@@ -289,37 +242,6 @@ export default function PipelineRunPage() {
         </div>
       </div>
     </DashboardShell>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  id,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  id: string;
-}) {
-  return (
-    <button
-      type="button"
-      id={id}
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 rounded-full border transition-all duration-200 ${
-        checked
-          ? 'border-violet-500/50 bg-violet-600'
-          : 'border-slate-700 bg-slate-800'
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-all duration-200 ${
-          checked ? 'left-4' : 'left-0.5'
-        }`}
-      />
-    </button>
   );
 }
 

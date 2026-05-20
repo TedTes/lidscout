@@ -13,6 +13,7 @@ from api.routes.signals import (
 from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.signal import Signal
+from domain.source import SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
@@ -23,13 +24,16 @@ from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
 
 
-class FakeRedditAdapter:
-    def fetch_posts(self, subreddit: str, limit: int = 25) -> list[RawPost]:
+class FakeSourceAdapter:
+    def can_handle(self, source: SourceInput) -> bool:
+        return source.locator == "https://example.com/reviews"
+
+    def fetch_source(self, source: SourceInput, default_limit: int = 25) -> list[RawPost]:
         return [
             RawPost.create(
-                source="reddit",
-                source_id="r1",
-                title=f"{subreddit} reporting pain",
+                source="web",
+                source_id="review-page",
+                title="Review page",
                 body="Manual reporting is slow.",
             )
         ]
@@ -113,13 +117,13 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(response["top_clusters"][0]["id"], "cluster-1")
         self.assertEqual(response["recommended_opportunities"][0], "reporting: Teams need faster reports.")
 
-    def test_runs_pipeline(self):
+    def test_runs_pipeline_with_sources(self):
         signal_repository = InMemorySignalRepository()
         cluster_repository = InMemoryClusterRepository()
         dependencies = self._dependencies(
             signal_repository=signal_repository,
             cluster_repository=cluster_repository,
-            reddit_adapter=FakeRedditAdapter(),
+            source_adapters=[FakeSourceAdapter()],
             llm_client=FakeLLMClient(),
             embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(FakeEmailNotifier()),
@@ -129,7 +133,12 @@ class SignalApiRouteTests(unittest.TestCase):
             run_pipeline(
                 PipelineRunRequest(
                     recipient="founder@example.com",
-                    reddit_sources=[{"subreddit": "startups", "limit": 1}],
+                    sources=[
+                        {
+                            "locator": "https://example.com/reviews",
+                            "limit": 1,
+                        }
+                    ],
                 ),
                 dependencies,
             )
@@ -149,7 +158,7 @@ class SignalApiRouteTests(unittest.TestCase):
         signal_repository=None,
         score_repository=None,
         cluster_repository=None,
-        reddit_adapter=None,
+        source_adapters=None,
         llm_client=None,
         embedding_client=None,
         email_client=None,
@@ -159,7 +168,7 @@ class SignalApiRouteTests(unittest.TestCase):
             signal_repository=signal_repository or InMemorySignalRepository(),
             score_repository=score_repository or InMemoryScoreRepository(),
             cluster_repository=cluster_repository or InMemoryClusterRepository(),
-            reddit_adapter=reddit_adapter,
+            source_adapters=source_adapters or [],
             llm_client=llm_client,
             embedding_client=embedding_client,
             email_client=email_client,

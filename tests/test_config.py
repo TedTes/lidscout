@@ -19,8 +19,6 @@ class AppConfigTests(unittest.TestCase):
             "LLM_API_KEY": "llm-key",
             "OPENAI_RESPONSE_MODEL": "response-model",
             "OPENAI_EMBEDDING_MODEL": "embedding-model",
-            "REDDIT_CLIENT_ID": "reddit-id",
-            "REDDIT_CLIENT_SECRET": "reddit-secret",
             "EMAIL_API_KEY": "email-key",
             "RESEND_API_KEY": "resend-key",
             "RESEND_FROM_EMAIL": "LidScout <alerts@example.com>",
@@ -34,8 +32,6 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.LLM_API_KEY, "llm-key")
         self.assertEqual(config.OPENAI_RESPONSE_MODEL, "response-model")
         self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "embedding-model")
-        self.assertEqual(config.REDDIT_CLIENT_ID, "reddit-id")
-        self.assertEqual(config.REDDIT_CLIENT_SECRET, "reddit-secret")
         self.assertEqual(config.EMAIL_API_KEY, "email-key")
         self.assertEqual(config.RESEND_API_KEY, "resend-key")
         self.assertEqual(config.RESEND_FROM_EMAIL, "LidScout <alerts@example.com>")
@@ -47,8 +43,6 @@ class AppConfigTests(unittest.TestCase):
             "LLM_API_KEY": " ",
             "OPENAI_RESPONSE_MODEL": " ",
             "OPENAI_EMBEDDING_MODEL": "",
-            "REDDIT_CLIENT_ID": "",
-            "REDDIT_CLIENT_SECRET": " ",
             "EMAIL_API_KEY": "",
             "RESEND_API_KEY": "",
             "RESEND_FROM_EMAIL": " ",
@@ -61,8 +55,6 @@ class AppConfigTests(unittest.TestCase):
         self.assertIsNone(config.LLM_API_KEY)
         self.assertEqual(config.OPENAI_RESPONSE_MODEL, "gpt-4o-mini")
         self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "text-embedding-3-small")
-        self.assertIsNone(config.REDDIT_CLIENT_ID)
-        self.assertIsNone(config.REDDIT_CLIENT_SECRET)
         self.assertIsNone(config.EMAIL_API_KEY)
         self.assertIsNone(config.RESEND_API_KEY)
         self.assertIsNone(config.RESEND_FROM_EMAIL)

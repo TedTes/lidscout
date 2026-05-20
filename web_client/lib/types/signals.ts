@@ -39,15 +39,18 @@ export type ClustersResponse = {
 };
 
 export type PipelineSourceRequest = {
-  subreddit?: string;
-  config?: string;
+  locator: string;
   limit?: number;
+  options?: Record<string, unknown>;
 };
 
 export type PipelineRunRequest = {
   recipient: string;
-  reddit_sources?: Array<{ subreddit: string; limit?: number }>;
-  hackernews_sources?: Array<{ config: string; limit?: number }>;
+  sources?: Array<{
+    locator: string;
+    limit?: number;
+    options?: Record<string, unknown>;
+  }>;
   default_limit?: number;
   similarity_threshold?: number;
 };

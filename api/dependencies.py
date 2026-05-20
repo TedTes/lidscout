@@ -1,6 +1,5 @@
 """Runtime dependency wiring for API routes."""
-from adapters.hackernews import HackerNewsActivityAdapter
-from adapters.reddit import RedditActivityAdapter
+from adapters.web import JsonUrlAdapter, StaticUrlAdapter
 from api.routes.signals import SignalApiDependencies
 from infrastructure.db import (
     PostgresClusterRepository,
@@ -27,8 +26,10 @@ def build_signal_api_dependencies(
         signal_repository=PostgresSignalRepository(database_url),
         score_repository=PostgresScoreRepository(database_url),
         cluster_repository=PostgresClusterRepository(database_url),
-        reddit_adapter=RedditActivityAdapter(),
-        hackernews_adapter=HackerNewsActivityAdapter(),
+        source_adapters=[
+            JsonUrlAdapter(),
+            StaticUrlAdapter(),
+        ],
         llm_client=_build_llm_client(app_config),
         embedding_client=_build_embedding_client(app_config),
         email_client=_build_email_client(app_config),
