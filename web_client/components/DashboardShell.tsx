@@ -9,18 +9,25 @@ type Props = {
 
 export default function DashboardShell({ title, subtitle, actions, children }: Props) {
   return (
-    <main className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#07091a]">
       <DashboardNav />
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-normal text-gray-950">{title}</h1>
-            {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
+
+      <main className="lg:ml-[220px]">
+        <div className="mx-auto max-w-5xl px-5 pb-16 pt-6 lg:px-8 lg:pt-10">
+          {/* Page header */}
+          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-slate-100">{title}</h1>
+              {subtitle && (
+                <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+              )}
+            </div>
+            {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
           </div>
-          {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+
+          {children}
         </div>
-        {children}
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
