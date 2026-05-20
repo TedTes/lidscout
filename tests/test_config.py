@@ -2,12 +2,13 @@ import os
 from unittest.mock import patch
 import unittest
 
-from shared.config import get_app_config
+from shared.config import get_app_config, get_settings
 
 
 class AppConfigTests(unittest.TestCase):
     def tearDown(self):
         get_app_config.cache_clear()
+        get_settings.cache_clear()
 
     def test_loads_app_config_from_environment(self):
         get_app_config.cache_clear()
@@ -48,6 +49,15 @@ class AppConfigTests(unittest.TestCase):
         self.assertIsNone(config.REDDIT_CLIENT_SECRET)
         self.assertIsNone(config.EMAIL_API_KEY)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 8 * * *")
+
+    def test_default_cors_origins_include_local_dev_ports(self):
+        get_settings.cache_clear()
+
+        with patch.dict(os.environ, {}, clear=True):
+            settings = get_settings()
+
+        self.assertIn("http://localhost:3000", settings.cors_origins)
+        self.assertIn("http://localhost:3001", settings.cors_origins)
 
 
 if __name__ == "__main__":

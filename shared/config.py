@@ -50,7 +50,12 @@ def get_settings() -> Settings:
             "API for signal detection from public online activity",
         ),
         api_version=os.getenv("API_VERSION", "1.0.0"),
-        cors_origins=_csv(os.getenv("CORS_ORIGINS", "http://localhost:3000")),
+        cors_origins=_csv(
+            os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:3000,http://localhost:3001",
+            )
+        ),
         http_user_agent=os.getenv(
             "HTTP_USER_AGENT",
             (
