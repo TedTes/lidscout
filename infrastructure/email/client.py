@@ -3,6 +3,10 @@ from dataclasses import dataclass
 
 from application.reporting import MarketSignalReport
 from infrastructure.email.notifier import EmailNotifier
+from shared.logger import get_logger, log_event
+
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,14 @@ class EmailClient:
                 error=str(exc),
             )
 
+        log_event(
+            logger,
+            "report_sent",
+            recipient=normalized_recipient,
+            subject=subject,
+            top_cluster_count=len(report.top_clusters),
+            opportunity_count=len(report.recommended_opportunities),
+        )
         return EmailSendResult(
             recipient=normalized_recipient,
             subject=subject,

@@ -3,6 +3,10 @@ from dataclasses import dataclass
 
 from application.ports import PostRepository
 from domain.post import RawPost
+from shared.logger import get_logger, log_event
+
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,7 @@ class IngestionService:
 
     def ingest(self, posts: list[RawPost]) -> IngestionResult:
         received_count = len(posts)
+        log_event(logger, "ingestion_started", received_count=received_count)
         failed_count = 0
         normalized_posts: list[RawPost] = []
         seen_ids: set[str] = set()
@@ -46,12 +51,21 @@ class IngestionService:
         inserted_count = self.repository.save_posts(normalized_posts)
         duplicate_count = received_count - failed_count - inserted_count
 
-        return IngestionResult(
+        result = IngestionResult(
             received_count=received_count,
             inserted_count=inserted_count,
             duplicate_count=duplicate_count,
             failed_count=failed_count,
         )
+        log_event(
+            logger,
+            "ingestion_completed",
+            received_count=result.received_count,
+            inserted_count=result.inserted_count,
+            duplicate_count=result.duplicate_count,
+            failed_count=result.failed_count,
+        )
+        return result
 
     def _normalize(self, post: RawPost) -> RawPost:
         return RawPost.create(

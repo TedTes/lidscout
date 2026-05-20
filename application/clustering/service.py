@@ -5,8 +5,10 @@ import math
 from domain.cluster import SignalCluster
 from domain.score import calculate_opportunity_score
 from domain.signal import Signal
+from shared.logger import get_logger, log_event
 
 SignalEmbeddings = dict[str, list[float]]
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -51,10 +53,18 @@ class ClusteringService:
             else:
                 matching_bucket.add(signal, embedding)
 
-        return [
+        clusters = [
             self._build_cluster(bucket=bucket, index=index)
             for index, bucket in enumerate(buckets, start=1)
         ]
+        log_event(
+            logger,
+            "clustering_completed",
+            signal_count=len(signals),
+            clustered_count=len(clusters),
+            similarity_threshold=self.similarity_threshold,
+        )
+        return clusters
 
     def _find_matching_bucket(
         self,

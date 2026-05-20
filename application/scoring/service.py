@@ -4,6 +4,10 @@ from dataclasses import dataclass, replace
 from application.ports import ScoreRepository
 from domain.score import OpportunityScore, calculate_opportunity_score
 from domain.signal import Signal
+from shared.logger import get_logger, log_event
+
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -48,8 +52,16 @@ class ScoringService:
             else 0.0
         )
 
-        return ScoringResult(
+        result = ScoringResult(
             scored_count=saved_count,
             failed_count=failed_count,
             average_score=average_score,
         )
+        log_event(
+            logger,
+            "scoring_completed",
+            scored_count=result.scored_count,
+            failed_count=result.failed_count,
+            average_score=result.average_score,
+        )
+        return result
