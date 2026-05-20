@@ -16,8 +16,28 @@ class Settings:
     request_timeout_seconds: int
 
 
+@dataclass(frozen=True)
+class AppConfig:
+    """Typed configuration for pipeline and external service integrations."""
+
+    DATABASE_URL: str
+    LLM_API_KEY: str | None
+    REDDIT_CLIENT_ID: str | None
+    REDDIT_CLIENT_SECRET: str | None
+    EMAIL_API_KEY: str | None
+    PIPELINE_SCHEDULE: str
+
+
 def _csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _optional_env(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
 
 
 @lru_cache
@@ -39,4 +59,17 @@ def get_settings() -> Settings:
             ),
         ),
         request_timeout_seconds=int(os.getenv("REQUEST_TIMEOUT_SECONDS", "15")),
+    )
+
+
+@lru_cache
+def get_app_config() -> AppConfig:
+    """Load typed application configuration once per process."""
+    return AppConfig(
+        DATABASE_URL=os.getenv("DATABASE_URL", "sqlite:///lidscout.db").strip(),
+        LLM_API_KEY=_optional_env("LLM_API_KEY"),
+        REDDIT_CLIENT_ID=_optional_env("REDDIT_CLIENT_ID"),
+        REDDIT_CLIENT_SECRET=_optional_env("REDDIT_CLIENT_SECRET"),
+        EMAIL_API_KEY=_optional_env("EMAIL_API_KEY"),
+        PIPELINE_SCHEDULE=os.getenv("PIPELINE_SCHEDULE", "0 8 * * *").strip(),
     )
