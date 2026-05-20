@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+
+.env
+.env.*
+!.env.example
+
+lidscout.db
+*.sqlite
+*.sqlite3
+
+supabase/.temp/
+
+web_client/.next/
+web_client/node_modules/

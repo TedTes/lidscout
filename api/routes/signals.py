@@ -78,6 +78,12 @@ class SignalApiDependencies:
 _dependencies = SignalApiDependencies()
 
 
+def configure_signal_api_dependencies(dependencies: SignalApiDependencies) -> None:
+    """Replace signal API dependencies for the running process."""
+    global _dependencies
+    _dependencies = dependencies
+
+
 def get_signal_api_dependencies() -> SignalApiDependencies:
     """Return configured signal API dependencies."""
     return _dependencies
