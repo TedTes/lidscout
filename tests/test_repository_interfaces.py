@@ -21,6 +21,8 @@ class RepositoryInterfaceTests(unittest.TestCase):
 
         self.assertEqual(saved_count, 1)
         self.assertEqual(repository.posts["reddit:abc"], post)
+        self.assertEqual(repository.get_post("reddit:abc"), post)
+        self.assertEqual(repository.list_posts(), [post])
 
     def test_signal_repository_persists_unique_signals(self):
         repository = InMemorySignalRepository()
@@ -34,6 +36,8 @@ class RepositoryInterfaceTests(unittest.TestCase):
 
         self.assertEqual(saved_count, 1)
         self.assertEqual(repository.signals["signal-1"], signal)
+        self.assertEqual(repository.get_signal("signal-1"), signal)
+        self.assertEqual(repository.list_signals(), [signal])
 
     def test_score_repository_persists_unique_scores(self):
         repository = InMemoryScoreRepository()
@@ -51,6 +55,8 @@ class RepositoryInterfaceTests(unittest.TestCase):
 
         self.assertEqual(saved_count, 1)
         self.assertEqual(repository.scores["signal-1"], score)
+        self.assertEqual(repository.get_score("signal-1"), score)
+        self.assertEqual(repository.list_scores(), [score])
 
     def test_cluster_repository_persists_unique_clusters(self):
         repository = InMemoryClusterRepository()
@@ -67,6 +73,8 @@ class RepositoryInterfaceTests(unittest.TestCase):
 
         self.assertEqual(saved_count, 1)
         self.assertEqual(repository.clusters["cluster-1"], cluster)
+        self.assertEqual(repository.get_cluster("cluster-1"), cluster)
+        self.assertEqual(repository.list_clusters(), [cluster])
 
 
 if __name__ == "__main__":

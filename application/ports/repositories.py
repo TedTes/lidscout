@@ -14,12 +14,28 @@ class PostRepository(Protocol):
         """Persist posts and return the number saved."""
         ...
 
+    def get_post(self, post_id: str) -> RawPost | None:
+        """Load one post by id."""
+        ...
+
+    def list_posts(self) -> list[RawPost]:
+        """Load all persisted posts."""
+        ...
+
 
 class SignalRepository(Protocol):
     """Persistence boundary for extracted signals."""
 
     def save_signals(self, signals: list[Signal]) -> int:
         """Persist signals and return the number saved."""
+        ...
+
+    def get_signal(self, signal_id: str) -> Signal | None:
+        """Load one signal by id."""
+        ...
+
+    def list_signals(self) -> list[Signal]:
+        """Load all persisted signals."""
         ...
 
 
@@ -30,10 +46,26 @@ class ScoreRepository(Protocol):
         """Persist scores and return the number saved."""
         ...
 
+    def get_score(self, signal_id: str) -> OpportunityScore | None:
+        """Load one score by signal id."""
+        ...
+
+    def list_scores(self) -> list[OpportunityScore]:
+        """Load all persisted scores."""
+        ...
+
 
 class ClusterRepository(Protocol):
     """Persistence boundary for signal clusters."""
 
     def save_clusters(self, clusters: list[SignalCluster]) -> int:
         """Persist clusters and return the number saved."""
+        ...
+
+    def get_cluster(self, cluster_id: str) -> SignalCluster | None:
+        """Load one cluster by id."""
+        ...
+
+    def list_clusters(self) -> list[SignalCluster]:
+        """Load all persisted clusters."""
         ...

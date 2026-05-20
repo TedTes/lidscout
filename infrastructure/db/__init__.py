@@ -4,6 +4,10 @@ from infrastructure.db.repository import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    SQLiteClusterRepository,
+    SQLitePostRepository,
+    SQLiteScoreRepository,
+    SQLiteSignalRepository,
 )
 
 __all__ = [
@@ -11,4 +15,8 @@ __all__ = [
     "InMemoryPostRepository",
     "InMemoryScoreRepository",
     "InMemorySignalRepository",
+    "SQLiteClusterRepository",
+    "SQLitePostRepository",
+    "SQLiteScoreRepository",
+    "SQLiteSignalRepository",
 ]
