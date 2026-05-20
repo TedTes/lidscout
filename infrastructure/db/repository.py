@@ -360,11 +360,222 @@ class SQLiteClusterRepository(_SQLiteRepository, ClusterRepository):
         return [_cluster_from_row(row) for row in rows]
 
 
+class _PostgresRepository:
+    """Shared Postgres connection handling."""
+
+    def __init__(
+        self,
+        database_url: str | None = None,
+        *,
+        connection: Any | None = None,
+    ):
+        if connection is None:
+            if not database_url:
+                raise ValueError("database_url is required")
+            self.connection = _connect_postgres(database_url)
+            self._owns_connection = True
+        else:
+            self.connection = connection
+            self._owns_connection = False
+
+    def close(self) -> None:
+        if self._owns_connection:
+            self.connection.close()
+
+
+class PostgresPostRepository(_PostgresRepository, PostRepository):
+    """Postgres-backed raw post repository."""
+
+    def save_posts(self, posts: list[RawPost]) -> int:
+        inserted_count = 0
+        for post in posts:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO posts (
+                    id, source, source_id, title, body, author, url,
+                    created_at, upvotes, comments_count, metadata
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                )
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    post.id,
+                    post.source,
+                    post.source_id,
+                    post.title,
+                    post.body,
+                    post.author,
+                    post.url,
+                    post.created_at,
+                    post.upvotes,
+                    post.comments_count,
+                    _to_json(post.metadata),
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_post(self, post_id: str) -> RawPost | None:
+        row = self.connection.execute(
+            "SELECT * FROM posts WHERE id = %s",
+            (post_id,),
+        ).fetchone()
+        return _post_from_row(row) if row else None
+
+    def list_posts(self) -> list[RawPost]:
+        rows = self.connection.execute("SELECT * FROM posts ORDER BY id").fetchall()
+        return [_post_from_row(row) for row in rows]
+
+
+class PostgresSignalRepository(_PostgresRepository, SignalRepository):
+    """Postgres-backed signal repository."""
+
+    def save_signals(self, signals: list[Signal]) -> int:
+        inserted_count = 0
+        for signal in signals:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO signals (
+                    id, post_id, pain, user_type, job_to_be_done,
+                    current_workaround, urgency, severity, willingness_to_pay,
+                    category, confidence
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    signal.id,
+                    signal.post_id,
+                    signal.pain,
+                    signal.user_type,
+                    signal.job_to_be_done,
+                    signal.current_workaround,
+                    signal.urgency,
+                    signal.severity,
+                    signal.willingness_to_pay,
+                    signal.category,
+                    signal.confidence,
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_signal(self, signal_id: str) -> Signal | None:
+        row = self.connection.execute(
+            "SELECT * FROM signals WHERE id = %s",
+            (signal_id,),
+        ).fetchone()
+        return _signal_from_row(row) if row else None
+
+    def list_signals(self) -> list[Signal]:
+        rows = self.connection.execute("SELECT * FROM signals ORDER BY id").fetchall()
+        return [_signal_from_row(row) for row in rows]
+
+
+class PostgresScoreRepository(_PostgresRepository, ScoreRepository):
+    """Postgres-backed opportunity score repository."""
+
+    def save_scores(self, scores: list[OpportunityScore]) -> int:
+        inserted_count = 0
+        for score in scores:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO scores (
+                    signal_id, total_score, urgency_score, severity_score,
+                    willingness_score, confidence_score, reasoning
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (signal_id) DO NOTHING
+                """,
+                (
+                    score.signal_id,
+                    score.total_score,
+                    score.urgency_score,
+                    score.severity_score,
+                    score.willingness_score,
+                    score.confidence_score,
+                    score.reasoning,
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_score(self, signal_id: str) -> OpportunityScore | None:
+        row = self.connection.execute(
+            "SELECT * FROM scores WHERE signal_id = %s",
+            (signal_id,),
+        ).fetchone()
+        return _score_from_row(row) if row else None
+
+    def list_scores(self) -> list[OpportunityScore]:
+        rows = self.connection.execute("SELECT * FROM scores ORDER BY signal_id").fetchall()
+        return [_score_from_row(row) for row in rows]
+
+
+class PostgresClusterRepository(_PostgresRepository, ClusterRepository):
+    """Postgres-backed signal cluster repository."""
+
+    def save_clusters(self, clusters: list[SignalCluster]) -> int:
+        inserted_count = 0
+        for cluster in clusters:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO clusters (
+                    id, theme, summary, signal_ids, frequency,
+                    average_score, top_examples
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    cluster.id,
+                    cluster.theme,
+                    cluster.summary,
+                    cluster.signal_ids,
+                    cluster.frequency,
+                    cluster.average_score,
+                    cluster.top_examples,
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_cluster(self, cluster_id: str) -> SignalCluster | None:
+        row = self.connection.execute(
+            "SELECT * FROM clusters WHERE id = %s",
+            (cluster_id,),
+        ).fetchone()
+        return _cluster_from_row(row) if row else None
+
+    def list_clusters(self) -> list[SignalCluster]:
+        rows = self.connection.execute("SELECT * FROM clusters ORDER BY id").fetchall()
+        return [_cluster_from_row(row) for row in rows]
+
+
+def _connect_postgres(database_url: str) -> Any:
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError as exc:
+        raise RuntimeError("psycopg[binary] is required for Supabase Postgres") from exc
+
+    return psycopg.connect(database_url, row_factory=dict_row)
+
+
+def _rowcount(cursor: Any) -> int:
+    rowcount = getattr(cursor, "rowcount", 0)
+    return rowcount if rowcount and rowcount > 0 else 0
+
+
 def _to_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True)
 
 
-def _from_json(value: str) -> Any:
+def _from_json(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
     return json.loads(value)
 
 
@@ -372,7 +583,9 @@ def _datetime_to_text(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _datetime_from_text(value: str | None) -> datetime | None:
+def _datetime_from_text(value: datetime | str | None) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
     return datetime.fromisoformat(value) if value else None
 
 
@@ -382,10 +595,16 @@ def _bool_to_int(value: bool | None) -> int | None:
     return 1 if value else 0
 
 
-def _bool_from_int(value: int | None) -> bool | None:
+def _bool_from_int(value: bool | int | None) -> bool | None:
     if value is None:
         return None
+    if isinstance(value, bool):
+        return value
     return bool(value)
+
+
+def _float(value: Any) -> float:
+    return float(value)
 
 
 def _post_from_row(row: sqlite3.Row) -> RawPost:
@@ -415,18 +634,18 @@ def _signal_from_row(row: sqlite3.Row) -> Signal:
         severity=row["severity"],
         willingness_to_pay=_bool_from_int(row["willingness_to_pay"]),
         category=row["category"],
-        confidence=row["confidence"],
+        confidence=_float(row["confidence"]),
     )
 
 
 def _score_from_row(row: sqlite3.Row) -> OpportunityScore:
     return OpportunityScore(
         signal_id=row["signal_id"],
-        total_score=row["total_score"],
-        urgency_score=row["urgency_score"],
-        severity_score=row["severity_score"],
-        willingness_score=row["willingness_score"],
-        confidence_score=row["confidence_score"],
+        total_score=_float(row["total_score"]),
+        urgency_score=_float(row["urgency_score"]),
+        severity_score=_float(row["severity_score"]),
+        willingness_score=_float(row["willingness_score"]),
+        confidence_score=_float(row["confidence_score"]),
         reasoning=row["reasoning"],
     )
 
@@ -438,6 +657,6 @@ def _cluster_from_row(row: sqlite3.Row) -> SignalCluster:
         summary=row["summary"],
         signal_ids=_from_json(row["signal_ids"]),
         frequency=row["frequency"],
-        average_score=row["average_score"],
+        average_score=_float(row["average_score"]),
         top_examples=_from_json(row["top_examples"]),
     )

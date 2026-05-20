@@ -1,0 +1,183 @@
+from datetime import UTC, datetime
+import json
+import unittest
+
+from domain.cluster import SignalCluster
+from domain.post import RawPost
+from domain.score import OpportunityScore
+from domain.signal import Signal
+from infrastructure.db import (
+    PostgresClusterRepository,
+    PostgresPostRepository,
+    PostgresScoreRepository,
+    PostgresSignalRepository,
+)
+
+
+class FakeCursor:
+    def __init__(self, *, rowcount: int = 0, row=None, rows=None):
+        self.rowcount = rowcount
+        self.row = row
+        self.rows = rows or []
+
+    def fetchone(self):
+        return self.row
+
+    def fetchall(self):
+        return self.rows
+
+
+class FakeConnection:
+    def __init__(self, cursors: list[FakeCursor]):
+        self.cursors = cursors
+        self.calls: list[tuple[str, tuple]] = []
+        self.commit_count = 0
+        self.closed = False
+
+    def execute(self, query: str, params: tuple = ()):
+        self.calls.append((query, params))
+        return self.cursors.pop(0)
+
+    def commit(self):
+        self.commit_count += 1
+
+    def close(self):
+        self.closed = True
+
+
+class PostgresRepositoryTests(unittest.TestCase):
+    def test_post_repository_saves_and_loads_posts(self):
+        created_at = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+        post = RawPost.create(
+            source="reddit",
+            source_id="abc",
+            title="Reporting pain",
+            body="Manual reporting is slow.",
+            author="founder",
+            url="https://reddit.example/post",
+            created_at=created_at,
+            upvotes=10,
+            comments_count=3,
+            metadata={"subreddit": "startups"},
+        )
+        row = {
+            "source": "reddit",
+            "source_id": "abc",
+            "title": "Reporting pain",
+            "body": "Manual reporting is slow.",
+            "author": "founder",
+            "url": "https://reddit.example/post",
+            "created_at": created_at,
+            "upvotes": 10,
+            "comments_count": 3,
+            "metadata": {"subreddit": "startups"},
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresPostRepository(connection=connection)
+
+        self.assertEqual(repository.save_posts([post]), 1)
+        self.assertEqual(repository.get_post("reddit:abc"), post)
+        self.assertEqual(repository.list_posts(), [post])
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "reddit:abc")
+        self.assertEqual(json.loads(connection.calls[0][1][-1]), {"subreddit": "startups"})
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_signal_repository_saves_and_loads_signals(self):
+        signal = Signal.create(
+            id="signal-1",
+            post_id="reddit:abc",
+            pain="Manual reporting is slow",
+            user_type="founder",
+            job_to_be_done="understand revenue",
+            current_workaround="spreadsheets",
+            urgency="high",
+            severity="medium",
+            willingness_to_pay=True,
+            category="reporting",
+            confidence=0.8,
+        )
+        row = {
+            "id": "signal-1",
+            "post_id": "reddit:abc",
+            "pain": "Manual reporting is slow",
+            "user_type": "founder",
+            "job_to_be_done": "understand revenue",
+            "current_workaround": "spreadsheets",
+            "urgency": "high",
+            "severity": "medium",
+            "willingness_to_pay": True,
+            "category": "reporting",
+            "confidence": 0.8,
+        }
+        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
+        repository = PostgresSignalRepository(connection=connection)
+
+        self.assertEqual(repository.save_signals([signal]), 1)
+        self.assertEqual(repository.get_signal("signal-1"), signal)
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_score_repository_saves_and_loads_scores(self):
+        score = OpportunityScore(
+            signal_id="signal-1",
+            total_score=8.4,
+            urgency_score=5.0,
+            severity_score=3.0,
+            willingness_score=5.0,
+            confidence_score=4.0,
+            reasoning="high reporting pain",
+        )
+        row = {
+            "signal_id": "signal-1",
+            "total_score": 8.4,
+            "urgency_score": 5.0,
+            "severity_score": 3.0,
+            "willingness_score": 5.0,
+            "confidence_score": 4.0,
+            "reasoning": "high reporting pain",
+        }
+        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
+        repository = PostgresScoreRepository(connection=connection)
+
+        self.assertEqual(repository.save_scores([score]), 1)
+        self.assertEqual(repository.get_score("signal-1"), score)
+        self.assertIn("ON CONFLICT (signal_id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_cluster_repository_saves_and_loads_clusters(self):
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="reporting",
+            summary="Teams need faster reports.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.4,
+            top_examples=["Manual reporting is slow."],
+        )
+        row = {
+            "id": "cluster-1",
+            "theme": "reporting",
+            "summary": "Teams need faster reports.",
+            "signal_ids": ["signal-1", "signal-2"],
+            "frequency": 2,
+            "average_score": 8.4,
+            "top_examples": ["Manual reporting is slow."],
+        }
+        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
+        repository = PostgresClusterRepository(connection=connection)
+
+        self.assertEqual(repository.save_clusters([cluster]), 1)
+        self.assertEqual(repository.get_cluster("cluster-1"), cluster)
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
