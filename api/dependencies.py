@@ -8,6 +8,7 @@ from infrastructure.db import (
     PostgresScoreRepository,
     PostgresSignalRepository,
 )
+from infrastructure.llm import OpenAIResponsesClient
 from shared.config import AppConfig, get_app_config
 
 
@@ -27,8 +28,15 @@ def build_signal_api_dependencies(
         cluster_repository=PostgresClusterRepository(database_url),
         reddit_adapter=RedditActivityAdapter(),
         hackernews_adapter=HackerNewsActivityAdapter(),
+        llm_client=_build_llm_client(app_config),
     )
 
 
 def _is_postgres_url(database_url: str) -> bool:
     return database_url.startswith(("postgresql://", "postgres://"))
+
+
+def _build_llm_client(config: AppConfig) -> OpenAIResponsesClient | None:
+    if config.LLM_API_KEY is None:
+        return None
+    return OpenAIResponsesClient(api_key=config.LLM_API_KEY)

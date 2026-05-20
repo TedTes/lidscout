@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import unittest
 
-from shared.config import get_app_config, get_settings
+from shared.config import get_app_config, get_settings, load_environment
 
 
 class AppConfigTests(unittest.TestCase):
@@ -58,6 +60,30 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertIn("http://localhost:3000", settings.cors_origins)
         self.assertIn("http://localhost:3001", settings.cors_origins)
+
+    def test_loads_app_config_from_dotenv_file(self):
+        get_app_config.cache_clear()
+
+        with TemporaryDirectory() as temp_dir:
+            env_file = Path(temp_dir) / ".env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "DATABASE_URL=postgresql://localhost/lidscout",
+                        "LLM_API_KEY=llm-from-env-file",
+                        "PIPELINE_SCHEDULE=0 7 * * *",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.dict(os.environ, {}, clear=True):
+                load_environment(str(env_file))
+                config = get_app_config()
+
+        self.assertEqual(config.DATABASE_URL, "postgresql://localhost/lidscout")
+        self.assertEqual(config.LLM_API_KEY, "llm-from-env-file")
+        self.assertEqual(config.PIPELINE_SCHEDULE, "0 7 * * *")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,16 @@ from dataclasses import dataclass
 from functools import lru_cache
 import os
 
+from dotenv import load_dotenv
+
+
+def load_environment(env_file: str | None = None) -> None:
+    """Load local environment variables from a .env file when present."""
+    load_dotenv(env_file, override=False)
+
+
+load_environment()
+
 
 @dataclass(frozen=True)
 class Settings:
