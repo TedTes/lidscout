@@ -1,7 +1,7 @@
 """Raw post ingestion service."""
 from dataclasses import dataclass
-from typing import Protocol
 
+from application.ports import PostRepository
 from domain.post import RawPost
 
 
@@ -15,18 +15,13 @@ class IngestionResult:
     failed_count: int
 
 
-class RawPostRepository(Protocol):
-    """Persistence boundary for raw posts."""
-
-    def save_posts(self, posts: list[RawPost]) -> int:
-        """Persist posts and return the number inserted."""
-        ...
+RawPostRepository = PostRepository
 
 
 class IngestionService:
     """Validates, deduplicates, normalizes, and persists raw posts."""
 
-    def __init__(self, repository: RawPostRepository):
+    def __init__(self, repository: PostRepository):
         self.repository = repository
 
     def ingest(self, posts: list[RawPost]) -> IngestionResult:

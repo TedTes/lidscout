@@ -1,7 +1,7 @@
 """Signal scoring service."""
 from dataclasses import dataclass, replace
-from typing import Protocol
 
+from application.ports import ScoreRepository
 from domain.score import OpportunityScore, calculate_opportunity_score
 from domain.signal import Signal
 
@@ -15,18 +15,13 @@ class ScoringResult:
     average_score: float
 
 
-class OpportunityScoreRepository(Protocol):
-    """Persistence boundary for opportunity scores."""
-
-    def save_scores(self, scores: list[OpportunityScore]) -> int:
-        """Persist scores and return the number saved."""
-        ...
+OpportunityScoreRepository = ScoreRepository
 
 
 class ScoringService:
     """Scores signals and persists opportunity scores."""
 
-    def __init__(self, repository: OpportunityScoreRepository):
+    def __init__(self, repository: ScoreRepository):
         self.repository = repository
 
     def score(self, signals: list[Signal]) -> ScoringResult:
