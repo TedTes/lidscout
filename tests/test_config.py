@@ -17,6 +17,8 @@ class AppConfigTests(unittest.TestCase):
         env = {
             "DATABASE_URL": "sqlite:///tmp/lidscout.db",
             "LLM_API_KEY": "llm-key",
+            "OPENAI_RESPONSE_MODEL": "response-model",
+            "OPENAI_EMBEDDING_MODEL": "embedding-model",
             "REDDIT_CLIENT_ID": "reddit-id",
             "REDDIT_CLIENT_SECRET": "reddit-secret",
             "EMAIL_API_KEY": "email-key",
@@ -28,6 +30,8 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(config.DATABASE_URL, "sqlite:///tmp/lidscout.db")
         self.assertEqual(config.LLM_API_KEY, "llm-key")
+        self.assertEqual(config.OPENAI_RESPONSE_MODEL, "response-model")
+        self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "embedding-model")
         self.assertEqual(config.REDDIT_CLIENT_ID, "reddit-id")
         self.assertEqual(config.REDDIT_CLIENT_SECRET, "reddit-secret")
         self.assertEqual(config.EMAIL_API_KEY, "email-key")
@@ -37,6 +41,8 @@ class AppConfigTests(unittest.TestCase):
         get_app_config.cache_clear()
         env = {
             "LLM_API_KEY": " ",
+            "OPENAI_RESPONSE_MODEL": " ",
+            "OPENAI_EMBEDDING_MODEL": "",
             "REDDIT_CLIENT_ID": "",
             "REDDIT_CLIENT_SECRET": " ",
             "EMAIL_API_KEY": "",
@@ -47,6 +53,8 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(config.DATABASE_URL, "sqlite:///lidscout.db")
         self.assertIsNone(config.LLM_API_KEY)
+        self.assertEqual(config.OPENAI_RESPONSE_MODEL, "gpt-4o-mini")
+        self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "text-embedding-3-small")
         self.assertIsNone(config.REDDIT_CLIENT_ID)
         self.assertIsNone(config.REDDIT_CLIENT_SECRET)
         self.assertIsNone(config.EMAIL_API_KEY)
@@ -71,6 +79,8 @@ class AppConfigTests(unittest.TestCase):
                     [
                         "DATABASE_URL=postgresql://localhost/lidscout",
                         "LLM_API_KEY=llm-from-env-file",
+                        "OPENAI_RESPONSE_MODEL=response-from-env-file",
+                        "OPENAI_EMBEDDING_MODEL=embedding-from-env-file",
                         "PIPELINE_SCHEDULE=0 7 * * *",
                     ]
                 ),
@@ -83,6 +93,8 @@ class AppConfigTests(unittest.TestCase):
 
         self.assertEqual(config.DATABASE_URL, "postgresql://localhost/lidscout")
         self.assertEqual(config.LLM_API_KEY, "llm-from-env-file")
+        self.assertEqual(config.OPENAI_RESPONSE_MODEL, "response-from-env-file")
+        self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "embedding-from-env-file")
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 7 * * *")
 
 

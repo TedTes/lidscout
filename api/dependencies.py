@@ -8,7 +8,7 @@ from infrastructure.db import (
     PostgresScoreRepository,
     PostgresSignalRepository,
 )
-from infrastructure.llm import OpenAIResponsesClient
+from infrastructure.llm import OpenAIEmbeddingClient, OpenAIResponsesClient
 from shared.config import AppConfig, get_app_config
 
 
@@ -29,6 +29,7 @@ def build_signal_api_dependencies(
         reddit_adapter=RedditActivityAdapter(),
         hackernews_adapter=HackerNewsActivityAdapter(),
         llm_client=_build_llm_client(app_config),
+        embedding_client=_build_embedding_client(app_config),
     )
 
 
@@ -39,4 +40,16 @@ def _is_postgres_url(database_url: str) -> bool:
 def _build_llm_client(config: AppConfig) -> OpenAIResponsesClient | None:
     if config.LLM_API_KEY is None:
         return None
-    return OpenAIResponsesClient(api_key=config.LLM_API_KEY)
+    return OpenAIResponsesClient(
+        api_key=config.LLM_API_KEY,
+        model=config.OPENAI_RESPONSE_MODEL,
+    )
+
+
+def _build_embedding_client(config: AppConfig) -> OpenAIEmbeddingClient | None:
+    if config.LLM_API_KEY is None:
+        return None
+    return OpenAIEmbeddingClient(
+        api_key=config.LLM_API_KEY,
+        model=config.OPENAI_EMBEDDING_MODEL,
+    )

@@ -32,6 +32,8 @@ class AppConfig:
 
     DATABASE_URL: str
     LLM_API_KEY: str | None
+    OPENAI_RESPONSE_MODEL: str
+    OPENAI_EMBEDDING_MODEL: str
     REDDIT_CLIENT_ID: str | None
     REDDIT_CLIENT_SECRET: str | None
     EMAIL_API_KEY: str | None
@@ -48,6 +50,14 @@ def _optional_env(name: str) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _env_or_default(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    cleaned = value.strip()
+    return cleaned or default
 
 
 @lru_cache
@@ -83,6 +93,11 @@ def get_app_config() -> AppConfig:
     return AppConfig(
         DATABASE_URL=os.getenv("DATABASE_URL", "sqlite:///lidscout.db").strip(),
         LLM_API_KEY=_optional_env("LLM_API_KEY"),
+        OPENAI_RESPONSE_MODEL=_env_or_default("OPENAI_RESPONSE_MODEL", "gpt-4o-mini"),
+        OPENAI_EMBEDDING_MODEL=_env_or_default(
+            "OPENAI_EMBEDDING_MODEL",
+            "text-embedding-3-small",
+        ),
         REDDIT_CLIENT_ID=_optional_env("REDDIT_CLIENT_ID"),
         REDDIT_CLIENT_SECRET=_optional_env("REDDIT_CLIENT_SECRET"),
         EMAIL_API_KEY=_optional_env("EMAIL_API_KEY"),

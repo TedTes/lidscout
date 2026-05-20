@@ -13,6 +13,8 @@ class ApiDependencyTests(unittest.TestCase):
         config = AppConfig(
             DATABASE_URL=database_url,
             LLM_API_KEY="llm-key",
+            OPENAI_RESPONSE_MODEL="response-model",
+            OPENAI_EMBEDDING_MODEL="embedding-model",
             REDDIT_CLIENT_ID=None,
             REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
@@ -25,6 +27,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresScoreRepository") as score_repository,
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
+            patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
         ):
             dependencies = build_signal_api_dependencies(config)
 
@@ -32,7 +35,14 @@ class ApiDependencyTests(unittest.TestCase):
         signal_repository.assert_called_once_with(database_url)
         score_repository.assert_called_once_with(database_url)
         cluster_repository.assert_called_once_with(database_url)
-        llm_client.assert_called_once_with(api_key="llm-key")
+        llm_client.assert_called_once_with(
+            api_key="llm-key",
+            model="response-model",
+        )
+        embedding_client.assert_called_once_with(
+            api_key="llm-key",
+            model="embedding-model",
+        )
 
         self.assertIsInstance(dependencies.reddit_adapter, RedditActivityAdapter)
         self.assertIsInstance(dependencies.hackernews_adapter, HackerNewsActivityAdapter)
@@ -41,7 +51,7 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.score_repository, score_repository.return_value)
         self.assertIs(dependencies.cluster_repository, cluster_repository.return_value)
         self.assertIs(dependencies.llm_client, llm_client.return_value)
-        self.assertIsNone(dependencies.embedding_client)
+        self.assertIs(dependencies.embedding_client, embedding_client.return_value)
         self.assertIsNone(dependencies.email_client)
 
     def test_leaves_llm_client_empty_without_key(self):
@@ -49,6 +59,8 @@ class ApiDependencyTests(unittest.TestCase):
         config = AppConfig(
             DATABASE_URL=database_url,
             LLM_API_KEY=None,
+            OPENAI_RESPONSE_MODEL="response-model",
+            OPENAI_EMBEDDING_MODEL="embedding-model",
             REDDIT_CLIENT_ID=None,
             REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
@@ -60,15 +72,22 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository"),
             patch("api.dependencies.PostgresScoreRepository"),
             patch("api.dependencies.PostgresClusterRepository"),
+            patch("api.dependencies.OpenAIResponsesClient") as llm_client,
+            patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
         ):
             dependencies = build_signal_api_dependencies(config)
 
+        llm_client.assert_not_called()
+        embedding_client.assert_not_called()
         self.assertIsNone(dependencies.llm_client)
+        self.assertIsNone(dependencies.embedding_client)
 
     def test_rejects_non_postgres_database_url(self):
         config = AppConfig(
             DATABASE_URL="sqlite:///lidscout.db",
             LLM_API_KEY=None,
+            OPENAI_RESPONSE_MODEL="response-model",
+            OPENAI_EMBEDDING_MODEL="embedding-model",
             REDDIT_CLIENT_ID=None,
             REDDIT_CLIENT_SECRET=None,
             EMAIL_API_KEY=None,
