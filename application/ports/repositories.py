@@ -36,6 +36,10 @@ class SignalRepository(Protocol):
         """Load one signal by id."""
         ...
 
+    def delete_signal(self, signal_id: str) -> bool:
+        """Delete one signal and return whether it existed."""
+        ...
+
     def list_signals(self) -> list[Signal]:
         """Load all persisted signals."""
         ...
@@ -50,6 +54,10 @@ class ScoreRepository(Protocol):
 
     def get_score(self, signal_id: str) -> OpportunityScore | None:
         """Load one score by signal id."""
+        ...
+
+    def delete_score(self, signal_id: str) -> bool:
+        """Delete one score by signal id and return whether it existed."""
         ...
 
     def list_scores(self) -> list[OpportunityScore]:

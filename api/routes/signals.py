@@ -139,6 +139,23 @@ async def list_signals(
     }
 
 
+@router.delete("/signals/{signal_id}")
+async def delete_signal(
+    signal_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Delete one signal plus its score/evidence records."""
+    if dependencies.signal_repository.get_signal(signal_id) is None:
+        raise HTTPException(status_code=404, detail="Signal not found")
+
+    dependencies.score_repository.delete_score(signal_id)
+    dependencies.signal_repository.delete_signal(signal_id)
+    return {
+        "id": signal_id,
+        "deleted": True,
+    }
+
+
 @router.get("/clusters")
 async def list_clusters(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),

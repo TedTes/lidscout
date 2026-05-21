@@ -11,6 +11,7 @@ from api.routes.signals import (
     SignalApiDependencies,
     create_competitor,
     create_competitor_source,
+    delete_signal,
     get_latest_report,
     list_competitor_sources,
     list_competitors,
@@ -23,6 +24,7 @@ from api.routes.signals import (
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.post import RawPost
+from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import SourceInput, SourceLocator
 from infrastructure.db import (
@@ -95,6 +97,7 @@ class SignalApiRouteTests(unittest.TestCase):
         paths = {route.path for route in app.routes}
 
         self.assertIn("/signals", paths)
+        self.assertIn("/signals/{signal_id}", paths)
         self.assertIn("/clusters", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
@@ -129,6 +132,27 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(response["signals"][0]["id"], "signal-1")
         self.assertEqual(response["signals"][0]["pain"], "Manual reporting is slow")
+
+    def test_deletes_signal_and_score(self):
+        signal_repository = InMemorySignalRepository()
+        score_repository = InMemoryScoreRepository()
+        signal = Signal.create(
+            id="signal-1",
+            post_id="reddit:r1",
+            pain="Manual reporting is slow",
+        )
+        signal_repository.save_signals([signal])
+        score_repository.save_scores([OpportunityScore.from_signal(signal)])
+        dependencies = self._dependencies(
+            signal_repository=signal_repository,
+            score_repository=score_repository,
+        )
+
+        response = asyncio.run(delete_signal("signal-1", dependencies))
+
+        self.assertEqual(response, {"id": "signal-1", "deleted": True})
+        self.assertIsNone(signal_repository.get_signal("signal-1"))
+        self.assertIsNone(score_repository.get_score("signal-1"))
 
     def test_lists_clusters(self):
         cluster_repository = InMemoryClusterRepository()

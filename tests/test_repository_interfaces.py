@@ -43,6 +43,8 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.signals["signal-1"], signal)
         self.assertEqual(repository.get_signal("signal-1"), signal)
         self.assertEqual(repository.list_signals(), [signal])
+        self.assertTrue(repository.delete_signal("signal-1"))
+        self.assertIsNone(repository.get_signal("signal-1"))
 
     def test_score_repository_persists_unique_scores(self):
         repository = InMemoryScoreRepository()
@@ -62,6 +64,8 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.scores["signal-1"], score)
         self.assertEqual(repository.get_score("signal-1"), score)
         self.assertEqual(repository.list_scores(), [score])
+        self.assertTrue(repository.delete_score("signal-1"))
+        self.assertIsNone(repository.get_score("signal-1"))
 
     def test_cluster_repository_persists_unique_clusters(self):
         repository = InMemoryClusterRepository()

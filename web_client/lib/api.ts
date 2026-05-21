@@ -195,6 +195,20 @@ class SignalApiService {
     }
   }
 
+  async deleteSignal(signalId: string): Promise<{ id: string; deleted: boolean }> {
+    try {
+      const response = await api.delete<{ id: string; deleted: boolean }>(
+        `/signals/${signalId}`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to delete signal');
+      }
+      throw error;
+    }
+  }
+
   async getClusters(): Promise<ClustersResponse> {
     try {
       const response = await api.get<ClustersResponse>('/clusters');

@@ -121,13 +121,23 @@ class PostgresRepositoryTests(unittest.TestCase):
             "category": "reporting",
             "confidence": 0.8,
         }
-        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rowcount=1),
+                FakeCursor(rowcount=1),
+            ]
+        )
         repository = PostgresSignalRepository(connection=connection)
 
         self.assertEqual(repository.save_signals([signal]), 1)
         self.assertEqual(repository.get_signal("signal-1"), signal)
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
-        self.assertEqual(connection.commit_count, 1)
+        self.assertTrue(repository.delete_signal("signal-1"))
+        self.assertIn("DELETE FROM signal_evidence", connection.calls[2][0])
+        self.assertIn("DELETE FROM signals", connection.calls[3][0])
+        self.assertEqual(connection.commit_count, 2)
 
     def test_score_repository_saves_and_loads_scores(self):
         score = OpportunityScore(
@@ -148,13 +158,21 @@ class PostgresRepositoryTests(unittest.TestCase):
             "confidence_score": 4.0,
             "reasoning": "high reporting pain",
         }
-        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rowcount=1),
+            ]
+        )
         repository = PostgresScoreRepository(connection=connection)
 
         self.assertEqual(repository.save_scores([score]), 1)
         self.assertEqual(repository.get_score("signal-1"), score)
         self.assertIn("ON CONFLICT (signal_id) DO NOTHING", connection.calls[0][0])
-        self.assertEqual(connection.commit_count, 1)
+        self.assertTrue(repository.delete_score("signal-1"))
+        self.assertIn("DELETE FROM scores", connection.calls[2][0])
+        self.assertEqual(connection.commit_count, 2)
 
     def test_cluster_repository_saves_and_loads_clusters(self):
         cluster = SignalCluster.create(

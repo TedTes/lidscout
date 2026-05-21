@@ -72,6 +72,8 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_signal("signal-1"), signal)
             self.assertEqual(repository.list_signals(), [signal])
+            self.assertTrue(repository.delete_signal("signal-1"))
+            self.assertIsNone(repository.get_signal("signal-1"))
             repository.close()
 
     def test_sqlite_score_repository_saves_and_loads_scores(self):
@@ -95,6 +97,8 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_score("signal-1"), score)
             self.assertEqual(repository.list_scores(), [score])
+            self.assertTrue(repository.delete_score("signal-1"))
+            self.assertIsNone(repository.get_score("signal-1"))
             repository.close()
 
     def test_sqlite_cluster_repository_saves_and_loads_clusters(self):

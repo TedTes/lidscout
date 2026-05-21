@@ -65,6 +65,9 @@ class InMemorySignalRepository(SignalRepository):
     def get_signal(self, signal_id: str) -> Signal | None:
         return self.signals.get(signal_id)
 
+    def delete_signal(self, signal_id: str) -> bool:
+        return self.signals.pop(signal_id, None) is not None
+
     def list_signals(self) -> list[Signal]:
         return list(self.signals.values())
 
@@ -86,6 +89,9 @@ class InMemoryScoreRepository(ScoreRepository):
 
     def get_score(self, signal_id: str) -> OpportunityScore | None:
         return self.scores.get(signal_id)
+
+    def delete_score(self, signal_id: str) -> bool:
+        return self.scores.pop(signal_id, None) is not None
 
     def list_scores(self) -> list[OpportunityScore]:
         return list(self.scores.values())
@@ -344,6 +350,14 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
         ).fetchone()
         return _signal_from_row(row) if row else None
 
+    def delete_signal(self, signal_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM signals WHERE id = ?",
+            (signal_id,),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
     def list_signals(self) -> list[Signal]:
         rows = self.connection.execute("SELECT * FROM signals ORDER BY id").fetchall()
         return [_signal_from_row(row) for row in rows]
@@ -398,6 +412,14 @@ class SQLiteScoreRepository(_SQLiteRepository, ScoreRepository):
             (signal_id,),
         ).fetchone()
         return _score_from_row(row) if row else None
+
+    def delete_score(self, signal_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM scores WHERE signal_id = ?",
+            (signal_id,),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
 
     def list_scores(self) -> list[OpportunityScore]:
         rows = self.connection.execute("SELECT * FROM scores ORDER BY signal_id").fetchall()
@@ -795,6 +817,18 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
         ).fetchone()
         return _signal_from_row(row) if row else None
 
+    def delete_signal(self, signal_id: str) -> bool:
+        self.connection.execute(
+            "DELETE FROM signal_evidence WHERE signal_id = %s",
+            (signal_id,),
+        )
+        cursor = self.connection.execute(
+            "DELETE FROM signals WHERE id = %s",
+            (signal_id,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
     def list_signals(self) -> list[Signal]:
         rows = self.connection.execute(
             """
@@ -878,6 +912,14 @@ class PostgresScoreRepository(_PostgresRepository, ScoreRepository):
             (signal_id,),
         ).fetchone()
         return _score_from_row(row) if row else None
+
+    def delete_score(self, signal_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM scores WHERE signal_id = %s",
+            (signal_id,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
 
     def list_scores(self) -> list[OpportunityScore]:
         rows = self.connection.execute("SELECT * FROM scores ORDER BY signal_id").fetchall()
