@@ -3,6 +3,7 @@ from typing import Protocol
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -78,6 +79,22 @@ class ClusterRepository(Protocol):
 
     def list_clusters(self) -> list[SignalCluster]:
         """Load all persisted clusters."""
+        ...
+
+
+class OpportunityRepository(Protocol):
+    """Persistence boundary for synthesized opportunities."""
+
+    def save_opportunities(self, opportunities: list[Opportunity]) -> int:
+        """Persist opportunities and return the number saved."""
+        ...
+
+    def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
+        """Load one opportunity by id."""
+        ...
+
+    def list_opportunities(self) -> list[Opportunity]:
+        """Load all persisted opportunities."""
         ...
 
 

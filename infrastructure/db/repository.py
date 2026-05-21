@@ -12,6 +12,7 @@ from application.ports import (
     ClusterRepository,
     CompetitorRepository,
     MonitoredSourceRepository,
+    OpportunityRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -19,6 +20,7 @@ from application.ports import (
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -117,6 +119,28 @@ class InMemoryClusterRepository(ClusterRepository):
 
     def list_clusters(self) -> list[SignalCluster]:
         return list(self.clusters.values())
+
+
+@dataclass
+class InMemoryOpportunityRepository(OpportunityRepository):
+    """In-memory synthesized opportunity repository."""
+
+    opportunities: dict[str, Opportunity] = field(default_factory=dict)
+
+    def save_opportunities(self, opportunities: list[Opportunity]) -> int:
+        inserted_count = 0
+        for opportunity in opportunities:
+            if opportunity.id in self.opportunities:
+                continue
+            self.opportunities[opportunity.id] = opportunity
+            inserted_count += 1
+        return inserted_count
+
+    def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
+        return self.opportunities.get(opportunity_id)
+
+    def list_opportunities(self) -> list[Opportunity]:
+        return list(self.opportunities.values())
 
 
 @dataclass

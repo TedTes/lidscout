@@ -2,6 +2,7 @@ import unittest
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -10,6 +11,7 @@ from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMonitoredSourceRepository,
+    InMemoryOpportunityRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -84,6 +86,28 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.clusters["cluster-1"], cluster)
         self.assertEqual(repository.get_cluster("cluster-1"), cluster)
         self.assertEqual(repository.list_clusters(), [cluster])
+
+    def test_opportunity_repository_persists_unique_opportunities(self):
+        repository = InMemoryOpportunityRepository()
+        opportunity = Opportunity.create(
+            id="opportunity-1",
+            cluster_id="cluster-1",
+            title="Reduce reporting setup friction",
+            target_user="finance teams",
+            pain_summary="Finance teams cannot get useful reports quickly.",
+            why_it_matters="The cluster has repeated evidence of reporting pain.",
+            suggested_wedge="Ship a focused reporting setup assistant.",
+            evidence_count=2,
+            confidence=0.82,
+            evidence_signal_ids=["signal-1", "signal-2"],
+        )
+
+        saved_count = repository.save_opportunities([opportunity, opportunity])
+
+        self.assertEqual(saved_count, 1)
+        self.assertEqual(repository.opportunities["opportunity-1"], opportunity)
+        self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
+        self.assertEqual(repository.list_opportunities(), [opportunity])
 
     def test_source_locator_repository_persists_unique_locators(self):
         repository = InMemorySourceLocatorRepository()
