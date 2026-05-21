@@ -131,6 +131,16 @@ class RepositoryInterfaceTests(unittest.TestCase):
             [source],
         )
         self.assertEqual(repository.list_monitored_sources(enabled=False), [disabled_source])
+        updated_source = MonitoredSource.create(
+            id="source-1",
+            competitor_id="competitor-1",
+            locator="https://acme.example/reviews",
+            source_type="forum",
+            enabled=False,
+            limit=25,
+        )
+        self.assertTrue(repository.update_monitored_source(updated_source))
+        self.assertEqual(repository.get_monitored_source("source-1"), updated_source)
 
 
 if __name__ == "__main__":

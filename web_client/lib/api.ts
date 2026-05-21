@@ -11,6 +11,7 @@ import {
   ClustersResponse,
   MarketSignalReport,
   MonitoredSource,
+  MonitoredSourceUpdateRequest,
   MonitoredSourcesResponse,
   PipelineRunRequest,
   PipelineRunResult,
@@ -127,6 +128,21 @@ class SignalApiService {
     }
   }
 
+  async getSources(params?: {
+    competitor_id?: string;
+    enabled?: boolean;
+  }): Promise<MonitoredSourcesResponse> {
+    try {
+      const response = await api.get<MonitoredSourcesResponse>('/sources', { params });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load monitored sources');
+      }
+      throw error;
+    }
+  }
+
   async createCompetitorSource(
     competitorId: string,
     request: {
@@ -147,6 +163,21 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to create monitored source');
+      }
+      throw error;
+    }
+  }
+
+  async updateSource(
+    sourceId: string,
+    request: MonitoredSourceUpdateRequest
+  ): Promise<MonitoredSource> {
+    try {
+      const response = await api.patch<MonitoredSource>(`/sources/${sourceId}`, request);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to update monitored source');
       }
       throw error;
     }

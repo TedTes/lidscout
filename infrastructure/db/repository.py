@@ -178,6 +178,12 @@ class InMemoryMonitoredSourceRepository(MonitoredSourceRepository):
     def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
         return self.monitored_sources.get(source_id)
 
+    def update_monitored_source(self, source: MonitoredSource) -> bool:
+        if source.id not in self.monitored_sources:
+            return False
+        self.monitored_sources[source.id] = source
+        return True
+
     def list_monitored_sources(
         self,
         *,
@@ -619,6 +625,34 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
         ).fetchone()
         return _monitored_source_from_row(row) if row else None
 
+    def update_monitored_source(self, source: MonitoredSource) -> bool:
+        cursor = self.connection.execute(
+            """
+            UPDATE monitored_sources
+            SET
+                source_type = ?,
+                enabled = ?,
+                limit_value = ?,
+                scan_frequency = ?,
+                last_scanned_at = ?,
+                last_error = ?,
+                options = ?
+            WHERE id = ?
+            """,
+            (
+                source.source_type,
+                _bool_to_int(source.enabled),
+                source.limit,
+                source.scan_frequency,
+                _datetime_to_text(source.last_scanned_at),
+                source.last_error,
+                _to_json(source.options),
+                source.id,
+            ),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
     def list_monitored_sources(
         self,
         *,
@@ -1010,6 +1044,35 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
             (source_id,),
         ).fetchone()
         return _monitored_source_from_row(row) if row else None
+
+    def update_monitored_source(self, source: MonitoredSource) -> bool:
+        cursor = self.connection.execute(
+            """
+            UPDATE monitored_sources
+            SET
+                source_type = %s,
+                enabled = %s,
+                limit_value = %s,
+                scan_frequency = %s,
+                last_scanned_at = %s,
+                last_error = %s,
+                options = %s::jsonb,
+                updated_at = now()
+            WHERE id = %s
+            """,
+            (
+                source.source_type,
+                source.enabled,
+                source.limit,
+                source.scan_frequency,
+                source.last_scanned_at,
+                source.last_error,
+                _to_json(source.options),
+                source.id,
+            ),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
 
     def list_monitored_sources(
         self,

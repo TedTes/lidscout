@@ -6,6 +6,7 @@ from api.main import app, health_check
 from api.routes.signals import (
     CompetitorRequest,
     MonitoredSourceRequest,
+    MonitoredSourceUpdateRequest,
     PipelineRunRequest,
     SignalApiDependencies,
     create_competitor,
@@ -14,8 +15,10 @@ from api.routes.signals import (
     list_competitor_sources,
     list_competitors,
     list_clusters,
+    list_sources,
     list_signals,
     run_pipeline,
+    update_source,
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
@@ -97,6 +100,8 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/pipeline/run", paths)
         self.assertIn("/competitors", paths)
         self.assertIn("/competitors/{competitor_id}/sources", paths)
+        self.assertIn("/sources", paths)
+        self.assertIn("/sources/{source_id}", paths)
         self.assertIn("/health", paths)
 
     def test_health_check_response(self):
@@ -187,6 +192,91 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(created["competitor_id"], "competitor-1")
         self.assertEqual(response["sources"][0]["locator"], "https://acme.example/reviews")
+
+    def test_lists_sources_across_competitors(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(id="competitor-1", name="Acme CRM"),
+                Competitor.create(id="competitor-2", name="Other CRM"),
+            ]
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        dependencies = self._dependencies(
+            competitor_repository=competitor_repository,
+            monitored_source_repository=monitored_source_repository,
+        )
+
+        asyncio.run(
+            create_competitor_source(
+                "competitor-1",
+                MonitoredSourceRequest(
+                    locator="https://acme.example/reviews",
+                    source_type="reviews",
+                ),
+                dependencies,
+            )
+        )
+        asyncio.run(
+            create_competitor_source(
+                "competitor-2",
+                MonitoredSourceRequest(
+                    locator="https://other.example/reviews",
+                    source_type="reviews",
+                    enabled=False,
+                ),
+                dependencies,
+            )
+        )
+
+        all_sources = asyncio.run(list_sources(dependencies=dependencies))
+        enabled_sources = asyncio.run(list_sources(enabled=True, dependencies=dependencies))
+
+        self.assertEqual(len(all_sources["sources"]), 2)
+        self.assertEqual(len(enabled_sources["sources"]), 1)
+        self.assertEqual(enabled_sources["sources"][0]["competitor_id"], "competitor-1")
+
+    def test_updates_monitored_source(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [Competitor.create(id="competitor-1", name="Acme CRM")]
+        )
+        dependencies = self._dependencies(competitor_repository=competitor_repository)
+        created = asyncio.run(
+            create_competitor_source(
+                "competitor-1",
+                MonitoredSourceRequest(
+                    locator="https://acme.example/reviews",
+                    source_type="reviews",
+                    limit=10,
+                ),
+                dependencies,
+            )
+        )
+
+        updated = asyncio.run(
+            update_source(
+                created["id"],
+                MonitoredSourceUpdateRequest(
+                    source_type="forum",
+                    enabled=False,
+                    limit=25,
+                    options={"section": "support"},
+                ),
+                dependencies,
+            )
+        )
+
+        self.assertEqual(updated["source_type"], "forum")
+        self.assertFalse(updated["enabled"])
+        self.assertEqual(updated["limit"], 25)
+        self.assertEqual(updated["options"], {"section": "support"})
+        self.assertEqual(
+            dependencies.monitored_source_repository.get_monitored_source(
+                created["id"]
+            ).source_type,
+            "forum",
+        )
 
     def test_runs_pipeline_with_sources(self):
         signal_repository = InMemorySignalRepository()

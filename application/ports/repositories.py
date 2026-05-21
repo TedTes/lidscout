@@ -116,6 +116,10 @@ class MonitoredSourceRepository(Protocol):
         """Load one monitored source by id."""
         ...
 
+    def update_monitored_source(self, source: MonitoredSource) -> bool:
+        """Replace one monitored source and return whether it existed."""
+        ...
+
     def list_monitored_sources(
         self,
         *,

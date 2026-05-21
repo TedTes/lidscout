@@ -78,6 +78,16 @@ class MonitoredSourceRequest(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
 
 
+class MonitoredSourceUpdateRequest(BaseModel):
+    """HTTP request body for updating a monitored source."""
+
+    source_type: str | None = Field(default=None, min_length=1)
+    enabled: bool | None = None
+    limit: int | None = Field(default=None, ge=1)
+    scan_frequency: str | None = None
+    options: dict[str, Any] | None = None
+
+
 @dataclass
 class SignalApiDependencies:
     """Runtime dependencies for signal API routes."""
@@ -203,6 +213,24 @@ async def list_competitor_sources(
     }
 
 
+@router.get("/sources")
+async def list_sources(
+    competitor_id: str | None = None,
+    enabled: bool | None = None,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return monitored sources across competitors."""
+    return {
+        "sources": [
+            _serialize_monitored_source(source)
+            for source in dependencies.monitored_source_repository.list_monitored_sources(
+                competitor_id=competitor_id,
+                enabled=enabled,
+            )
+        ]
+    }
+
+
 @router.post("/competitors/{competitor_id}/sources")
 async def create_competitor_source(
     competitor_id: str,
@@ -227,6 +255,28 @@ async def create_competitor_source(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     dependencies.monitored_source_repository.save_monitored_sources([source])
+    return _serialize_monitored_source(source)
+
+
+@router.patch("/sources/{source_id}")
+async def update_source(
+    source_id: str,
+    request: MonitoredSourceUpdateRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Update one monitored source."""
+    existing = dependencies.monitored_source_repository.get_monitored_source(source_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    try:
+        source = _apply_source_update(existing, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not dependencies.monitored_source_repository.update_monitored_source(source):
+        raise HTTPException(status_code=404, detail="Source not found")
+
     return _serialize_monitored_source(source)
 
 
@@ -285,6 +335,32 @@ def _ensure_pipeline_dependencies(
             status_code=503,
             detail=f"Pipeline dependencies are not configured: {', '.join(missing)}",
         )
+
+
+def _apply_source_update(
+    source: MonitoredSource,
+    request: MonitoredSourceUpdateRequest,
+) -> MonitoredSource:
+    fields = request.model_fields_set
+    options = request.options if "options" in fields else source.options
+    return MonitoredSource.create(
+        id=source.id,
+        competitor_id=source.competitor_id,
+        locator=source.locator,
+        source_type=(
+            request.source_type if "source_type" in fields else source.source_type
+        ),
+        enabled=request.enabled if "enabled" in fields else source.enabled,
+        limit=request.limit if "limit" in fields else source.limit,
+        scan_frequency=(
+            request.scan_frequency
+            if "scan_frequency" in fields
+            else source.scan_frequency
+        ),
+        last_scanned_at=source.last_scanned_at,
+        last_error=source.last_error,
+        options=options or {},
+    )
 
 
 def _serialize_signal(signal: Signal) -> dict[str, Any]:

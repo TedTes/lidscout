@@ -56,6 +56,14 @@ export type MonitoredSourcesResponse = {
   sources: MonitoredSource[];
 };
 
+export type MonitoredSourceUpdateRequest = {
+  source_type?: string | null;
+  enabled?: boolean | null;
+  limit?: number | null;
+  scan_frequency?: string | null;
+  options?: Record<string, unknown> | null;
+};
+
 export type MarketSignalReport = {
   title: string;
   generated_at: string;

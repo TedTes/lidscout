@@ -266,6 +266,7 @@ class PostgresRepositoryTests(unittest.TestCase):
                 FakeCursor(rowcount=1),
                 FakeCursor(row=row),
                 FakeCursor(rows=[row]),
+                FakeCursor(rowcount=1),
             ]
         )
         repository = PostgresMonitoredSourceRepository(connection=connection)
@@ -282,7 +283,23 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
         self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
         self.assertEqual(connection.calls[2][1], ("competitor-1", True))
-        self.assertEqual(connection.commit_count, 1)
+        updated_source = MonitoredSource.create(
+            id="source-1",
+            competitor_id="competitor-1",
+            locator="https://acme.example/reviews",
+            source_type="forum",
+            enabled=False,
+            limit=25,
+            options={"section": "support"},
+        )
+        self.assertTrue(repository.update_monitored_source(updated_source))
+        self.assertIn("UPDATE monitored_sources", connection.calls[3][0])
+        self.assertEqual(connection.calls[3][1][0], "forum")
+        self.assertEqual(connection.calls[3][1][1], False)
+        self.assertEqual(connection.calls[3][1][2], 25)
+        self.assertEqual(json.loads(connection.calls[3][1][-2]), {"section": "support"})
+        self.assertEqual(connection.calls[3][1][-1], "source-1")
+        self.assertEqual(connection.commit_count, 2)
 
 
 if __name__ == "__main__":
