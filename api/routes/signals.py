@@ -10,6 +10,7 @@ from application.ports import (
     ClusterRepository,
     CompetitorRepository,
     MonitoredSourceRepository,
+    OpportunityRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -24,6 +25,7 @@ from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMonitoredSourceRepository,
+    InMemoryOpportunityRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -96,6 +98,9 @@ class SignalApiDependencies:
     signal_repository: SignalRepository = field(default_factory=InMemorySignalRepository)
     score_repository: ScoreRepository = field(default_factory=InMemoryScoreRepository)
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
+    opportunity_repository: OpportunityRepository = field(
+        default_factory=InMemoryOpportunityRepository
+    )
     competitor_repository: CompetitorRepository = field(
         default_factory=InMemoryCompetitorRepository
     )
@@ -310,6 +315,7 @@ async def run_pipeline(
             signal_repository=dependencies.signal_repository,
             score_repository=dependencies.score_repository,
             cluster_repository=dependencies.cluster_repository,
+            opportunity_repository=dependencies.opportunity_repository,
             competitor_repository=dependencies.competitor_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
             source_locator_repository=dependencies.source_locator_repository,
@@ -484,6 +490,13 @@ def _serialize_pipeline_result(result: PipelineRunResult) -> dict[str, Any]:
         "embedding_failed_count": result.embedding_failed_count,
         "clustered_count": result.clustered_count,
         "cluster_inserted_count": result.cluster_inserted_count,
+        "opportunity_synthesis": {
+            "synthesized_count": (
+                result.opportunity_synthesis_result.synthesized_count
+            ),
+            "inserted_count": result.opportunity_synthesis_result.inserted_count,
+            "failed_count": result.opportunity_synthesis_result.failed_count,
+        },
         "report": _serialize_report(result.report),
         "email": _serialize_email_result(result.email_result),
     }

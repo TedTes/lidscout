@@ -25,6 +25,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository") as signal_repository,
             patch("api.dependencies.PostgresScoreRepository") as score_repository,
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
+            patch("api.dependencies.PostgresOpportunityRepository") as opportunity_repository,
             patch("api.dependencies.PostgresCompetitorRepository") as competitor_repository,
             patch("api.dependencies.PostgresMonitoredSourceRepository") as monitored_source_repository,
             patch("api.dependencies.PostgresSourceLocatorRepository") as source_locator_repository,
@@ -44,6 +45,7 @@ class ApiDependencyTests(unittest.TestCase):
         signal_repository.assert_called_once_with(connection=connection)
         score_repository.assert_called_once_with(connection=connection)
         cluster_repository.assert_called_once_with(connection=connection)
+        opportunity_repository.assert_called_once_with(connection=connection)
         competitor_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
         source_locator_repository.assert_called_once_with(connection=connection)
@@ -72,6 +74,10 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.signal_repository, signal_repository.return_value)
         self.assertIs(dependencies.score_repository, score_repository.return_value)
         self.assertIs(dependencies.cluster_repository, cluster_repository.return_value)
+        self.assertIs(
+            dependencies.opportunity_repository,
+            opportunity_repository.return_value,
+        )
         self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
         self.assertIs(
             dependencies.monitored_source_repository,
@@ -104,6 +110,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository"),
             patch("api.dependencies.PostgresScoreRepository"),
             patch("api.dependencies.PostgresClusterRepository"),
+            patch("api.dependencies.PostgresOpportunityRepository"),
             patch("api.dependencies.PostgresCompetitorRepository"),
             patch("api.dependencies.PostgresMonitoredSourceRepository"),
             patch("api.dependencies.PostgresSourceLocatorRepository"),

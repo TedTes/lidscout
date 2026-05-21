@@ -39,6 +39,7 @@ def run_configured_daily_pipeline(
             signal_repository=runtime_dependencies.signal_repository,
             score_repository=runtime_dependencies.score_repository,
             cluster_repository=runtime_dependencies.cluster_repository,
+            opportunity_repository=runtime_dependencies.opportunity_repository,
             competitor_repository=runtime_dependencies.competitor_repository,
             monitored_source_repository=runtime_dependencies.monitored_source_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
@@ -89,6 +90,9 @@ def _pipeline_job_summary(result: PipelineRunResult) -> dict[str, object]:
         "fetch_failed_count": result.fetch_failed_count,
         "extracted_count": result.extracted_count,
         "clustered_count": result.clustered_count,
+        "opportunity_synthesized_count": (
+            result.opportunity_synthesis_result.synthesized_count
+        ),
         "email_sent": result.email_result.sent,
         "email_error": result.email_result.error,
     }

@@ -31,6 +31,7 @@ from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMonitoredSourceRepository,
+    InMemoryOpportunityRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -305,9 +306,11 @@ class SignalApiRouteTests(unittest.TestCase):
     def test_runs_pipeline_with_sources(self):
         signal_repository = InMemorySignalRepository()
         cluster_repository = InMemoryClusterRepository()
+        opportunity_repository = InMemoryOpportunityRepository()
         dependencies = self._dependencies(
             signal_repository=signal_repository,
             cluster_repository=cluster_repository,
+            opportunity_repository=opportunity_repository,
             source_adapters=[FakeSourceAdapter()],
             llm_client=FakeLLMClient(),
             embedding_client=FakeEmbeddingClient(),
@@ -332,9 +335,20 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(response["fetched_count"], 1)
         self.assertEqual(response["extracted_count"], 1)
         self.assertEqual(response["clustered_count"], 1)
+        self.assertEqual(
+            response["opportunity_synthesis"],
+            {
+                "synthesized_count": 1,
+                "inserted_count": 1,
+                "failed_count": 0,
+            },
+        )
         self.assertTrue(response["email"]["sent"])
         self.assertEqual(signal_repository.list_signals()[0].pain, "Manual reporting is slow")
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
+        self.assertIsNotNone(
+            opportunity_repository.get_opportunity("opportunity-cluster-1")
+        )
 
     def test_runs_pipeline_with_configured_source_locators(self):
         source_locator_repository = InMemorySourceLocatorRepository()
@@ -374,6 +388,7 @@ class SignalApiRouteTests(unittest.TestCase):
         signal_repository=None,
         score_repository=None,
         cluster_repository=None,
+        opportunity_repository=None,
         competitor_repository=None,
         monitored_source_repository=None,
         source_locator_repository=None,
@@ -387,6 +402,9 @@ class SignalApiRouteTests(unittest.TestCase):
             signal_repository=signal_repository or InMemorySignalRepository(),
             score_repository=score_repository or InMemoryScoreRepository(),
             cluster_repository=cluster_repository or InMemoryClusterRepository(),
+            opportunity_repository=(
+                opportunity_repository or InMemoryOpportunityRepository()
+            ),
             competitor_repository=competitor_repository or InMemoryCompetitorRepository(),
             monitored_source_repository=(
                 monitored_source_repository or InMemoryMonitoredSourceRepository()

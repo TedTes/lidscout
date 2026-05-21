@@ -12,10 +12,15 @@ from application.ingestion import (
     SourceAdapter,
     SourceResolver,
 )
+from application.opportunity import (
+    OpportunitySynthesisResult,
+    OpportunitySynthesisService,
+)
 from application.ports import (
     ClusterRepository,
     CompetitorRepository,
     MonitoredSourceRepository,
+    OpportunityRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -23,6 +28,7 @@ from application.ports import (
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
+from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
@@ -42,6 +48,7 @@ class PipelineConfig:
     embedding_client: EmbeddingClient
     email_client: EmailClient
     recipient: str
+    opportunity_repository: OpportunityRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
@@ -66,6 +73,7 @@ class PipelineRunResult:
     embedding_failed_count: int
     clustered_count: int
     cluster_inserted_count: int
+    opportunity_synthesis_result: OpportunitySynthesisResult
     report: MarketSignalReport
     email_result: EmailSendResult
 
@@ -95,6 +103,12 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     )
     cluster_inserted_count = config.cluster_repository.save_clusters(clusters)
 
+    opportunity_synthesis_result = _synthesize_opportunities(
+        config.opportunity_repository,
+        clusters,
+        signals,
+    )
+
     report = ReportingService().generate(clusters)
     email_result = config.email_client.send_report(report, config.recipient)
 
@@ -110,8 +124,27 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         embedding_failed_count=embedding_failed_count,
         clustered_count=len(clusters),
         cluster_inserted_count=cluster_inserted_count,
+        opportunity_synthesis_result=opportunity_synthesis_result,
         report=report,
         email_result=email_result,
+    )
+
+
+def _synthesize_opportunities(
+    opportunity_repository: OpportunityRepository | None,
+    clusters: list[SignalCluster],
+    signals: list[Signal],
+) -> OpportunitySynthesisResult:
+    if opportunity_repository is None:
+        return OpportunitySynthesisResult(
+            synthesized_count=0,
+            inserted_count=0,
+            failed_count=0,
+            opportunities=[],
+        )
+    return OpportunitySynthesisService(opportunity_repository).synthesize(
+        clusters,
+        signals,
     )
 
 
