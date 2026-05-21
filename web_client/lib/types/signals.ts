@@ -38,6 +38,16 @@ export type ClustersResponse = {
   clusters: SignalCluster[];
 };
 
+export type SourceLocator = {
+  id: string;
+  locator: string;
+  enabled: boolean;
+  limit_value: number | null;
+  options: Record<string, unknown>;
+  inserted_at: string;
+  updated_at: string;
+};
+
 export type PipelineSourceRequest = {
   locator: string;
   limit?: number;

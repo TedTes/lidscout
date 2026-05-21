@@ -31,10 +31,19 @@ function IconFileText() {
   );
 }
 
-function IconPlay() {
+function IconActivity() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="5 3 19 12 5 21 5 3" />
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
+
+function IconTerminal() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
     </svg>
   );
 }
@@ -53,12 +62,73 @@ const navItems = [
     icon: <IconFileText />,
   },
   {
-    href: '/pipeline/run',
-    label: 'Pipeline',
-    matchPrefixes: ['/pipeline'],
-    icon: <IconPlay />,
+    href: '/sources',
+    label: 'Sources',
+    matchPrefixes: ['/sources'],
+    icon: <IconActivity />,
   },
 ];
+
+function NavLink({
+  href,
+  matchPrefixes,
+  icon,
+  label,
+  pathname,
+  muted,
+}: {
+  href: string;
+  matchPrefixes: string[];
+  icon: React.ReactNode;
+  label: string;
+  pathname: string;
+  muted?: boolean;
+}) {
+  const active = matchPrefixes.some(
+    prefix => pathname === prefix || pathname.startsWith(prefix + '/'),
+  );
+
+  if (muted) {
+    return (
+      <Link
+        href={href}
+        className={`group flex items-center gap-2.5 rounded-md px-3 py-2 text-xs font-medium transition-all duration-150 ${
+          active
+            ? 'bg-slate-800/60 text-slate-400'
+            : 'text-slate-700 hover:bg-white/[0.03] hover:text-slate-500'
+        }`}
+      >
+        <span className={`shrink-0 transition-colors duration-150 ${active ? 'text-slate-500' : 'text-slate-700 group-hover:text-slate-600'}`}>
+          {icon}
+        </span>
+        {label}
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
+        active
+          ? 'bg-violet-600/[0.13] text-violet-300'
+          : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+      }`}
+    >
+      <span
+        className={`shrink-0 transition-colors duration-150 ${
+          active ? 'text-violet-400' : 'text-slate-600 group-hover:text-slate-400'
+        }`}
+      >
+        {icon}
+      </span>
+      {label}
+      {active && (
+        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]" />
+      )}
+    </Link>
+  );
+}
 
 export default function DashboardNav() {
   const pathname = usePathname();
@@ -81,43 +151,34 @@ export default function DashboardNav() {
 
         <div className="mx-4 h-px bg-white/[0.06]" />
 
-        {/* Nav items */}
+        {/* Main nav */}
         <nav className="mt-5 flex flex-col gap-0.5 px-3">
           <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
             Workspace
           </p>
-          {navItems.map(item => {
-            const active = item.matchPrefixes.some(
-              prefix => pathname === prefix || pathname.startsWith(prefix + '/'),
-            );
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
-                  active
-                    ? 'bg-violet-600/[0.13] text-violet-300'
-                    : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
-                }`}
-              >
-                <span
-                  className={`shrink-0 transition-colors duration-150 ${
-                    active ? 'text-violet-400' : 'text-slate-600 group-hover:text-slate-400'
-                  }`}
-                >
-                  {item.icon}
-                </span>
-                {item.label}
-                {active && (
-                  <span className="ml-auto h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]" />
-                )}
-              </Link>
-            );
-          })}
+          {navItems.map(item => (
+            <NavLink key={item.href} {...item} pathname={pathname} />
+          ))}
         </nav>
 
-        {/* Bottom status indicator */}
-        <div className="mt-auto px-3 pb-5">
+        {/* System / admin section */}
+        <div className="mt-auto px-3 pb-2">
+          <div className="mb-2 h-px bg-white/[0.04]" />
+          <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-800">
+            System
+          </p>
+          <NavLink
+            href="/pipeline/run"
+            matchPrefixes={['/pipeline']}
+            icon={<IconTerminal />}
+            label="Pipeline trigger"
+            pathname={pathname}
+            muted
+          />
+        </div>
+
+        {/* API status */}
+        <div className="px-3 pb-5 pt-2">
           <div className="rounded-lg border border-white/[0.05] bg-slate-900/60 px-3 py-2.5">
             <div className="flex items-center gap-2.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_7px_rgba(52,211,153,0.8)]" />
