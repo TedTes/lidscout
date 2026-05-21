@@ -30,6 +30,31 @@ class OpenAIResponsesClientTests(unittest.TestCase):
         self.assertEqual(call.kwargs["json"]["text"]["format"]["type"], "json_object")
         self.assertEqual(call.kwargs["timeout"], 12)
 
+    def test_uses_json_schema_when_schema_is_provided(self):
+        response = Mock()
+        response.json.return_value = {"output_text": '{"has_signal": false}'}
+        response.raise_for_status.return_value = None
+        schema = {
+            "type": "object",
+            "properties": {"has_signal": {"type": "boolean"}},
+            "required": ["has_signal"],
+        }
+
+        with patch("infrastructure.llm.openai_client.requests.post", return_value=response) as post:
+            client = OpenAIResponsesClient(api_key="test-key")
+
+            client.generate_structured_response(
+                "Return JSON",
+                "post",
+                schema,
+            )
+
+        text_format = post.call_args.kwargs["json"]["text"]["format"]
+        self.assertEqual(text_format["type"], "json_schema")
+        self.assertEqual(text_format["name"], "signal_extraction_response")
+        self.assertEqual(text_format["schema"], schema)
+        self.assertIs(text_format["strict"], True)
+
     def test_reads_nested_output_text(self):
         response = Mock()
         response.json.return_value = {

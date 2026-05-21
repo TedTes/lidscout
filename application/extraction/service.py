@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import logging
 
+from application.extraction.extraction_schema import (
+    SIGNAL_EXTRACTION_RESPONSE_SCHEMA,
+    SignalCandidate,
+    validate_extraction_response,
+)
 from domain.post import RawPost
 from domain.signal import Signal
 from infrastructure.llm import LLMClient
@@ -11,12 +16,29 @@ from shared.errors import ExtractionError
 from shared.logger import get_logger, log_event
 
 
-SIGNAL_EXTRACTION_PROMPT = (
-    "Extract one competitor customer complaint or market pain signal from this post. "
-    "Prefer concrete product gaps, repeated workflow pain, missing features, pricing "
-    "complaints, switching intent, or current workaround evidence. Return only "
-    "structured JSON with has_signal and optional signal fields."
-)
+SIGNAL_EXTRACTION_PROMPT = """
+Extract one competitor customer complaint or market pain signal from the post.
+
+Return JSON only. The response must match this contract:
+- has_signal: boolean
+- signal: object when has_signal is true, otherwise null
+
+Set has_signal to true only for concrete evidence of product pain, missing
+features, pricing friction, switching intent, unmet workflow needs, or current
+workarounds. If the post is generic news, praise, spam, meta discussion, or lacks
+a clear pain, return {"has_signal": false, "signal": null}.
+
+When has_signal is true, signal must include:
+- pain: non-empty concise complaint
+- user_type: affected user segment or null
+- job_to_be_done: what the user is trying to accomplish or null
+- current_workaround: workaround mentioned or null
+- urgency: integer 1-5
+- severity: integer 1-5
+- willingness_to_pay: integer 1-5
+- category: short product/problem category or null
+- confidence: number from 0.0 to 1.0
+""".strip()
 
 logger = get_logger(__name__)
 
@@ -41,39 +63,31 @@ class ExtractionService:
             raw_json = self.llm_client.generate_structured_response(
                 SIGNAL_EXTRACTION_PROMPT,
                 self._post_content(post),
+                SIGNAL_EXTRACTION_RESPONSE_SCHEMA,
             )
             payload = self._parse_json(raw_json)
-
-            if payload.get("has_signal") is False:
-                return SignalExtractionResult(post_id=post.id, has_signal=False)
-
-            if payload.get("has_signal") is not True:
-                raise ExtractionError("Extraction JSON must include has_signal as a boolean")
-
-            signal_payload = payload.get("signal")
-            if not isinstance(signal_payload, dict):
-                raise ExtractionError("Extraction JSON must include a signal object")
-
             try:
-                signal = Signal.create(
-                    id=signal_payload.get("id") or f"signal:{post.id}",
-                    post_id=post.id,
-                    pain=signal_payload.get("pain", ""),
-                    user_type=signal_payload.get("user_type"),
-                    job_to_be_done=signal_payload.get("job_to_be_done"),
-                    current_workaround=signal_payload.get("current_workaround"),
-                    urgency=signal_payload.get("urgency", "low"),
-                    severity=signal_payload.get("severity", "low"),
-                    willingness_to_pay=signal_payload.get("willingness_to_pay"),
-                    category=signal_payload.get("category"),
-                    confidence=signal_payload.get("confidence", 0.0),
-                    competitor_id=_metadata_text(post, "competitor_id"),
-                    evidence_url=post.url,
-                    evidence_text=self._evidence_text(post),
-                    detected_at=datetime.now(tz=UTC),
-                )
+                candidate = validate_extraction_response(payload)
             except ValueError as exc:
                 raise ExtractionError(str(exc)) from exc
+
+            if candidate is None:
+                return SignalExtractionResult(post_id=post.id, has_signal=False)
+
+            try:
+                signal = self._signal_from_candidate(post, candidate)
+            except ValueError as exc:
+                raise ExtractionError(str(exc)) from exc
+        except ExtractionError as exc:
+            log_event(
+                logger,
+                "extraction_failed",
+                level=logging.ERROR,
+                post_id=post.id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
         except Exception as exc:
             log_event(
                 logger,
@@ -89,6 +103,25 @@ class ExtractionService:
             post_id=post.id,
             has_signal=True,
             signal=signal,
+        )
+
+    def _signal_from_candidate(self, post: RawPost, candidate: SignalCandidate) -> Signal:
+        return Signal.create(
+            id=f"signal:{post.id}",
+            post_id=post.id,
+            pain=candidate.pain,
+            user_type=candidate.user_type,
+            job_to_be_done=candidate.job_to_be_done,
+            current_workaround=candidate.current_workaround,
+            urgency=_level_from_score(candidate.urgency),
+            severity=_level_from_score(candidate.severity),
+            willingness_to_pay=_willingness_from_score(candidate.willingness_to_pay),
+            category=candidate.category,
+            confidence=candidate.confidence,
+            competitor_id=_metadata_text(post, "competitor_id"),
+            evidence_url=post.url,
+            evidence_text=self._evidence_text(post),
+            detected_at=datetime.now(tz=UTC),
         )
 
     def _parse_json(self, raw_json: str) -> dict:
@@ -125,4 +158,20 @@ def _metadata_text(post: RawPost, key: str) -> str | None:
     value = post.metadata.get(key)
     if isinstance(value, str) and value.strip():
         return value.strip()
+    return None
+
+
+def _level_from_score(score: int) -> str:
+    if score >= 4:
+        return "high"
+    if score == 3:
+        return "medium"
+    return "low"
+
+
+def _willingness_from_score(score: int) -> bool | None:
+    if score >= 4:
+        return True
+    if score <= 2:
+        return False
     return None

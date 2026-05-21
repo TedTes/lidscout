@@ -1,4 +1,5 @@
 import unittest
+from typing import Any
 
 from api.routes.signals import SignalApiDependencies
 from domain.post import RawPost
@@ -31,16 +32,23 @@ class FakeSourceAdapter:
 
 
 class FakeLLMClient(LLMClient):
-    def generate_structured_response(self, prompt: str, post_content: str) -> str:
+    def generate_structured_response(
+        self,
+        prompt: str,
+        post_content: str,
+        response_schema: dict[str, Any] | None = None,
+    ) -> str:
         return """
         {
           "has_signal": true,
           "signal": {
-            "id": "signal-1",
             "pain": "Manual exports are painful",
-            "urgency": "medium",
-            "severity": "medium",
-            "willingness_to_pay": true,
+            "user_type": null,
+            "job_to_be_done": null,
+            "current_workaround": null,
+            "urgency": 3,
+            "severity": 3,
+            "willingness_to_pay": 5,
             "category": "reporting",
             "confidence": 0.8
           }

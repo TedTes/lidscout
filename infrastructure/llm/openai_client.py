@@ -25,7 +25,12 @@ class OpenAIResponsesClient(LLMClient):
         self.model = model
         self.timeout_seconds = timeout_seconds
 
-    def generate_structured_response(self, prompt: str, post_content: str) -> str:
+    def generate_structured_response(
+        self,
+        prompt: str,
+        post_content: str,
+        response_schema: dict[str, Any] | None = None,
+    ) -> str:
         """Return a raw structured JSON model response."""
         response = requests.post(
             self.endpoint,
@@ -46,9 +51,7 @@ class OpenAIResponsesClient(LLMClient):
                     },
                 ],
                 "text": {
-                    "format": {
-                        "type": "json_object",
-                    }
+                    "format": _response_format(response_schema),
                 },
             },
             timeout=self.timeout_seconds,
@@ -76,3 +79,14 @@ def _response_text(payload: dict[str, Any]) -> str:
     if not parts:
         raise RuntimeError("OpenAI response did not include output text")
     return "".join(parts)
+
+
+def _response_format(response_schema: dict[str, Any] | None) -> dict[str, Any]:
+    if response_schema is None:
+        return {"type": "json_object"}
+    return {
+        "type": "json_schema",
+        "name": "signal_extraction_response",
+        "schema": response_schema,
+        "strict": True,
+    }

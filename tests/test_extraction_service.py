@@ -18,9 +18,9 @@ class ExtractionServiceTests(unittest.TestCase):
                 "user_type": "founder",
                 "job_to_be_done": "understand revenue trends",
                 "current_workaround": "spreadsheets",
-                "urgency": "high",
-                "severity": "medium",
-                "willingness_to_pay": true,
+                "urgency": 5,
+                "severity": 3,
+                "willingness_to_pay": 5,
                 "category": "reporting",
                 "confidence": 0.9
               }
@@ -36,13 +36,19 @@ class ExtractionServiceTests(unittest.TestCase):
         self.assertEqual(result.post_id, "reddit:abc")
         self.assertEqual(result.signal.post_id, "reddit:abc")
         self.assertEqual(result.signal.pain, "Manual reporting is slow")
+        self.assertEqual(result.signal.urgency, "high")
+        self.assertEqual(result.signal.severity, "medium")
+        self.assertIs(result.signal.willingness_to_pay, True)
         self.assertEqual(len(llm_client.calls), 1)
         self.assertIn("competitor customer complaint", llm_client.calls[0][0])
         self.assertIn("title: Reporting pain", llm_client.calls[0][1])
+        self.assertIsNotNone(llm_client.calls[0][2])
 
     def test_returns_no_signal_result(self):
         post = RawPost.create(source="hackernews", source_id="123")
-        service = ExtractionService(MockLLMClient('{"has_signal": false}'))
+        service = ExtractionService(
+            MockLLMClient('{"has_signal": false, "signal": null}')
+        )
 
         result = service.extract(post)
 

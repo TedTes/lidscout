@@ -1,4 +1,5 @@
 import unittest
+from typing import Any
 
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
@@ -39,10 +40,15 @@ class FakeSourceAdapter:
 class SequentialLLMClient(LLMClient):
     def __init__(self, responses: list[str]):
         self.responses = responses
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
-    def generate_structured_response(self, prompt: str, post_content: str) -> str:
-        self.calls.append((prompt, post_content))
+    def generate_structured_response(
+        self,
+        prompt: str,
+        post_content: str,
+        response_schema: dict[str, Any] | None = None,
+    ) -> str:
+        self.calls.append((prompt, post_content, response_schema))
         return self.responses.pop(0)
 
 
@@ -74,14 +80,13 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 {
                   "has_signal": true,
                   "signal": {
-                    "id": "signal-1",
                     "pain": "Export workflows are painful",
                     "user_type": "finance team",
                     "job_to_be_done": "export reports",
                     "current_workaround": "manual CSV cleanup",
-                    "urgency": "medium",
-                    "severity": "medium",
-                    "willingness_to_pay": true,
+                    "urgency": 3,
+                    "severity": 3,
+                    "willingness_to_pay": 5,
                     "category": "reporting",
                     "confidence": 0.8
                   }
@@ -119,8 +124,9 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.embedding_failed_count, 0)
         self.assertEqual(result.clustered_count, 1)
         self.assertTrue(result.email_result.sent)
-        self.assertEqual(signal_repository.get_signal("signal-1").pain, "Export workflows are painful")
-        self.assertEqual(score_repository.get_score("signal-1").total_score, 7.6)
+        signal = signal_repository.list_signals()[0]
+        self.assertEqual(signal.pain, "Export workflows are painful")
+        self.assertEqual(score_repository.get_score(signal.id).total_score, 7.6)
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
 
@@ -188,11 +194,13 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 {
                   "has_signal": true,
                   "signal": {
-                    "id": "signal-1",
                     "pain": "Export workflows are painful",
-                    "urgency": "medium",
-                    "severity": "medium",
-                    "willingness_to_pay": true,
+                    "user_type": null,
+                    "job_to_be_done": null,
+                    "current_workaround": null,
+                    "urgency": 3,
+                    "severity": 3,
+                    "willingness_to_pay": 5,
                     "category": "reporting",
                     "confidence": 0.8
                   }
@@ -217,9 +225,10 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.extracted_count, 1)
-        self.assertEqual(signal_repository.get_signal("signal-1").competitor_id, "competitor-1")
+        signal = signal_repository.list_signals()[0]
+        self.assertEqual(signal.competitor_id, "competitor-1")
         self.assertEqual(
-            signal_repository.get_signal("signal-1").evidence_url,
+            signal.evidence_url,
             "https://example.com/reviews",
         )
 

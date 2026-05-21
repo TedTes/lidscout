@@ -2,7 +2,11 @@ import unittest
 
 from pydantic import ValidationError
 
-from application.extraction.extraction_schema import validate_signal_candidate
+from application.extraction.extraction_schema import (
+    SIGNAL_EXTRACTION_RESPONSE_SCHEMA,
+    validate_extraction_response,
+    validate_signal_candidate,
+)
 
 
 class ExtractionSchemaTests(unittest.TestCase):
@@ -62,6 +66,36 @@ class ExtractionSchemaTests(unittest.TestCase):
                     "confidence": 1.1,
                 }
             )
+
+    def test_validates_extraction_response_with_signal(self):
+        candidate = validate_extraction_response(
+            {
+                "has_signal": True,
+                "signal": {
+                    "pain": "Manual reporting is slow",
+                    "urgency": 5,
+                    "severity": 4,
+                    "willingness_to_pay": 3,
+                    "confidence": 0.82,
+                },
+            }
+        )
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.pain, "Manual reporting is slow")
+
+    def test_validates_extraction_response_without_signal(self):
+        candidate = validate_extraction_response(
+            {
+                "has_signal": False,
+                "signal": None,
+            }
+        )
+
+        self.assertIsNone(candidate)
+
+    def test_response_schema_requires_envelope_fields(self):
+        self.assertEqual(SIGNAL_EXTRACTION_RESPONSE_SCHEMA["required"], ["has_signal", "signal"])
 
 
 if __name__ == "__main__":

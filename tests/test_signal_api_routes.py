@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from typing import Any
 
 from api.main import app, health_check
 from api.routes.signals import (
@@ -50,16 +51,23 @@ class FakeSourceAdapter:
 
 
 class FakeLLMClient(LLMClient):
-    def generate_structured_response(self, prompt: str, post_content: str) -> str:
+    def generate_structured_response(
+        self,
+        prompt: str,
+        post_content: str,
+        response_schema: dict[str, Any] | None = None,
+    ) -> str:
         return """
         {
           "has_signal": true,
           "signal": {
-            "id": "signal-1",
             "pain": "Manual reporting is slow",
-            "urgency": "high",
-            "severity": "medium",
-            "willingness_to_pay": true,
+            "user_type": null,
+            "job_to_be_done": null,
+            "current_workaround": null,
+            "urgency": 5,
+            "severity": 3,
+            "willingness_to_pay": 5,
             "category": "reporting",
             "confidence": 0.8
           }
@@ -209,7 +217,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(response["extracted_count"], 1)
         self.assertEqual(response["clustered_count"], 1)
         self.assertTrue(response["email"]["sent"])
-        self.assertEqual(signal_repository.get_signal("signal-1").pain, "Manual reporting is slow")
+        self.assertEqual(signal_repository.list_signals()[0].pain, "Manual reporting is slow")
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
 
     def test_runs_pipeline_with_configured_source_locators(self):
