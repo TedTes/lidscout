@@ -35,6 +35,8 @@ class SignalExtractionPayload(BaseModel):
     """Validated LLM response envelope for signal extraction."""
 
     has_signal: bool
+    is_about_competitor: bool | None = None
+    competitor_match_reason: str | None = None
     signal: SignalCandidate | None = None
 
 
@@ -45,6 +47,14 @@ SIGNAL_EXTRACTION_RESPONSE_SCHEMA: dict[str, Any] = {
         "has_signal": {
             "type": "boolean",
             "description": "True only when the post contains a concrete complaint or pain signal.",
+        },
+        "is_about_competitor": {
+            "type": "boolean",
+            "description": "True when the complaint is about the provided competitor context.",
+        },
+        "competitor_match_reason": {
+            "type": ["string", "null"],
+            "description": "Brief reason the post does or does not match the competitor.",
         },
         "signal": {
             "type": ["object", "null"],
@@ -77,15 +87,18 @@ SIGNAL_EXTRACTION_RESPONSE_SCHEMA: dict[str, Any] = {
             ],
         },
     },
-    "required": ["has_signal", "signal"],
+    "required": [
+        "has_signal",
+        "is_about_competitor",
+        "competitor_match_reason",
+        "signal",
+    ],
 }
 
 
-def validate_extraction_response(payload: dict[str, Any]) -> SignalCandidate | None:
-    """Validate an LLM extraction envelope and return its signal candidate."""
+def validate_extraction_response(payload: dict[str, Any]) -> SignalExtractionPayload:
+    """Validate an LLM extraction envelope."""
     response = SignalExtractionPayload.model_validate(payload)
-    if not response.has_signal:
-        return None
-    if response.signal is None:
+    if response.has_signal and response.signal is None:
         raise ValueError("Extraction JSON must include a signal object")
-    return response.signal
+    return response

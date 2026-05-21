@@ -71,6 +71,8 @@ class ExtractionSchemaTests(unittest.TestCase):
         candidate = validate_extraction_response(
             {
                 "has_signal": True,
+                "is_about_competitor": True,
+                "competitor_match_reason": "The post is about the monitored competitor.",
                 "signal": {
                     "pain": "Manual reporting is slow",
                     "urgency": 5,
@@ -81,21 +83,34 @@ class ExtractionSchemaTests(unittest.TestCase):
             }
         )
 
-        self.assertIsNotNone(candidate)
-        self.assertEqual(candidate.pain, "Manual reporting is slow")
+        self.assertTrue(candidate.has_signal)
+        self.assertTrue(candidate.is_about_competitor)
+        self.assertIsNotNone(candidate.signal)
+        self.assertEqual(candidate.signal.pain, "Manual reporting is slow")
 
     def test_validates_extraction_response_without_signal(self):
         candidate = validate_extraction_response(
             {
                 "has_signal": False,
+                "is_about_competitor": False,
+                "competitor_match_reason": None,
                 "signal": None,
             }
         )
 
-        self.assertIsNone(candidate)
+        self.assertFalse(candidate.has_signal)
+        self.assertIsNone(candidate.signal)
 
     def test_response_schema_requires_envelope_fields(self):
-        self.assertEqual(SIGNAL_EXTRACTION_RESPONSE_SCHEMA["required"], ["has_signal", "signal"])
+        self.assertEqual(
+            SIGNAL_EXTRACTION_RESPONSE_SCHEMA["required"],
+            [
+                "has_signal",
+                "is_about_competitor",
+                "competitor_match_reason",
+                "signal",
+            ],
+        )
 
 
 if __name__ == "__main__":

@@ -60,6 +60,8 @@ class FakeLLMClient(LLMClient):
         return """
         {
           "has_signal": true,
+          "is_about_competitor": true,
+          "competitor_match_reason": null,
           "signal": {
             "pain": "Manual reporting is slow",
             "user_type": null,

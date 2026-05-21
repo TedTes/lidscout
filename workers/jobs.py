@@ -39,6 +39,7 @@ def run_configured_daily_pipeline(
             signal_repository=runtime_dependencies.signal_repository,
             score_repository=runtime_dependencies.score_repository,
             cluster_repository=runtime_dependencies.cluster_repository,
+            competitor_repository=runtime_dependencies.competitor_repository,
             monitored_source_repository=runtime_dependencies.monitored_source_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
             llm_client=runtime_dependencies.llm_client,

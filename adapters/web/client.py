@@ -295,7 +295,15 @@ def _source_metadata(source: SourceInput, domain: str) -> dict[str, Any]:
     metadata = {
         "domain": domain.lower(),
     }
-    for key in ("competitor_id", "monitored_source_id", "source_type"):
+    for key in (
+        "competitor_id",
+        "competitor_name",
+        "competitor_website",
+        "competitor_domain",
+        "competitor_category",
+        "monitored_source_id",
+        "source_type",
+    ):
         value = source.options.get(key)
         if isinstance(value, str) and value.strip():
             metadata[key] = value.strip()

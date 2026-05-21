@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from application.clustering import ClusteringService
 from application.extraction import ExtractionService
@@ -13,6 +14,7 @@ from application.ingestion import (
 )
 from application.ports import (
     ClusterRepository,
+    CompetitorRepository,
     MonitoredSourceRepository,
     PostRepository,
     ScoreRepository,
@@ -23,7 +25,7 @@ from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
 from domain.post import RawPost
 from domain.signal import Signal
-from domain.source import SourceInput
+from domain.source import MonitoredSource, SourceInput
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
 
@@ -40,6 +42,7 @@ class PipelineConfig:
     embedding_client: EmbeddingClient
     email_client: EmailClient
     recipient: str
+    competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
@@ -118,6 +121,7 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
     sources = config.sources or _configured_sources(
         config.monitored_source_repository,
         config.source_locator_repository,
+        config.competitor_repository,
     )
 
     if sources:
@@ -134,10 +138,11 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
 def _configured_sources(
     monitored_source_repository: MonitoredSourceRepository | None,
     source_locator_repository: SourceLocatorRepository | None,
+    competitor_repository: CompetitorRepository | None,
 ) -> list[SourceInput]:
     if monitored_source_repository is not None:
         monitored_sources = [
-            source.to_source_input()
+            _monitored_source_input(source, competitor_repository)
             for source in monitored_source_repository.list_monitored_sources(enabled=True)
         ]
         if monitored_sources:
@@ -148,6 +153,41 @@ def _configured_sources(
         locator.to_source_input()
         for locator in source_locator_repository.list_source_locators(enabled=True)
     ]
+
+
+def _monitored_source_input(
+    source: MonitoredSource,
+    competitor_repository: CompetitorRepository | None,
+) -> SourceInput:
+    source_input = source.to_source_input()
+    options = dict(source_input.options)
+
+    competitor = None
+    if competitor_repository is not None:
+        competitor = competitor_repository.get_competitor(source.competitor_id)
+
+    if competitor is not None:
+        options["competitor_name"] = competitor.name
+        if competitor.website:
+            options["competitor_website"] = competitor.website
+            domain = _domain_from_url(competitor.website)
+            if domain:
+                options["competitor_domain"] = domain
+        if competitor.category:
+            options["competitor_category"] = competitor.category
+
+    return SourceInput.create(
+        locator=source_input.locator,
+        limit=source_input.limit,
+        options=options,
+    )
+
+
+def _domain_from_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    if parsed.netloc:
+        return parsed.netloc.lower()
+    return None
 
 
 def _extract_signals(

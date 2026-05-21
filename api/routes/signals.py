@@ -243,6 +243,7 @@ async def run_pipeline(
             signal_repository=dependencies.signal_repository,
             score_repository=dependencies.score_repository,
             cluster_repository=dependencies.cluster_repository,
+            competitor_repository=dependencies.competitor_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
             source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,

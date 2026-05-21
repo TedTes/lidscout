@@ -1,10 +1,12 @@
 import unittest
 from typing import Any
 
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
+    InMemoryCompetitorRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -79,6 +81,8 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 """
                 {
                   "has_signal": true,
+                  "is_about_competitor": true,
+                  "competitor_match_reason": null,
                   "signal": {
                     "pain": "Export workflows are painful",
                     "user_type": "finance team",
@@ -150,7 +154,10 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             [
                 """
                 {
-                  "has_signal": false
+                  "has_signal": false,
+                  "is_about_competitor": false,
+                  "competitor_match_reason": null,
+                  "signal": null
                 }
                 """
             ]
@@ -175,6 +182,17 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.no_signal_count, 1)
 
     def test_runs_pipeline_from_enabled_monitored_sources(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="competitor-1",
+                    name="Acme CRM",
+                    website="https://acme.example",
+                    category="crm",
+                )
+            ]
+        )
         monitored_source_repository = InMemoryMonitoredSourceRepository()
         monitored_source_repository.save_monitored_sources(
             [
@@ -193,6 +211,8 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 """
                 {
                   "has_signal": true,
+                  "is_about_competitor": true,
+                  "competitor_match_reason": "The post describes an Acme CRM export workflow complaint.",
                   "signal": {
                     "pain": "Export workflows are painful",
                     "user_type": null,
@@ -213,6 +233,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             signal_repository=signal_repository,
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
+            competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -225,12 +246,81 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.extracted_count, 1)
+        self.assertIn("competitor_name: Acme CRM", llm_client.calls[0][1])
+        self.assertIn("competitor_domain: acme.example", llm_client.calls[0][1])
         signal = signal_repository.list_signals()[0]
         self.assertEqual(signal.competitor_id, "competitor-1")
         self.assertEqual(
             signal.evidence_url,
             "https://example.com/reviews",
         )
+
+    def test_rejects_unrelated_signal_from_monitored_source(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="competitor-1",
+                    name="Acme CRM",
+                    website="https://acme.example",
+                )
+            ]
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    competitor_id="competitor-1",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    limit=1,
+                )
+            ]
+        )
+        signal_repository = InMemorySignalRepository()
+        llm_client = SequentialLLMClient(
+            [
+                """
+                {
+                  "has_signal": true,
+                  "is_about_competitor": false,
+                  "competitor_match_reason": "The complaint is about another product.",
+                  "signal": {
+                    "pain": "Another tool is too expensive",
+                    "user_type": null,
+                    "job_to_be_done": null,
+                    "current_workaround": null,
+                    "urgency": 3,
+                    "severity": 3,
+                    "willingness_to_pay": 2,
+                    "category": "finance tools",
+                    "confidence": 0.8
+                  }
+                }
+                """
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=signal_repository,
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            competitor_repository=competitor_repository,
+            monitored_source_repository=monitored_source_repository,
+            llm_client=llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.extracted_count, 0)
+        self.assertEqual(result.no_signal_count, 1)
+        self.assertEqual(signal_repository.list_signals(), [])
 
 
 if __name__ == "__main__":

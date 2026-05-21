@@ -62,6 +62,11 @@ class SourceAdapterTests(unittest.TestCase):
                 SourceInput.create(
                     locator="https://example.com/thread.json",
                     limit=10,
+                    options={
+                        "competitor_id": "notion",
+                        "competitor_name": "Notion",
+                        "competitor_domain": "notion.so",
+                    },
                 )
             )
 
@@ -71,6 +76,9 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(posts[0].title, "Tooling pain")
         self.assertEqual(posts[1].body, "Exports take too much manual work.")
         self.assertEqual(posts[1].metadata["domain"], "example.com")
+        self.assertEqual(posts[1].metadata["competitor_id"], "notion")
+        self.assertEqual(posts[1].metadata["competitor_name"], "Notion")
+        self.assertEqual(posts[1].metadata["competitor_domain"], "notion.so")
 
     def test_web_page_url_normalizes_static_page_text(self):
         response = Mock()

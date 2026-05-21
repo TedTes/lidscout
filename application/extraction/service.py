@@ -21,12 +21,20 @@ Extract one competitor customer complaint or market pain signal from the post.
 
 Return JSON only. The response must match this contract:
 - has_signal: boolean
+- is_about_competitor: boolean
+- competitor_match_reason: string or null
 - signal: object when has_signal is true, otherwise null
 
 Set has_signal to true only for concrete evidence of product pain, missing
 features, pricing friction, switching intent, unmet workflow needs, or current
 workarounds. If the post is generic news, praise, spam, meta discussion, or lacks
-a clear pain, return {"has_signal": false, "signal": null}.
+a clear pain, return has_signal=false, is_about_competitor=false,
+competitor_match_reason=null, and signal=null.
+
+When competitor context is provided, set is_about_competitor to true only if the
+pain is about that competitor, its product, or a direct customer workaround for
+that competitor. Do not mark unrelated products mentioned inside a monitored
+source as competitor pain.
 
 When has_signal is true, signal must include:
 - pain: non-empty concise complaint
@@ -67,15 +75,19 @@ class ExtractionService:
             )
             payload = self._parse_json(raw_json)
             try:
-                candidate = validate_extraction_response(payload)
+                extraction = validate_extraction_response(payload)
             except ValueError as exc:
                 raise ExtractionError(str(exc)) from exc
 
-            if candidate is None:
+            if not extraction.has_signal:
                 return SignalExtractionResult(post_id=post.id, has_signal=False)
+            if _has_competitor_context(post) and not extraction.is_about_competitor:
+                return SignalExtractionResult(post_id=post.id, has_signal=False)
+            if extraction.signal is None:
+                raise ExtractionError("Extraction JSON must include a signal object")
 
             try:
-                signal = self._signal_from_candidate(post, candidate)
+                signal = self._signal_from_candidate(post, extraction.signal)
             except ValueError as exc:
                 raise ExtractionError(str(exc)) from exc
         except ExtractionError as exc:
@@ -140,6 +152,9 @@ class ExtractionService:
             [
                 f"source: {post.source}",
                 f"competitor_id: {_metadata_text(post, 'competitor_id') or ''}",
+                f"competitor_name: {_metadata_text(post, 'competitor_name') or ''}",
+                f"competitor_domain: {_metadata_text(post, 'competitor_domain') or ''}",
+                f"competitor_website: {_metadata_text(post, 'competitor_website') or ''}",
                 f"source_type: {_metadata_text(post, 'source_type') or ''}",
                 f"url: {post.url or ''}",
                 f"title: {post.title}",
@@ -159,6 +174,13 @@ def _metadata_text(post: RawPost, key: str) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+def _has_competitor_context(post: RawPost) -> bool:
+    return any(
+        _metadata_text(post, key)
+        for key in ("competitor_id", "competitor_name", "competitor_domain")
+    )
 
 
 def _level_from_score(score: int) -> str:

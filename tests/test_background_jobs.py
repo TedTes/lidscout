@@ -41,6 +41,8 @@ class FakeLLMClient(LLMClient):
         return """
         {
           "has_signal": true,
+          "is_about_competitor": true,
+          "competitor_match_reason": null,
           "signal": {
             "pain": "Manual exports are painful",
             "user_type": null,
