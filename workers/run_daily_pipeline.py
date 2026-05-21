@@ -16,6 +16,7 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceLocatorRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
@@ -38,6 +39,7 @@ class PipelineConfig:
     embedding_client: EmbeddingClient
     email_client: EmailClient
     recipient: str
+    source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     sources: list[SourceInput] = field(default_factory=list)
     default_limit: int = 25
@@ -111,16 +113,28 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
 def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
     posts: list[RawPost] = []
     failed_count = 0
+    sources = config.sources or _configured_sources(config.source_locator_repository)
 
-    if config.sources:
+    if sources:
         source_result = SourceResolver(config.source_adapters).fetch(
-            config.sources,
+            sources,
             config.default_limit,
         )
         posts.extend(source_result.posts)
         failed_count += source_result.failed_count
 
     return posts, failed_count
+
+
+def _configured_sources(
+    repository: SourceLocatorRepository | None,
+) -> list[SourceInput]:
+    if repository is None:
+        return []
+    return [
+        locator.to_source_input()
+        for locator in repository.list_source_locators(enabled=True)
+    ]
 
 
 def _extract_signals(

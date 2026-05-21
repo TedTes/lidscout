@@ -22,6 +22,7 @@ class AppConfigTests(unittest.TestCase):
             "EMAIL_API_KEY": "email-key",
             "RESEND_API_KEY": "resend-key",
             "RESEND_FROM_EMAIL": "LidScout <alerts@example.com>",
+            "REPORT_RECIPIENT": "founder@example.com",
             "PIPELINE_SCHEDULE": "0 6 * * *",
         }
 
@@ -35,6 +36,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.EMAIL_API_KEY, "email-key")
         self.assertEqual(config.RESEND_API_KEY, "resend-key")
         self.assertEqual(config.RESEND_FROM_EMAIL, "LidScout <alerts@example.com>")
+        self.assertEqual(config.REPORT_RECIPIENT, "founder@example.com")
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 6 * * *")
 
     def test_uses_defaults_and_normalizes_blank_secrets(self):
@@ -46,6 +48,7 @@ class AppConfigTests(unittest.TestCase):
             "EMAIL_API_KEY": "",
             "RESEND_API_KEY": "",
             "RESEND_FROM_EMAIL": " ",
+            "REPORT_RECIPIENT": " ",
         }
 
         with patch.dict(os.environ, env, clear=True):
@@ -58,6 +61,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertIsNone(config.EMAIL_API_KEY)
         self.assertIsNone(config.RESEND_API_KEY)
         self.assertIsNone(config.RESEND_FROM_EMAIL)
+        self.assertIsNone(config.REPORT_RECIPIENT)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 8 * * *")
 
     def test_uses_email_api_key_as_resend_fallback(self):
@@ -96,6 +100,7 @@ class AppConfigTests(unittest.TestCase):
                         "OPENAI_EMBEDDING_MODEL=embedding-from-env-file",
                         "RESEND_API_KEY=resend-from-env-file",
                         "RESEND_FROM_EMAIL=LidScout <alerts@example.com>",
+                        "REPORT_RECIPIENT=founder@example.com",
                         "PIPELINE_SCHEDULE=0 7 * * *",
                     ]
                 ),
@@ -112,6 +117,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "embedding-from-env-file")
         self.assertEqual(config.RESEND_API_KEY, "resend-from-env-file")
         self.assertEqual(config.RESEND_FROM_EMAIL, "LidScout <alerts@example.com>")
+        self.assertEqual(config.REPORT_RECIPIENT, "founder@example.com")
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 7 * * *")
 
 

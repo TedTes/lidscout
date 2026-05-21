@@ -1,4 +1,4 @@
 """Source input domain models."""
-from domain.source.models import SourceInput
+from domain.source.models import SourceInput, SourceLocator
 
-__all__ = ["SourceInput"]
+__all__ = ["SourceInput", "SourceLocator"]

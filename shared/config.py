@@ -37,6 +37,7 @@ class AppConfig:
     EMAIL_API_KEY: str | None
     RESEND_API_KEY: str | None
     RESEND_FROM_EMAIL: str | None
+    REPORT_RECIPIENT: str | None
     PIPELINE_SCHEDULE: str
 
 
@@ -101,5 +102,6 @@ def get_app_config() -> AppConfig:
         EMAIL_API_KEY=_optional_env("EMAIL_API_KEY"),
         RESEND_API_KEY=_optional_env("RESEND_API_KEY") or _optional_env("EMAIL_API_KEY"),
         RESEND_FROM_EMAIL=_optional_env("RESEND_FROM_EMAIL") or _optional_env("EMAIL_FROM"),
+        REPORT_RECIPIENT=_optional_env("REPORT_RECIPIENT"),
         PIPELINE_SCHEDULE=os.getenv("PIPELINE_SCHEDULE", "0 8 * * *").strip(),
     )

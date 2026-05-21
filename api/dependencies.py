@@ -6,6 +6,7 @@ from infrastructure.db import (
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresSourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, ResendEmailNotifier
 from infrastructure.llm import OpenAIEmbeddingClient, OpenAIResponsesClient
@@ -26,6 +27,7 @@ def build_signal_api_dependencies(
         signal_repository=PostgresSignalRepository(database_url),
         score_repository=PostgresScoreRepository(database_url),
         cluster_repository=PostgresClusterRepository(database_url),
+        source_locator_repository=PostgresSourceLocatorRepository(database_url),
         source_adapters=[
             JsonUrlAdapter(),
             StaticUrlAdapter(),

@@ -5,6 +5,7 @@ from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
+from domain.source import SourceLocator
 
 
 class PostRepository(Protocol):
@@ -68,4 +69,20 @@ class ClusterRepository(Protocol):
 
     def list_clusters(self) -> list[SignalCluster]:
         """Load all persisted clusters."""
+        ...
+
+
+class SourceLocatorRepository(Protocol):
+    """Persistence boundary for whitelisted source locators."""
+
+    def save_source_locators(self, locators: list[SourceLocator]) -> int:
+        """Persist source locators and return the number saved."""
+        ...
+
+    def get_source_locator(self, locator_id: str) -> SourceLocator | None:
+        """Load one source locator by id."""
+        ...
+
+    def list_source_locators(self, enabled: bool | None = None) -> list[SourceLocator]:
+        """Load source locators, optionally filtered by enabled state."""
         ...

@@ -13,12 +13,13 @@ from api.routes.signals import (
 from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.signal import Signal
-from domain.source import SourceInput
+from domain.source import SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -158,6 +159,37 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(signal_repository.get_signal("signal-1").pain, "Manual reporting is slow")
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
 
+    def test_runs_pipeline_with_configured_source_locators(self):
+        source_locator_repository = InMemorySourceLocatorRepository()
+        source_locator_repository.save_source_locators(
+            [
+                SourceLocator.create(
+                    id="locator-1",
+                    locator="https://example.com/reviews",
+                )
+            ]
+        )
+        dependencies = self._dependencies(
+            source_locator_repository=source_locator_repository,
+            source_adapters=[FakeSourceAdapter()],
+            llm_client=FakeLLMClient(),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+        )
+
+        response = asyncio.run(
+            run_pipeline(
+                PipelineRunRequest(
+                    recipient="founder@example.com",
+                    sources=[],
+                ),
+                dependencies,
+            )
+        )
+
+        self.assertEqual(response["fetched_count"], 1)
+        self.assertEqual(response["extracted_count"], 1)
+
     def _dependencies(
         self,
         *,
@@ -165,6 +197,7 @@ class SignalApiRouteTests(unittest.TestCase):
         signal_repository=None,
         score_repository=None,
         cluster_repository=None,
+        source_locator_repository=None,
         source_adapters=None,
         llm_client=None,
         embedding_client=None,
@@ -175,6 +208,9 @@ class SignalApiRouteTests(unittest.TestCase):
             signal_repository=signal_repository or InMemorySignalRepository(),
             score_repository=score_repository or InMemoryScoreRepository(),
             cluster_repository=cluster_repository or InMemoryClusterRepository(),
+            source_locator_repository=(
+                source_locator_repository or InMemorySourceLocatorRepository()
+            ),
             source_adapters=source_adapters or [],
             llm_client=llm_client,
             embedding_client=embedding_client,

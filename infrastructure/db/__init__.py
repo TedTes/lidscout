@@ -4,14 +4,17 @@ from infrastructure.db.repository import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceLocatorRepository,
     PostgresClusterRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresSourceLocatorRepository,
     SQLiteClusterRepository,
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
+    SQLiteSourceLocatorRepository,
 )
 
 __all__ = [
@@ -19,12 +22,15 @@ __all__ = [
     "InMemoryPostRepository",
     "InMemoryScoreRepository",
     "InMemorySignalRepository",
+    "InMemorySourceLocatorRepository",
     "PostgresClusterRepository",
     "PostgresPostRepository",
     "PostgresScoreRepository",
     "PostgresSignalRepository",
+    "PostgresSourceLocatorRepository",
     "SQLiteClusterRepository",
     "SQLitePostRepository",
     "SQLiteScoreRepository",
     "SQLiteSignalRepository",
+    "SQLiteSourceLocatorRepository",
 ]

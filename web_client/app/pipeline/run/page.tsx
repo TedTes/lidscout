@@ -68,7 +68,7 @@ export default function PipelineRunPage() {
   return (
     <DashboardShell
       title="Pipeline run"
-      subtitle={result ? `Last run sent to ${result.email.recipient}` : 'Configure and trigger the signal detection workflow'}
+      subtitle={result ? `Last run sent to ${result.email.recipient}` : 'Trigger the configured signal detection workflow'}
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
         {/* ── Config form ────────────────────────────────────────── */}
@@ -94,10 +94,10 @@ export default function PipelineRunPage() {
             />
           </div>
 
-          {/* Generic sources */}
+          {/* Optional source override */}
           <fieldset className="rounded-lg border border-slate-800/80 p-4">
             <label className="mb-1.5 block text-sm font-semibold text-slate-300" htmlFor="source-locators">
-              Source locators
+              Source locators override
             </label>
             <textarea
               id="source-locators"
@@ -129,7 +129,7 @@ export default function PipelineRunPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={isRunning || !sourceLocators.trim()}
+            disabled={isRunning || !recipient.trim()}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-950 transition hover:bg-violet-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isRunning ? (
@@ -236,7 +236,7 @@ export default function PipelineRunPage() {
           {!result && !isRunning && (
             <div className="rounded-xl border border-dashed border-slate-800 px-6 py-10 text-center">
               <p className="text-sm text-slate-600">No pipeline run in this session.</p>
-              <p className="mt-1 text-xs text-slate-700">Configure and run the pipeline to see results here.</p>
+              <p className="mt-1 text-xs text-slate-700">Run the configured pipeline to see results here.</p>
             </div>
           )}
         </div>

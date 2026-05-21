@@ -1,12 +1,13 @@
 import unittest
 
 from domain.post import RawPost
-from domain.source import SourceInput
+from domain.source import SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -115,6 +116,50 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(score_repository.get_score("signal-1").total_score, 7.6)
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
+
+    def test_runs_pipeline_from_enabled_source_locators(self):
+        source_locator_repository = InMemorySourceLocatorRepository()
+        source_locator_repository.save_source_locators(
+            [
+                SourceLocator.create(
+                    id="locator-1",
+                    locator="https://example.com/reviews",
+                    limit=1,
+                ),
+                SourceLocator.create(
+                    id="locator-2",
+                    locator="https://example.com/disabled",
+                    enabled=False,
+                ),
+            ]
+        )
+        llm_client = SequentialLLMClient(
+            [
+                """
+                {
+                  "has_signal": false
+                }
+                """
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            source_locator_repository=source_locator_repository,
+            llm_client=llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.fetch_failed_count, 0)
+        self.assertEqual(result.no_signal_count, 1)
 
 
 if __name__ == "__main__":

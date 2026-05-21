@@ -4,11 +4,13 @@ from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
+from domain.source import SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceLocatorRepository,
 )
 
 
@@ -75,6 +77,20 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.clusters["cluster-1"], cluster)
         self.assertEqual(repository.get_cluster("cluster-1"), cluster)
         self.assertEqual(repository.list_clusters(), [cluster])
+
+    def test_source_locator_repository_persists_unique_locators(self):
+        repository = InMemorySourceLocatorRepository()
+        locator = SourceLocator.create(
+            id="locator-1",
+            locator="https://example.com/reviews",
+        )
+
+        saved_count = repository.save_source_locators([locator, locator])
+
+        self.assertEqual(saved_count, 1)
+        self.assertEqual(repository.source_locators["locator-1"], locator)
+        self.assertEqual(repository.get_source_locator("locator-1"), locator)
+        self.assertEqual(repository.list_source_locators(enabled=True), [locator])
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceLocatorRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
 from domain.cluster import SignalCluster
@@ -21,6 +22,7 @@ from infrastructure.db import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -58,6 +60,9 @@ class SignalApiDependencies:
     signal_repository: SignalRepository = field(default_factory=InMemorySignalRepository)
     score_repository: ScoreRepository = field(default_factory=InMemoryScoreRepository)
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
+    source_locator_repository: SourceLocatorRepository = field(
+        default_factory=InMemorySourceLocatorRepository
+    )
     reporting_service: ReportingService = field(default_factory=ReportingService)
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     llm_client: LLMClient | None = None
@@ -129,6 +134,7 @@ async def run_pipeline(
             signal_repository=dependencies.signal_repository,
             score_repository=dependencies.score_repository,
             cluster_repository=dependencies.cluster_repository,
+            source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
             embedding_client=dependencies.embedding_client,
             email_client=dependencies.email_client,
@@ -160,7 +166,7 @@ def _ensure_pipeline_dependencies(
         missing.append("embedding_client")
     if dependencies.email_client is None:
         missing.append("email_client")
-    if request.sources and not dependencies.source_adapters:
+    if not dependencies.source_adapters:
         missing.append("source_adapters")
 
     if missing:

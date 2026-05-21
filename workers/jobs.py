@@ -1,6 +1,15 @@
 """Background jobs for signal detection workflows."""
+from __future__ import annotations
+
+import json
+import sys
+
+from api.dependencies import build_signal_api_dependencies
 from api.schemas import InteractionExtractionRequest, InteractionExtractionResponse
+from api.routes.signals import SignalApiDependencies
 from application.factory import ServiceFactory
+from shared.config import get_app_config
+from workers.run_daily_pipeline import PipelineConfig, PipelineRunResult, run_daily_pipeline
 
 
 async def extract_public_activity_signals(
@@ -9,3 +18,79 @@ async def extract_public_activity_signals(
     """Run the extraction pipeline for supplied public activity sources."""
     extractor = ServiceFactory.get_interaction_extraction_service()
     return await extractor.extract(request)
+
+
+def run_configured_daily_pipeline(
+    recipient: str | None = None,
+    dependencies: SignalApiDependencies | None = None,
+) -> PipelineRunResult:
+    """Run the pipeline from persisted, enabled source locators."""
+    app_config = get_app_config()
+    resolved_recipient = recipient or app_config.REPORT_RECIPIENT
+    if not resolved_recipient:
+        raise ValueError("REPORT_RECIPIENT is required for background pipeline runs")
+
+    runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
+    _ensure_background_pipeline_dependencies(runtime_dependencies)
+
+    return run_daily_pipeline(
+        PipelineConfig(
+            post_repository=runtime_dependencies.post_repository,
+            signal_repository=runtime_dependencies.signal_repository,
+            score_repository=runtime_dependencies.score_repository,
+            cluster_repository=runtime_dependencies.cluster_repository,
+            source_locator_repository=runtime_dependencies.source_locator_repository,
+            llm_client=runtime_dependencies.llm_client,
+            embedding_client=runtime_dependencies.embedding_client,
+            email_client=runtime_dependencies.email_client,
+            recipient=resolved_recipient,
+            source_adapters=runtime_dependencies.source_adapters,
+        )
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run worker jobs from the command line."""
+    args = argv if argv is not None else sys.argv[1:]
+    command = args[0] if args else "run-daily-pipeline"
+    if command != "run-daily-pipeline":
+        raise ValueError(f"Unknown worker job: {command}")
+
+    recipient = args[1] if len(args) > 1 else None
+    result = run_configured_daily_pipeline(recipient)
+    print(json.dumps(_pipeline_job_summary(result), sort_keys=True))
+    return 0
+
+
+def _ensure_background_pipeline_dependencies(
+    dependencies: SignalApiDependencies,
+) -> None:
+    missing = []
+    if dependencies.llm_client is None:
+        missing.append("llm_client")
+    if dependencies.embedding_client is None:
+        missing.append("embedding_client")
+    if dependencies.email_client is None:
+        missing.append("email_client")
+    if not dependencies.source_adapters:
+        missing.append("source_adapters")
+
+    if missing:
+        raise RuntimeError(
+            f"Background pipeline dependencies are not configured: {', '.join(missing)}"
+        )
+
+
+def _pipeline_job_summary(result: PipelineRunResult) -> dict[str, object]:
+    return {
+        "fetched_count": result.fetched_count,
+        "fetch_failed_count": result.fetch_failed_count,
+        "extracted_count": result.extracted_count,
+        "clustered_count": result.clustered_count,
+        "email_sent": result.email_result.sent,
+        "email_error": result.email_result.error,
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

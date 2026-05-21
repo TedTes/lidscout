@@ -16,6 +16,7 @@ class ApiDependencyTests(unittest.TestCase):
             EMAIL_API_KEY=None,
             RESEND_API_KEY="resend-key",
             RESEND_FROM_EMAIL="LidScout <alerts@example.com>",
+            REPORT_RECIPIENT="founder@example.com",
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 
@@ -24,6 +25,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository") as signal_repository,
             patch("api.dependencies.PostgresScoreRepository") as score_repository,
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
+            patch("api.dependencies.PostgresSourceLocatorRepository") as source_locator_repository,
             patch("api.dependencies.JsonUrlAdapter") as json_adapter,
             patch("api.dependencies.StaticUrlAdapter") as static_adapter,
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
@@ -37,6 +39,7 @@ class ApiDependencyTests(unittest.TestCase):
         signal_repository.assert_called_once_with(database_url)
         score_repository.assert_called_once_with(database_url)
         cluster_repository.assert_called_once_with(database_url)
+        source_locator_repository.assert_called_once_with(database_url)
         llm_client.assert_called_once_with(
             api_key="llm-key",
             model="response-model",
@@ -62,6 +65,10 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.signal_repository, signal_repository.return_value)
         self.assertIs(dependencies.score_repository, score_repository.return_value)
         self.assertIs(dependencies.cluster_repository, cluster_repository.return_value)
+        self.assertIs(
+            dependencies.source_locator_repository,
+            source_locator_repository.return_value,
+        )
         self.assertIs(dependencies.llm_client, llm_client.return_value)
         self.assertIs(dependencies.embedding_client, embedding_client.return_value)
         self.assertIs(dependencies.email_client, email_client.return_value)
@@ -76,6 +83,7 @@ class ApiDependencyTests(unittest.TestCase):
             EMAIL_API_KEY=None,
             RESEND_API_KEY=None,
             RESEND_FROM_EMAIL=None,
+            REPORT_RECIPIENT=None,
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 
@@ -84,6 +92,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresSignalRepository"),
             patch("api.dependencies.PostgresScoreRepository"),
             patch("api.dependencies.PostgresClusterRepository"),
+            patch("api.dependencies.PostgresSourceLocatorRepository"),
             patch("api.dependencies.JsonUrlAdapter"),
             patch("api.dependencies.StaticUrlAdapter"),
             patch("api.dependencies.OpenAIResponsesClient") as llm_client,
@@ -110,6 +119,7 @@ class ApiDependencyTests(unittest.TestCase):
             EMAIL_API_KEY=None,
             RESEND_API_KEY=None,
             RESEND_FROM_EMAIL=None,
+            REPORT_RECIPIENT=None,
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 

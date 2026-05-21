@@ -6,11 +6,13 @@ from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
+from domain.source import SourceLocator
 from infrastructure.db import (
     PostgresClusterRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresSourceLocatorRepository,
 )
 
 
@@ -176,6 +178,38 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.save_clusters([cluster]), 1)
         self.assertEqual(repository.get_cluster("cluster-1"), cluster)
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_source_locator_repository_saves_and_loads_enabled_locators(self):
+        locator = SourceLocator.create(
+            id="locator-1",
+            locator="https://example.com/reviews",
+            limit=10,
+            options={"section": "reviews"},
+        )
+        row = {
+            "id": "locator-1",
+            "locator": "https://example.com/reviews",
+            "enabled": True,
+            "limit_value": 10,
+            "options": {"section": "reviews"},
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresSourceLocatorRepository(connection=connection)
+
+        self.assertEqual(repository.save_source_locators([locator]), 1)
+        self.assertEqual(repository.get_source_locator("locator-1"), locator)
+        self.assertEqual(repository.list_source_locators(enabled=True), [locator])
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "locator-1")
+        self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
+        self.assertEqual(connection.calls[2][1], (True,))
         self.assertEqual(connection.commit_count, 1)
 
 

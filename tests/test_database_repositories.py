@@ -7,11 +7,13 @@ from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
+from domain.source import SourceLocator
 from infrastructure.db import (
     SQLiteClusterRepository,
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
+    SQLiteSourceLocatorRepository,
 )
 
 
@@ -113,6 +115,37 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_cluster("cluster-1"), cluster)
             self.assertEqual(repository.list_clusters(), [cluster])
+            repository.close()
+
+    def test_sqlite_source_locator_repository_saves_and_loads_locators(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteSourceLocatorRepository(database_path)
+            locator = SourceLocator.create(
+                id="locator-1",
+                locator="https://example.com/reviews",
+                limit=10,
+                options={"section": "reviews"},
+            )
+            disabled_locator = SourceLocator.create(
+                id="locator-2",
+                locator="https://example.com/old",
+                enabled=False,
+            )
+
+            saved_count = repository.save_source_locators(
+                [locator, locator, disabled_locator]
+            )
+            repository.close()
+
+            repository = SQLiteSourceLocatorRepository(database_path)
+            self.assertEqual(saved_count, 2)
+            self.assertEqual(repository.get_source_locator("locator-1"), locator)
+            self.assertEqual(repository.list_source_locators(enabled=True), [locator])
+            self.assertEqual(
+                repository.list_source_locators(enabled=False),
+                [disabled_locator],
+            )
             repository.close()
 
 

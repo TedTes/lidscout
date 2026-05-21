@@ -13,11 +13,13 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceLocatorRepository,
 )
 from domain.cluster import SignalCluster
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
+from domain.source import SourceLocator
 
 
 @dataclass
@@ -106,6 +108,31 @@ class InMemoryClusterRepository(ClusterRepository):
 
     def list_clusters(self) -> list[SignalCluster]:
         return list(self.clusters.values())
+
+
+@dataclass
+class InMemorySourceLocatorRepository(SourceLocatorRepository):
+    """In-memory source locator repository."""
+
+    source_locators: dict[str, SourceLocator] = field(default_factory=dict)
+
+    def save_source_locators(self, locators: list[SourceLocator]) -> int:
+        inserted_count = 0
+        for locator in locators:
+            if locator.id in self.source_locators:
+                continue
+            self.source_locators[locator.id] = locator
+            inserted_count += 1
+        return inserted_count
+
+    def get_source_locator(self, locator_id: str) -> SourceLocator | None:
+        return self.source_locators.get(locator_id)
+
+    def list_source_locators(self, enabled: bool | None = None) -> list[SourceLocator]:
+        locators = list(self.source_locators.values())
+        if enabled is None:
+            return locators
+        return [locator for locator in locators if locator.enabled == enabled]
 
 
 class _SQLiteRepository:
@@ -360,6 +387,64 @@ class SQLiteClusterRepository(_SQLiteRepository, ClusterRepository):
         return [_cluster_from_row(row) for row in rows]
 
 
+class SQLiteSourceLocatorRepository(_SQLiteRepository, SourceLocatorRepository):
+    """SQLite-backed source locator repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS source_locators (
+                id TEXT PRIMARY KEY,
+                locator TEXT NOT NULL UNIQUE,
+                enabled INTEGER NOT NULL,
+                limit_value INTEGER,
+                options TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_source_locators(self, locators: list[SourceLocator]) -> int:
+        inserted_count = 0
+        for locator in locators:
+            cursor = self.connection.execute(
+                """
+                INSERT OR IGNORE INTO source_locators (
+                    id, locator, enabled, limit_value, options
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    locator.id,
+                    locator.locator,
+                    _bool_to_int(locator.enabled),
+                    locator.limit,
+                    _to_json(locator.options),
+                ),
+            )
+            inserted_count += cursor.rowcount
+        self.connection.commit()
+        return inserted_count
+
+    def get_source_locator(self, locator_id: str) -> SourceLocator | None:
+        row = self.connection.execute(
+            "SELECT * FROM source_locators WHERE id = ?",
+            (locator_id,),
+        ).fetchone()
+        return _source_locator_from_row(row) if row else None
+
+    def list_source_locators(self, enabled: bool | None = None) -> list[SourceLocator]:
+        if enabled is None:
+            rows = self.connection.execute(
+                "SELECT * FROM source_locators ORDER BY id"
+            ).fetchall()
+        else:
+            rows = self.connection.execute(
+                "SELECT * FROM source_locators WHERE enabled = ? ORDER BY id",
+                (_bool_to_int(enabled),),
+            ).fetchall()
+        return [_source_locator_from_row(row) for row in rows]
+
+
 class _PostgresRepository:
     """Shared Postgres connection handling."""
 
@@ -554,6 +639,51 @@ class PostgresClusterRepository(_PostgresRepository, ClusterRepository):
         return [_cluster_from_row(row) for row in rows]
 
 
+class PostgresSourceLocatorRepository(_PostgresRepository, SourceLocatorRepository):
+    """Postgres-backed source locator repository."""
+
+    def save_source_locators(self, locators: list[SourceLocator]) -> int:
+        inserted_count = 0
+        for locator in locators:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO source_locators (
+                    id, locator, enabled, limit_value, options
+                ) VALUES (%s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    locator.id,
+                    locator.locator,
+                    locator.enabled,
+                    locator.limit,
+                    _to_json(locator.options),
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_source_locator(self, locator_id: str) -> SourceLocator | None:
+        row = self.connection.execute(
+            "SELECT * FROM source_locators WHERE id = %s",
+            (locator_id,),
+        ).fetchone()
+        return _source_locator_from_row(row) if row else None
+
+    def list_source_locators(self, enabled: bool | None = None) -> list[SourceLocator]:
+        if enabled is None:
+            rows = self.connection.execute(
+                "SELECT * FROM source_locators ORDER BY id"
+            ).fetchall()
+        else:
+            rows = self.connection.execute(
+                "SELECT * FROM source_locators WHERE enabled = %s ORDER BY id",
+                (enabled,),
+            ).fetchall()
+        return [_source_locator_from_row(row) for row in rows]
+
+
 def _connect_postgres(database_url: str) -> Any:
     try:
         import psycopg
@@ -659,4 +789,14 @@ def _cluster_from_row(row: sqlite3.Row) -> SignalCluster:
         frequency=row["frequency"],
         average_score=_float(row["average_score"]),
         top_examples=_from_json(row["top_examples"]),
+    )
+
+
+def _source_locator_from_row(row: sqlite3.Row) -> SourceLocator:
+    return SourceLocator.create(
+        id=row["id"],
+        locator=row["locator"],
+        enabled=bool(row["enabled"]),
+        limit=row["limit_value"],
+        options=_from_json(row["options"]),
     )
