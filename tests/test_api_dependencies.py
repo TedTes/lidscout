@@ -34,16 +34,19 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
             patch("api.dependencies.ResendEmailNotifier") as email_notifier,
             patch("api.dependencies.EmailClient") as email_client,
+            patch("api.dependencies.connect_postgres") as connect_postgres,
         ):
             dependencies = build_signal_api_dependencies(config)
 
-        post_repository.assert_called_once_with(database_url)
-        signal_repository.assert_called_once_with(database_url)
-        score_repository.assert_called_once_with(database_url)
-        cluster_repository.assert_called_once_with(database_url)
-        competitor_repository.assert_called_once_with(database_url)
-        monitored_source_repository.assert_called_once_with(database_url)
-        source_locator_repository.assert_called_once_with(database_url)
+        connect_postgres.assert_called_once_with(database_url)
+        connection = connect_postgres.return_value
+        post_repository.assert_called_once_with(connection=connection)
+        signal_repository.assert_called_once_with(connection=connection)
+        score_repository.assert_called_once_with(connection=connection)
+        cluster_repository.assert_called_once_with(connection=connection)
+        competitor_repository.assert_called_once_with(connection=connection)
+        monitored_source_repository.assert_called_once_with(connection=connection)
+        source_locator_repository.assert_called_once_with(connection=connection)
         llm_client.assert_called_once_with(
             api_key="llm-key",
             model="response-model",
@@ -110,6 +113,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
             patch("api.dependencies.ResendEmailNotifier") as email_notifier,
             patch("api.dependencies.EmailClient") as email_client,
+            patch("api.dependencies.connect_postgres"),
         ):
             dependencies = build_signal_api_dependencies(config)
 

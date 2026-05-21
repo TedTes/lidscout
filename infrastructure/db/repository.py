@@ -1033,6 +1033,11 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
         return [_monitored_source_from_row(row) for row in rows]
 
 
+def connect_postgres(database_url: str) -> Any:
+    """Create a Postgres connection for repository wiring."""
+    return _connect_postgres(database_url)
+
+
 def _connect_postgres(database_url: str) -> Any:
     try:
         import psycopg

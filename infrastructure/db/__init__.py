@@ -21,6 +21,7 @@ from infrastructure.db.repository import (
     SQLiteScoreRepository,
     SQLiteSignalRepository,
     SQLiteSourceLocatorRepository,
+    connect_postgres,
 )
 
 __all__ = [
@@ -45,4 +46,5 @@ __all__ = [
     "SQLiteScoreRepository",
     "SQLiteSignalRepository",
     "SQLiteSourceLocatorRepository",
+    "connect_postgres",
 ]

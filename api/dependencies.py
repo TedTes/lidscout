@@ -9,6 +9,7 @@ from infrastructure.db import (
     PostgresScoreRepository,
     PostgresSignalRepository,
     PostgresSourceLocatorRepository,
+    connect_postgres,
 )
 from infrastructure.email import EmailClient, ResendEmailNotifier
 from infrastructure.llm import OpenAIEmbeddingClient, OpenAIResponsesClient
@@ -24,14 +25,19 @@ def build_signal_api_dependencies(
     if not _is_postgres_url(database_url):
         raise ValueError("DATABASE_URL must be a Supabase/Postgres URL")
 
+    connection = connect_postgres(database_url)
     return SignalApiDependencies(
-        post_repository=PostgresPostRepository(database_url),
-        signal_repository=PostgresSignalRepository(database_url),
-        score_repository=PostgresScoreRepository(database_url),
-        cluster_repository=PostgresClusterRepository(database_url),
-        competitor_repository=PostgresCompetitorRepository(database_url),
-        monitored_source_repository=PostgresMonitoredSourceRepository(database_url),
-        source_locator_repository=PostgresSourceLocatorRepository(database_url),
+        post_repository=PostgresPostRepository(connection=connection),
+        signal_repository=PostgresSignalRepository(connection=connection),
+        score_repository=PostgresScoreRepository(connection=connection),
+        cluster_repository=PostgresClusterRepository(connection=connection),
+        competitor_repository=PostgresCompetitorRepository(connection=connection),
+        monitored_source_repository=PostgresMonitoredSourceRepository(
+            connection=connection,
+        ),
+        source_locator_repository=PostgresSourceLocatorRepository(
+            connection=connection,
+        ),
         source_adapters=[
             JsonUrlAdapter(),
             StaticUrlAdapter(),
