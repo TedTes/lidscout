@@ -67,8 +67,13 @@ export default function PipelineRunPage() {
 
   return (
     <DashboardShell
-      title="Pipeline run"
-      subtitle={result ? `Last run sent to ${result.email.recipient}` : 'Trigger the configured signal detection workflow'}
+      title="Pipeline trigger"
+      subtitle={result ? `Last run sent to ${result.email.recipient}` : 'Manually trigger the signal detection workflow'}
+      actions={
+        <span className="rounded-md border border-slate-700/60 bg-slate-800/60 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-slate-600">
+          Admin
+        </span>
+      }
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,420px)_1fr]">
         {/* ── Config form ────────────────────────────────────────── */}
@@ -94,18 +99,21 @@ export default function PipelineRunPage() {
             />
           </div>
 
-          {/* Optional source override */}
+          {/* Source locators override */}
           <fieldset className="rounded-lg border border-slate-800/80 p-4">
-            <label className="mb-1.5 block text-sm font-semibold text-slate-300" htmlFor="source-locators">
-              Source locators override
+            <label className="mb-1 block text-sm font-semibold text-slate-300" htmlFor="source-locators">
+              Source locators
             </label>
+            <p className="mb-2 text-xs text-slate-600">
+              One URL per line. Leave empty to run from all enabled backend sources.
+            </p>
             <textarea
               id="source-locators"
               value={sourceLocators}
               onChange={e => setSourceLocators(e.target.value)}
               rows={4}
-              placeholder={'https://example.com/reviews\nhttps://example.com/thread.json\nhttps://example.com/customer-feedback'}
-              className="w-full resize-none rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10"
+              placeholder={'https://example.com/reviews\nhttps://example.com/thread.json'}
+              className="w-full resize-none rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 font-mono text-xs text-slate-300 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/10"
             />
           </fieldset>
 
