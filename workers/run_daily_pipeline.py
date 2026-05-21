@@ -109,7 +109,10 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         signals,
     )
 
-    report = ReportingService().generate(clusters)
+    report = ReportingService().generate(
+        clusters,
+        opportunity_synthesis_result.opportunities,
+    )
     email_result = config.email_client.send_report(report, config.recipient)
 
     return PipelineRunResult(

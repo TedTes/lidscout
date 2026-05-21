@@ -3,6 +3,7 @@ import unittest
 
 from application.reporting import MarketSignalReport
 from domain.cluster import SignalCluster
+from domain.opportunity import Opportunity
 from infrastructure.email import EmailClient, EmailNotifier, EmailSendResult
 
 
@@ -37,7 +38,10 @@ class EmailClientTests(unittest.TestCase):
         self.assertIn("Generated at: 2026-05-19T12:00:00+00:00", body)
         self.assertIn("- reporting (score 8.4, frequency 3): Teams need faster reports.", body)
         self.assertIn("- Teams need faster reports.", body)
-        self.assertIn("- reporting: Teams need faster reports.", body)
+        self.assertIn(
+            "- Improve recurring reports (confidence 0.84, evidence 3): Build a reporting setup assistant.",
+            body,
+        )
 
     def test_returns_failed_result_when_notifier_fails(self):
         notifier = FakeEmailNotifier(error=RuntimeError("smtp failed"))
@@ -70,7 +74,20 @@ class EmailClientTests(unittest.TestCase):
             generated_at=datetime(2026, 5, 19, 12, 0, tzinfo=UTC),
             top_clusters=[cluster],
             emerging_pains=["Teams need faster reports."],
-            recommended_opportunities=["reporting: Teams need faster reports."],
+            recommended_opportunities=[
+                Opportunity.create(
+                    id="opportunity-1",
+                    cluster_id="cluster-1",
+                    title="Improve recurring reports",
+                    target_user="finance teams",
+                    pain_summary="Teams need faster reports.",
+                    why_it_matters="Repeated evidence with strong scores.",
+                    suggested_wedge="Build a reporting setup assistant.",
+                    evidence_count=3,
+                    confidence=0.84,
+                    evidence_signal_ids=["signal-1"],
+                )
+            ],
         )
 
 

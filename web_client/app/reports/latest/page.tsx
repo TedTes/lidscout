@@ -12,7 +12,7 @@ import {
   SectionCard,
 } from '@/components/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { MarketSignalReport } from '@/lib/types/signals';
+import { MarketSignalReport, Opportunity } from '@/lib/types/signals';
 
 type Status = 'loading' | 'ready' | 'error';
 
@@ -173,10 +173,13 @@ export default function LatestReportPage() {
             />
             <InsightList
               title="Recommended opportunities"
-              items={report.recommended_opportunities}
+              items={[]}
               icon={<LightbulbIcon />}
               iconColor="text-amber-400"
               emptyMessage="No opportunities recommended yet."
+              renderItems={() => (
+                <OpportunityList opportunities={report.recommended_opportunities} />
+              )}
             />
           </div>
         </div>
@@ -191,26 +194,31 @@ function InsightList({
   icon,
   iconColor,
   emptyMessage,
+  renderItems,
 }: {
   title: string;
   items: string[];
   icon: React.ReactNode;
   iconColor: string;
   emptyMessage: string;
+  renderItems?: () => React.ReactNode;
 }) {
+  const count = renderItems ? undefined : items.length;
   return (
     <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
       <div className="mb-4 flex items-center gap-2">
         <span className={iconColor}>{icon}</span>
         <h2 className="text-sm font-semibold text-slate-200">{title}</h2>
-        {items.length > 0 && (
+        {(count ?? 0) > 0 && (
           <span className="ml-auto rounded-full bg-slate-800 px-2 py-0.5 text-xs tabular-nums text-slate-500">
-            {items.length}
+            {count}
           </span>
         )}
       </div>
 
-      {items.length === 0 ? (
+      {renderItems ? (
+        renderItems()
+      ) : items.length === 0 ? (
         <p className="text-sm text-slate-600">{emptyMessage}</p>
       ) : (
         <ul className="space-y-2">
@@ -228,6 +236,42 @@ function InsightList({
         </ul>
       )}
     </section>
+  );
+}
+
+function OpportunityList({ opportunities }: { opportunities: Opportunity[] }) {
+  if (opportunities.length === 0) {
+    return <p className="text-sm text-slate-600">No opportunities recommended yet.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {opportunities.map((opportunity, i) => (
+        <li
+          key={opportunity.id}
+          className="rounded-lg border border-slate-800/60 bg-slate-800/30 px-3 py-2.5"
+        >
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 shrink-0 text-[10px] font-bold tabular-nums text-slate-700">
+              {String(i + 1).padStart(2, '0')}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold leading-relaxed text-slate-300">
+                  {opportunity.title}
+                </p>
+                <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs tabular-nums text-slate-500">
+                  {opportunity.evidence_count} evidence
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                {opportunity.suggested_wedge}
+              </p>
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

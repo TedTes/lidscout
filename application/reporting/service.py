@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from domain.cluster import SignalCluster
+from domain.opportunity import Opportunity
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class MarketSignalReport:
     generated_at: datetime
     top_clusters: list[SignalCluster]
     emerging_pains: list[str]
-    recommended_opportunities: list[str]
+    recommended_opportunities: list[Opportunity]
 
 
 class ReportingService:
@@ -35,20 +36,21 @@ class ReportingService:
         self.top_cluster_limit = top_cluster_limit
         self.opportunity_threshold = opportunity_threshold
 
-    def generate(self, clusters: list[SignalCluster]) -> MarketSignalReport:
+    def generate(
+        self,
+        clusters: list[SignalCluster],
+        opportunities: list[Opportunity] | None = None,
+    ) -> MarketSignalReport:
         ranked_clusters = self._rank_clusters(clusters)
         top_clusters = ranked_clusters[: self.top_cluster_limit]
+        ranked_opportunities = self._rank_opportunities(opportunities or [])
 
         return MarketSignalReport(
             title=self.title,
             generated_at=datetime.now(UTC),
             top_clusters=top_clusters,
             emerging_pains=[cluster.summary for cluster in top_clusters],
-            recommended_opportunities=[
-                self._recommendation_for(cluster)
-                for cluster in top_clusters
-                if cluster.average_score >= self.opportunity_threshold
-            ],
+            recommended_opportunities=ranked_opportunities[: self.top_cluster_limit],
         )
 
     @staticmethod
@@ -64,5 +66,13 @@ class ReportingService:
         )
 
     @staticmethod
-    def _recommendation_for(cluster: SignalCluster) -> str:
-        return f"{cluster.theme}: {cluster.summary}"
+    def _rank_opportunities(opportunities: list[Opportunity]) -> list[Opportunity]:
+        return sorted(
+            opportunities,
+            key=lambda opportunity: (
+                opportunity.confidence,
+                opportunity.evidence_count,
+                opportunity.title.lower(),
+            ),
+            reverse=True,
+        )

@@ -7,6 +7,7 @@ from application.ingestion import IngestionService
 from application.reporting import MarketSignalReport
 from application.scoring import ScoringService
 from domain.cluster import SignalCluster
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.signal import Signal
 from infrastructure.db import InMemoryPostRepository, InMemoryScoreRepository
@@ -57,7 +58,20 @@ class LoggingTests(unittest.TestCase):
             generated_at=datetime(2026, 5, 20, tzinfo=UTC),
             top_clusters=[cluster],
             emerging_pains=[cluster.summary],
-            recommended_opportunities=["reporting: Teams need faster reports."],
+            recommended_opportunities=[
+                Opportunity.create(
+                    id="opportunity-1",
+                    cluster_id="cluster-1",
+                    title="Improve recurring reports",
+                    target_user="finance teams",
+                    pain_summary=cluster.summary,
+                    why_it_matters="Repeated evidence with strong scores.",
+                    suggested_wedge="Build a reporting setup assistant.",
+                    evidence_count=1,
+                    confidence=0.84,
+                    evidence_signal_ids=["signal-1"],
+                )
+            ],
         )
 
         with self.assertLogs(level="INFO") as captured:

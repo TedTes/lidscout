@@ -26,6 +26,19 @@ export type SignalCluster = {
   top_examples: string[];
 };
 
+export type Opportunity = {
+  id: string;
+  cluster_id: string;
+  title: string;
+  target_user: string;
+  pain_summary: string;
+  why_it_matters: string;
+  suggested_wedge: string;
+  evidence_count: number;
+  confidence: number;
+  evidence_signal_ids: string[];
+};
+
 export type Competitor = {
   id: string;
   name: string;
@@ -69,7 +82,7 @@ export type MarketSignalReport = {
   generated_at: string;
   top_clusters: SignalCluster[];
   emerging_pains: string[];
-  recommended_opportunities: string[];
+  recommended_opportunities: Opportunity[];
 };
 
 export type SignalsResponse = {
@@ -78,6 +91,10 @@ export type SignalsResponse = {
 
 export type ClustersResponse = {
   clusters: SignalCluster[];
+};
+
+export type OpportunitiesResponse = {
+  opportunities: Opportunity[];
 };
 
 export type SourceLocator = {
@@ -128,6 +145,11 @@ export type PipelineRunResult = {
   embedding_failed_count: number;
   clustered_count: number;
   cluster_inserted_count: number;
+  opportunity_synthesis: {
+    synthesized_count: number;
+    inserted_count: number;
+    failed_count: number;
+  };
   report: MarketSignalReport;
   email: {
     recipient: string;

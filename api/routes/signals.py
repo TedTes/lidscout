@@ -19,6 +19,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
@@ -174,13 +175,27 @@ async def list_clusters(
     }
 
 
+@router.get("/opportunities")
+async def list_opportunities(
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return synthesized product opportunities."""
+    return {
+        "opportunities": [
+            _serialize_opportunity(opportunity)
+            for opportunity in dependencies.opportunity_repository.list_opportunities()
+        ]
+    }
+
+
 @router.get("/reports/latest")
 async def get_latest_report(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Generate and return the latest report from persisted clusters."""
     report = dependencies.reporting_service.generate(
-        dependencies.cluster_repository.list_clusters()
+        dependencies.cluster_repository.list_clusters(),
+        dependencies.opportunity_repository.list_opportunities(),
     )
     return _serialize_report(report)
 
@@ -446,6 +461,21 @@ def _serialize_cluster(cluster: SignalCluster) -> dict[str, Any]:
     }
 
 
+def _serialize_opportunity(opportunity: Opportunity) -> dict[str, Any]:
+    return {
+        "id": opportunity.id,
+        "cluster_id": opportunity.cluster_id,
+        "title": opportunity.title,
+        "target_user": opportunity.target_user,
+        "pain_summary": opportunity.pain_summary,
+        "why_it_matters": opportunity.why_it_matters,
+        "suggested_wedge": opportunity.suggested_wedge,
+        "evidence_count": opportunity.evidence_count,
+        "confidence": opportunity.confidence,
+        "evidence_signal_ids": opportunity.evidence_signal_ids,
+    }
+
+
 def _serialize_report(report: MarketSignalReport) -> dict[str, Any]:
     return {
         "title": report.title,
@@ -455,7 +485,10 @@ def _serialize_report(report: MarketSignalReport) -> dict[str, Any]:
             for cluster in report.top_clusters
         ],
         "emerging_pains": report.emerging_pains,
-        "recommended_opportunities": report.recommended_opportunities,
+        "recommended_opportunities": [
+            _serialize_opportunity(opportunity)
+            for opportunity in report.recommended_opportunities
+        ],
     }
 
 

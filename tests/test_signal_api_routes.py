@@ -16,6 +16,7 @@ from api.routes.signals import (
     list_competitor_sources,
     list_competitors,
     list_clusters,
+    list_opportunities,
     list_sources,
     list_signals,
     run_pipeline,
@@ -23,6 +24,7 @@ from api.routes.signals import (
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -100,6 +102,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/signals", paths)
         self.assertIn("/signals/{signal_id}", paths)
         self.assertIn("/clusters", paths)
+        self.assertIn("/opportunities", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
         self.assertIn("/competitors", paths)
@@ -167,14 +170,37 @@ class SignalApiRouteTests(unittest.TestCase):
 
     def test_gets_latest_report(self):
         cluster_repository = InMemoryClusterRepository()
+        opportunity_repository = InMemoryOpportunityRepository()
         cluster_repository.save_clusters([self._cluster()])
-        dependencies = self._dependencies(cluster_repository=cluster_repository)
+        opportunity_repository.save_opportunities([self._opportunity()])
+        dependencies = self._dependencies(
+            cluster_repository=cluster_repository,
+            opportunity_repository=opportunity_repository,
+        )
 
         response = asyncio.run(get_latest_report(dependencies))
 
         self.assertEqual(response["title"], "LidScout Market Signal Report")
         self.assertEqual(response["top_clusters"][0]["id"], "cluster-1")
-        self.assertEqual(response["recommended_opportunities"][0], "reporting: Teams need faster reports.")
+        self.assertEqual(
+            response["recommended_opportunities"][0]["id"],
+            "opportunity-1",
+        )
+
+    def test_lists_opportunities(self):
+        opportunity_repository = InMemoryOpportunityRepository()
+        opportunity_repository.save_opportunities([self._opportunity()])
+        dependencies = self._dependencies(
+            opportunity_repository=opportunity_repository,
+        )
+
+        response = asyncio.run(list_opportunities(dependencies))
+
+        self.assertEqual(response["opportunities"][0]["id"], "opportunity-1")
+        self.assertEqual(
+            response["opportunities"][0]["suggested_wedge"],
+            "Build a reporting setup assistant.",
+        )
 
     def test_creates_and_lists_competitors(self):
         dependencies = self._dependencies()
@@ -428,6 +454,21 @@ class SignalApiRouteTests(unittest.TestCase):
             frequency=2,
             average_score=8.4,
             top_examples=["Manual reporting is slow."],
+        )
+
+    @staticmethod
+    def _opportunity() -> Opportunity:
+        return Opportunity.create(
+            id="opportunity-1",
+            cluster_id="cluster-1",
+            title="Improve recurring reports",
+            target_user="finance teams",
+            pain_summary="Teams need faster reports.",
+            why_it_matters="Repeated evidence with strong scores.",
+            suggested_wedge="Build a reporting setup assistant.",
+            evidence_count=2,
+            confidence=0.84,
+            evidence_signal_ids=["signal-1"],
         )
 
 

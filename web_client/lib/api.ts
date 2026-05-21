@@ -13,6 +13,7 @@ import {
   MonitoredSource,
   MonitoredSourceUpdateRequest,
   MonitoredSourcesResponse,
+  OpportunitiesResponse,
   PipelineRunRequest,
   PipelineRunResult,
   SignalsResponse,
@@ -216,6 +217,18 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load clusters');
+      }
+      throw error;
+    }
+  }
+
+  async getOpportunities(): Promise<OpportunitiesResponse> {
+    try {
+      const response = await api.get<OpportunitiesResponse>('/opportunities');
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load opportunities');
       }
       throw error;
     }

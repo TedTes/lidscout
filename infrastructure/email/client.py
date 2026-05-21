@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 
 from application.reporting import MarketSignalReport
+from domain.opportunity import Opportunity
 from infrastructure.email.notifier import EmailNotifier
 from shared.logger import get_logger, log_event
 
@@ -70,7 +71,7 @@ class EmailClient:
             *_format_lines(report.emerging_pains),
             "",
             "Recommended opportunities",
-            *_format_lines(report.recommended_opportunities),
+            *_format_opportunity_lines(report.recommended_opportunities),
         ]
         return "\n".join(sections)
 
@@ -93,3 +94,17 @@ def _format_lines(values: list[str]) -> list[str]:
     if not values:
         return ["- None"]
     return [f"- {value}" for value in values]
+
+
+def _format_opportunity_lines(opportunities: list[Opportunity]) -> list[str]:
+    if not opportunities:
+        return ["- None"]
+
+    return [
+        (
+            f"- {opportunity.title} "
+            f"(confidence {opportunity.confidence}, evidence {opportunity.evidence_count}): "
+            f"{opportunity.suggested_wedge}"
+        )
+        for opportunity in opportunities
+    ]
