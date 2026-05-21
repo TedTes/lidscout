@@ -13,6 +13,7 @@ from application.ingestion import (
 )
 from application.ports import (
     ClusterRepository,
+    MonitoredSourceRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -39,6 +40,7 @@ class PipelineConfig:
     embedding_client: EmbeddingClient
     email_client: EmailClient
     recipient: str
+    monitored_source_repository: MonitoredSourceRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     sources: list[SourceInput] = field(default_factory=list)
@@ -113,7 +115,10 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
 def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
     posts: list[RawPost] = []
     failed_count = 0
-    sources = config.sources or _configured_sources(config.source_locator_repository)
+    sources = config.sources or _configured_sources(
+        config.monitored_source_repository,
+        config.source_locator_repository,
+    )
 
     if sources:
         source_result = SourceResolver(config.source_adapters).fetch(
@@ -127,13 +132,21 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
 
 
 def _configured_sources(
-    repository: SourceLocatorRepository | None,
+    monitored_source_repository: MonitoredSourceRepository | None,
+    source_locator_repository: SourceLocatorRepository | None,
 ) -> list[SourceInput]:
-    if repository is None:
+    if monitored_source_repository is not None:
+        monitored_sources = [
+            source.to_source_input()
+            for source in monitored_source_repository.list_monitored_sources(enabled=True)
+        ]
+        if monitored_sources:
+            return monitored_sources
+    if source_locator_repository is None:
         return []
     return [
         locator.to_source_input()
-        for locator in repository.list_source_locators(enabled=True)
+        for locator in source_locator_repository.list_source_locators(enabled=True)
     ]
 
 

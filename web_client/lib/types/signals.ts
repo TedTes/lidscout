@@ -10,6 +10,10 @@ export type Signal = {
   willingness_to_pay: boolean | null;
   category: string | null;
   confidence: number;
+  competitor_id: string | null;
+  evidence_url: string | null;
+  evidence_text: string | null;
+  detected_at: string | null;
 };
 
 export type SignalCluster = {
@@ -20,6 +24,36 @@ export type SignalCluster = {
   frequency: number;
   average_score: number;
   top_examples: string[];
+};
+
+export type Competitor = {
+  id: string;
+  name: string;
+  website: string | null;
+  category: string | null;
+  description: string | null;
+  created_at: string | null;
+};
+
+export type MonitoredSource = {
+  id: string;
+  competitor_id: string;
+  locator: string;
+  source_type: string;
+  enabled: boolean;
+  limit: number | null;
+  scan_frequency: string | null;
+  last_scanned_at: string | null;
+  last_error: string | null;
+  options: Record<string, unknown>;
+};
+
+export type CompetitorsResponse = {
+  competitors: Competitor[];
+};
+
+export type MonitoredSourcesResponse = {
+  sources: MonitoredSource[];
 };
 
 export type MarketSignalReport = {

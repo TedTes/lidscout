@@ -1,6 +1,7 @@
 """Signal extraction service."""
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import logging
 
 from domain.post import RawPost
@@ -11,8 +12,10 @@ from shared.logger import get_logger, log_event
 
 
 SIGNAL_EXTRACTION_PROMPT = (
-    "Extract one market or pain signal from this post. "
-    "Return only structured JSON with has_signal and optional signal fields."
+    "Extract one competitor customer complaint or market pain signal from this post. "
+    "Prefer concrete product gaps, repeated workflow pain, missing features, pricing "
+    "complaints, switching intent, or current workaround evidence. Return only "
+    "structured JSON with has_signal and optional signal fields."
 )
 
 logger = get_logger(__name__)
@@ -64,6 +67,10 @@ class ExtractionService:
                     willingness_to_pay=signal_payload.get("willingness_to_pay"),
                     category=signal_payload.get("category"),
                     confidence=signal_payload.get("confidence", 0.0),
+                    competitor_id=_metadata_text(post, "competitor_id"),
+                    evidence_url=post.url,
+                    evidence_text=self._evidence_text(post),
+                    detected_at=datetime.now(tz=UTC),
                 )
             except ValueError as exc:
                 raise ExtractionError(str(exc)) from exc
@@ -99,7 +106,23 @@ class ExtractionService:
         return "\n".join(
             [
                 f"source: {post.source}",
+                f"competitor_id: {_metadata_text(post, 'competitor_id') or ''}",
+                f"source_type: {_metadata_text(post, 'source_type') or ''}",
+                f"url: {post.url or ''}",
                 f"title: {post.title}",
                 f"body: {post.body}",
             ]
         )
+
+    def _evidence_text(self, post: RawPost) -> str:
+        body = post.body.strip()
+        if body:
+            return body[:1000]
+        return post.title[:1000]
+
+
+def _metadata_text(post: RawPost, key: str) -> str | None:
+    value = post.metadata.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None

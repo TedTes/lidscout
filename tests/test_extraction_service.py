@@ -37,7 +37,7 @@ class ExtractionServiceTests(unittest.TestCase):
         self.assertEqual(result.signal.post_id, "reddit:abc")
         self.assertEqual(result.signal.pain, "Manual reporting is slow")
         self.assertEqual(len(llm_client.calls), 1)
-        self.assertIn("Extract one market or pain signal", llm_client.calls[0][0])
+        self.assertIn("competitor customer complaint", llm_client.calls[0][0])
         self.assertIn("title: Reporting pain", llm_client.calls[0][1])
 
     def test_returns_no_signal_result(self):

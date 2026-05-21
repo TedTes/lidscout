@@ -56,9 +56,7 @@ class StaticUrlAdapter(BaseUrlAdapter):
             created_at=None,
             upvotes=None,
             comments_count=None,
-            metadata={
-                "domain": parsed.netloc.lower(),
-            },
+            metadata=_source_metadata(source, parsed.netloc),
         )
 
 
@@ -106,7 +104,7 @@ class JsonUrlAdapter(BaseUrlAdapter):
                 title=source.locator,
                 body=str(payload),
                 url=source.locator,
-                metadata={"domain": urlparse(source.locator).netloc.lower()},
+                metadata=_source_metadata(source, urlparse(source.locator).netloc),
             )
         ]
 
@@ -289,10 +287,19 @@ def _raw_post_from_record(
         created_at=_record_timestamp(record),
         upvotes=_record_int(record, "score", "points", "upvotes"),
         comments_count=_record_int(record, "num_comments", "comments_count", "descendants"),
-        metadata={
-            "domain": parsed.netloc.lower(),
-        },
+        metadata=_source_metadata(source, parsed.netloc),
     )
+
+
+def _source_metadata(source: SourceInput, domain: str) -> dict[str, Any]:
+    metadata = {
+        "domain": domain.lower(),
+    }
+    for key in ("competitor_id", "monitored_source_id", "source_type"):
+        value = source.options.get(key)
+        if isinstance(value, str) and value.strip():
+            metadata[key] = value.strip()
+    return metadata
 
 
 WebPageActivityAdapter = UrlActivityAdapter

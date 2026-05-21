@@ -3,6 +3,8 @@ from adapters.web import JsonUrlAdapter, StaticUrlAdapter
 from api.routes.signals import SignalApiDependencies
 from infrastructure.db import (
     PostgresClusterRepository,
+    PostgresCompetitorRepository,
+    PostgresMonitoredSourceRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
@@ -27,6 +29,8 @@ def build_signal_api_dependencies(
         signal_repository=PostgresSignalRepository(database_url),
         score_repository=PostgresScoreRepository(database_url),
         cluster_repository=PostgresClusterRepository(database_url),
+        competitor_repository=PostgresCompetitorRepository(database_url),
+        monitored_source_repository=PostgresMonitoredSourceRepository(database_url),
         source_locator_repository=PostgresSourceLocatorRepository(database_url),
         source_adapters=[
             JsonUrlAdapter(),

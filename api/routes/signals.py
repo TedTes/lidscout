@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from application.ingestion import SourceAdapter
 from application.ports import (
     ClusterRepository,
+    CompetitorRepository,
+    MonitoredSourceRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -15,10 +17,13 @@ from application.ports import (
 )
 from application.reporting import MarketSignalReport, ReportingService
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.signal import Signal
-from domain.source import SourceInput
+from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
+    InMemoryCompetitorRepository,
+    InMemoryMonitoredSourceRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -52,6 +57,27 @@ class PipelineRunRequest(BaseModel):
     similarity_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
 
 
+class CompetitorRequest(BaseModel):
+    """HTTP request body for creating a monitored competitor."""
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    website: str | None = None
+    category: str | None = None
+    description: str | None = None
+
+
+class MonitoredSourceRequest(BaseModel):
+    """HTTP request body for creating a monitored source."""
+
+    locator: str = Field(min_length=1)
+    source_type: str = Field(default="web", min_length=1)
+    enabled: bool = True
+    limit: int | None = Field(default=None, ge=1)
+    scan_frequency: str | None = None
+    options: dict[str, Any] = Field(default_factory=dict)
+
+
 @dataclass
 class SignalApiDependencies:
     """Runtime dependencies for signal API routes."""
@@ -60,6 +86,12 @@ class SignalApiDependencies:
     signal_repository: SignalRepository = field(default_factory=InMemorySignalRepository)
     score_repository: ScoreRepository = field(default_factory=InMemoryScoreRepository)
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
+    competitor_repository: CompetitorRepository = field(
+        default_factory=InMemoryCompetitorRepository
+    )
+    monitored_source_repository: MonitoredSourceRepository = field(
+        default_factory=InMemoryMonitoredSourceRepository
+    )
     source_locator_repository: SourceLocatorRepository = field(
         default_factory=InMemorySourceLocatorRepository
     )
@@ -121,6 +153,83 @@ async def get_latest_report(
     return _serialize_report(report)
 
 
+@router.get("/competitors")
+async def list_competitors(
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return monitored competitors."""
+    return {
+        "competitors": [
+            _serialize_competitor(competitor)
+            for competitor in dependencies.competitor_repository.list_competitors()
+        ]
+    }
+
+
+@router.post("/competitors")
+async def create_competitor(
+    request: CompetitorRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Create a monitored competitor."""
+    try:
+        competitor = Competitor.create(
+            id=request.id,
+            name=request.name,
+            website=request.website,
+            category=request.category,
+            description=request.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.competitor_repository.save_competitors([competitor])
+    return _serialize_competitor(competitor)
+
+
+@router.get("/competitors/{competitor_id}/sources")
+async def list_competitor_sources(
+    competitor_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return monitored sources for one competitor."""
+    return {
+        "sources": [
+            _serialize_monitored_source(source)
+            for source in dependencies.monitored_source_repository.list_monitored_sources(
+                competitor_id=competitor_id,
+            )
+        ]
+    }
+
+
+@router.post("/competitors/{competitor_id}/sources")
+async def create_competitor_source(
+    competitor_id: str,
+    request: MonitoredSourceRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Create a monitored source for one competitor."""
+    if dependencies.competitor_repository.get_competitor(competitor_id) is None:
+        raise HTTPException(status_code=404, detail="Competitor not found")
+
+    try:
+        source = MonitoredSource.create(
+            competitor_id=competitor_id,
+            locator=request.locator,
+            source_type=request.source_type,
+            enabled=request.enabled,
+            limit=request.limit,
+            scan_frequency=request.scan_frequency,
+            options=request.options,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.monitored_source_repository.save_monitored_sources([source])
+    return _serialize_monitored_source(source)
+
+
 @router.post("/pipeline/run")
 async def run_pipeline(
     request: PipelineRunRequest,
@@ -134,6 +243,7 @@ async def run_pipeline(
             signal_repository=dependencies.signal_repository,
             score_repository=dependencies.score_repository,
             cluster_repository=dependencies.cluster_repository,
+            monitored_source_repository=dependencies.monitored_source_repository,
             source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
             embedding_client=dependencies.embedding_client,
@@ -189,6 +299,38 @@ def _serialize_signal(signal: Signal) -> dict[str, Any]:
         "willingness_to_pay": signal.willingness_to_pay,
         "category": signal.category,
         "confidence": signal.confidence,
+        "competitor_id": signal.competitor_id,
+        "evidence_url": signal.evidence_url,
+        "evidence_text": signal.evidence_text,
+        "detected_at": signal.detected_at.isoformat() if signal.detected_at else None,
+    }
+
+
+def _serialize_competitor(competitor: Competitor) -> dict[str, Any]:
+    return {
+        "id": competitor.id,
+        "name": competitor.name,
+        "website": competitor.website,
+        "category": competitor.category,
+        "description": competitor.description,
+        "created_at": competitor.created_at.isoformat() if competitor.created_at else None,
+    }
+
+
+def _serialize_monitored_source(source: MonitoredSource) -> dict[str, Any]:
+    return {
+        "id": source.id,
+        "competitor_id": source.competitor_id,
+        "locator": source.locator,
+        "source_type": source.source_type,
+        "enabled": source.enabled,
+        "limit": source.limit,
+        "scan_frequency": source.scan_frequency,
+        "last_scanned_at": (
+            source.last_scanned_at.isoformat() if source.last_scanned_at else None
+        ),
+        "last_error": source.last_error,
+        "options": source.options,
     }
 
 

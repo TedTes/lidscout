@@ -6,8 +6,12 @@ import axios from 'axios';
 import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
+  Competitor,
+  CompetitorsResponse,
   ClustersResponse,
   MarketSignalReport,
+  MonitoredSource,
+  MonitoredSourcesResponse,
   PipelineRunRequest,
   PipelineRunResult,
   SignalsResponse,
@@ -79,6 +83,75 @@ class InteractionApiService {
 }
 
 class SignalApiService {
+  async getCompetitors(): Promise<CompetitorsResponse> {
+    try {
+      const response = await api.get<CompetitorsResponse>('/competitors');
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load competitors');
+      }
+      throw error;
+    }
+  }
+
+  async createCompetitor(request: {
+    id: string;
+    name: string;
+    website?: string | null;
+    category?: string | null;
+    description?: string | null;
+  }): Promise<Competitor> {
+    try {
+      const response = await api.post<Competitor>('/competitors', request);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to create competitor');
+      }
+      throw error;
+    }
+  }
+
+  async getCompetitorSources(competitorId: string): Promise<MonitoredSourcesResponse> {
+    try {
+      const response = await api.get<MonitoredSourcesResponse>(
+        `/competitors/${competitorId}/sources`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load monitored sources');
+      }
+      throw error;
+    }
+  }
+
+  async createCompetitorSource(
+    competitorId: string,
+    request: {
+      locator: string;
+      source_type?: string;
+      enabled?: boolean;
+      limit?: number | null;
+      scan_frequency?: string | null;
+      options?: Record<string, unknown>;
+    }
+  ): Promise<MonitoredSource> {
+    try {
+      const response = await api.post<MonitoredSource>(
+        `/competitors/${competitorId}/sources`,
+        request
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to create monitored source');
+      }
+      throw error;
+    }
+  }
+
   async getSignals(): Promise<SignalsResponse> {
     try {
       const response = await api.get<SignalsResponse>('/signals');

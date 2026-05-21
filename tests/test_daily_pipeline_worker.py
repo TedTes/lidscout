@@ -1,12 +1,13 @@
 import unittest
 
 from domain.post import RawPost
-from domain.source import SourceInput, SourceLocator
+from domain.source import MonitoredSource, SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemoryMonitoredSourceRepository,
     InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
@@ -25,6 +26,12 @@ class FakeSourceAdapter:
                 source_id=source.locator,
                 title="Review page",
                 body="Export workflows are painful for finance teams.",
+                url=source.locator,
+                metadata={
+                    key: value
+                    for key, value in source.options.items()
+                    if isinstance(value, str)
+                },
             )
         ]
 
@@ -160,6 +167,61 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.fetch_failed_count, 0)
         self.assertEqual(result.no_signal_count, 1)
+
+    def test_runs_pipeline_from_enabled_monitored_sources(self):
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    competitor_id="competitor-1",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    limit=1,
+                )
+            ]
+        )
+        signal_repository = InMemorySignalRepository()
+        llm_client = SequentialLLMClient(
+            [
+                """
+                {
+                  "has_signal": true,
+                  "signal": {
+                    "id": "signal-1",
+                    "pain": "Export workflows are painful",
+                    "urgency": "medium",
+                    "severity": "medium",
+                    "willingness_to_pay": true,
+                    "category": "reporting",
+                    "confidence": 0.8
+                  }
+                }
+                """
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=signal_repository,
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            monitored_source_repository=monitored_source_repository,
+            llm_client=llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.extracted_count, 1)
+        self.assertEqual(signal_repository.get_signal("signal-1").competitor_id, "competitor-1")
+        self.assertEqual(
+            signal_repository.get_signal("signal-1").evidence_url,
+            "https://example.com/reviews",
+        )
 
 
 if __name__ == "__main__":

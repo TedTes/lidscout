@@ -3,19 +3,28 @@ import unittest
 
 from api.main import app, health_check
 from api.routes.signals import (
+    CompetitorRequest,
+    MonitoredSourceRequest,
     PipelineRunRequest,
     SignalApiDependencies,
+    create_competitor,
+    create_competitor_source,
     get_latest_report,
+    list_competitor_sources,
+    list_competitors,
     list_clusters,
     list_signals,
     run_pipeline,
 )
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.signal import Signal
 from domain.source import SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
+    InMemoryCompetitorRepository,
+    InMemoryMonitoredSourceRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -76,6 +85,8 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/clusters", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
+        self.assertIn("/competitors", paths)
+        self.assertIn("/competitors/{competitor_id}/sources", paths)
         self.assertIn("/health", paths)
 
     def test_health_check_response(self):
@@ -124,6 +135,48 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(response["title"], "LidScout Market Signal Report")
         self.assertEqual(response["top_clusters"][0]["id"], "cluster-1")
         self.assertEqual(response["recommended_opportunities"][0], "reporting: Teams need faster reports.")
+
+    def test_creates_and_lists_competitors(self):
+        dependencies = self._dependencies()
+
+        created = asyncio.run(
+            create_competitor(
+                CompetitorRequest(
+                    id="competitor-1",
+                    name="Acme CRM",
+                    website="https://acme.example",
+                    category="crm",
+                ),
+                dependencies,
+            )
+        )
+        response = asyncio.run(list_competitors(dependencies))
+
+        self.assertEqual(created["id"], "competitor-1")
+        self.assertEqual(response["competitors"][0]["name"], "Acme CRM")
+
+    def test_creates_and_lists_competitor_sources(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [Competitor.create(id="competitor-1", name="Acme CRM")]
+        )
+        dependencies = self._dependencies(competitor_repository=competitor_repository)
+
+        created = asyncio.run(
+            create_competitor_source(
+                "competitor-1",
+                MonitoredSourceRequest(
+                    locator="https://acme.example/reviews",
+                    source_type="reviews",
+                    limit=10,
+                ),
+                dependencies,
+            )
+        )
+        response = asyncio.run(list_competitor_sources("competitor-1", dependencies))
+
+        self.assertEqual(created["competitor_id"], "competitor-1")
+        self.assertEqual(response["sources"][0]["locator"], "https://acme.example/reviews")
 
     def test_runs_pipeline_with_sources(self):
         signal_repository = InMemorySignalRepository()
@@ -197,6 +250,8 @@ class SignalApiRouteTests(unittest.TestCase):
         signal_repository=None,
         score_repository=None,
         cluster_repository=None,
+        competitor_repository=None,
+        monitored_source_repository=None,
         source_locator_repository=None,
         source_adapters=None,
         llm_client=None,
@@ -208,6 +263,10 @@ class SignalApiRouteTests(unittest.TestCase):
             signal_repository=signal_repository or InMemorySignalRepository(),
             score_repository=score_repository or InMemoryScoreRepository(),
             cluster_repository=cluster_repository or InMemoryClusterRepository(),
+            competitor_repository=competitor_repository or InMemoryCompetitorRepository(),
+            monitored_source_repository=(
+                monitored_source_repository or InMemoryMonitoredSourceRepository()
+            ),
             source_locator_repository=(
                 source_locator_repository or InMemorySourceLocatorRepository()
             ),
