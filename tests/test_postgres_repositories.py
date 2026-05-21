@@ -3,12 +3,15 @@ import json
 import unittest
 
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
     PostgresClusterRepository,
+    PostgresCompetitorRepository,
+    PostgresMonitoredSourceRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
@@ -210,6 +213,75 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(connection.calls[0][1][0], "locator-1")
         self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
         self.assertEqual(connection.calls[2][1], (True,))
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_competitor_repository_saves_and_loads_competitors(self):
+        created_at = datetime(2026, 5, 21, 12, 0, tzinfo=UTC)
+        competitor = Competitor.create(
+            id="competitor-1",
+            name="Acme CRM",
+            website="https://acme.example",
+            category="crm",
+            created_at=created_at,
+        )
+        row = {
+            "id": "competitor-1",
+            "name": "Acme CRM",
+            "website": "https://acme.example",
+            "category": "crm",
+            "description": None,
+            "created_at": created_at,
+        }
+        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
+        repository = PostgresCompetitorRepository(connection=connection)
+
+        self.assertEqual(repository.save_competitors([competitor]), 1)
+        self.assertEqual(repository.get_competitor("competitor-1"), competitor)
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_monitored_source_repository_saves_and_loads_enabled_sources(self):
+        source = MonitoredSource.create(
+            id="source-1",
+            competitor_id="competitor-1",
+            locator="https://acme.example/reviews",
+            source_type="reviews",
+            limit=10,
+            options={"section": "reviews"},
+        )
+        row = {
+            "id": "source-1",
+            "competitor_id": "competitor-1",
+            "locator": "https://acme.example/reviews",
+            "source_type": "reviews",
+            "enabled": True,
+            "limit_value": 10,
+            "scan_frequency": None,
+            "last_scanned_at": None,
+            "last_error": None,
+            "options": {"section": "reviews"},
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresMonitoredSourceRepository(connection=connection)
+
+        self.assertEqual(repository.save_monitored_sources([source]), 1)
+        self.assertEqual(repository.get_monitored_source("source-1"), source)
+        self.assertEqual(
+            repository.list_monitored_sources(
+                competitor_id="competitor-1",
+                enabled=True,
+            ),
+            [source],
+        )
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
+        self.assertEqual(connection.calls[2][1], ("competitor-1", True))
         self.assertEqual(connection.commit_count, 1)
 
 

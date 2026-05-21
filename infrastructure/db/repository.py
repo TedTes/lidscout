@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 import sqlite3
@@ -10,16 +10,19 @@ from typing import Any
 
 from application.ports import (
     ClusterRepository,
+    CompetitorRepository,
+    MonitoredSourceRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
     SourceLocatorRepository,
 )
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import MonitoredSource, SourceLocator
 
 
 @dataclass
@@ -135,6 +138,60 @@ class InMemorySourceLocatorRepository(SourceLocatorRepository):
         return [locator for locator in locators if locator.enabled == enabled]
 
 
+@dataclass
+class InMemoryCompetitorRepository(CompetitorRepository):
+    """In-memory competitor repository."""
+
+    competitors: dict[str, Competitor] = field(default_factory=dict)
+
+    def save_competitors(self, competitors: list[Competitor]) -> int:
+        inserted_count = 0
+        for competitor in competitors:
+            if competitor.id in self.competitors:
+                continue
+            self.competitors[competitor.id] = competitor
+            inserted_count += 1
+        return inserted_count
+
+    def get_competitor(self, competitor_id: str) -> Competitor | None:
+        return self.competitors.get(competitor_id)
+
+    def list_competitors(self) -> list[Competitor]:
+        return list(self.competitors.values())
+
+
+@dataclass
+class InMemoryMonitoredSourceRepository(MonitoredSourceRepository):
+    """In-memory monitored source repository."""
+
+    monitored_sources: dict[str, MonitoredSource] = field(default_factory=dict)
+
+    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
+        inserted_count = 0
+        for source in sources:
+            if source.id in self.monitored_sources:
+                continue
+            self.monitored_sources[source.id] = source
+            inserted_count += 1
+        return inserted_count
+
+    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
+        return self.monitored_sources.get(source_id)
+
+    def list_monitored_sources(
+        self,
+        *,
+        competitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> list[MonitoredSource]:
+        sources = list(self.monitored_sources.values())
+        if competitor_id is not None:
+            sources = [source for source in sources if source.competitor_id == competitor_id]
+        if enabled is not None:
+            sources = [source for source in sources if source.enabled == enabled]
+        return sources
+
+
 class _SQLiteRepository:
     """Shared SQLite connection and schema setup."""
 
@@ -230,7 +287,11 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                 severity TEXT NOT NULL,
                 willingness_to_pay INTEGER,
                 category TEXT,
-                confidence REAL NOT NULL
+                confidence REAL NOT NULL,
+                competitor_id TEXT,
+                evidence_url TEXT,
+                evidence_text TEXT,
+                detected_at TEXT
             )
             """
         )
@@ -244,8 +305,9 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                 INSERT OR IGNORE INTO signals (
                     id, post_id, pain, user_type, job_to_be_done,
                     current_workaround, urgency, severity, willingness_to_pay,
-                    category, confidence
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, confidence, competitor_id, evidence_url,
+                    evidence_text, detected_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     signal.id,
@@ -259,6 +321,10 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                     _bool_to_int(signal.willingness_to_pay),
                     signal.category,
                     signal.confidence,
+                    signal.competitor_id,
+                    signal.evidence_url,
+                    signal.evidence_text,
+                    _datetime_to_text(signal.detected_at),
                 ),
             )
             inserted_count += cursor.rowcount
@@ -445,6 +511,136 @@ class SQLiteSourceLocatorRepository(_SQLiteRepository, SourceLocatorRepository):
         return [_source_locator_from_row(row) for row in rows]
 
 
+class SQLiteCompetitorRepository(_SQLiteRepository, CompetitorRepository):
+    """SQLite-backed competitor repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS competitors (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                website TEXT,
+                category TEXT,
+                description TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_competitors(self, competitors: list[Competitor]) -> int:
+        inserted_count = 0
+        for competitor in competitors:
+            cursor = self.connection.execute(
+                """
+                INSERT OR IGNORE INTO competitors (
+                    id, name, website, category, description, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    competitor.id,
+                    competitor.name,
+                    competitor.website,
+                    competitor.category,
+                    competitor.description,
+                    _datetime_to_text(competitor.created_at),
+                ),
+            )
+            inserted_count += cursor.rowcount
+        self.connection.commit()
+        return inserted_count
+
+    def get_competitor(self, competitor_id: str) -> Competitor | None:
+        row = self.connection.execute(
+            "SELECT * FROM competitors WHERE id = ?",
+            (competitor_id,),
+        ).fetchone()
+        return _competitor_from_row(row) if row else None
+
+    def list_competitors(self) -> list[Competitor]:
+        rows = self.connection.execute("SELECT * FROM competitors ORDER BY name").fetchall()
+        return [_competitor_from_row(row) for row in rows]
+
+
+class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceRepository):
+    """SQLite-backed monitored source repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monitored_sources (
+                id TEXT PRIMARY KEY,
+                competitor_id TEXT NOT NULL,
+                locator TEXT NOT NULL UNIQUE,
+                source_type TEXT NOT NULL,
+                enabled INTEGER NOT NULL,
+                limit_value INTEGER,
+                scan_frequency TEXT,
+                last_scanned_at TEXT,
+                last_error TEXT,
+                options TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
+        inserted_count = 0
+        for source in sources:
+            cursor = self.connection.execute(
+                """
+                INSERT OR IGNORE INTO monitored_sources (
+                    id, competitor_id, locator, source_type, enabled,
+                    limit_value, scan_frequency, last_scanned_at, last_error, options
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source.id,
+                    source.competitor_id,
+                    source.locator,
+                    source.source_type,
+                    _bool_to_int(source.enabled),
+                    source.limit,
+                    source.scan_frequency,
+                    _datetime_to_text(source.last_scanned_at),
+                    source.last_error,
+                    _to_json(source.options),
+                ),
+            )
+            inserted_count += cursor.rowcount
+        self.connection.commit()
+        return inserted_count
+
+    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
+        row = self.connection.execute(
+            "SELECT * FROM monitored_sources WHERE id = ?",
+            (source_id,),
+        ).fetchone()
+        return _monitored_source_from_row(row) if row else None
+
+    def list_monitored_sources(
+        self,
+        *,
+        competitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> list[MonitoredSource]:
+        query = "SELECT * FROM monitored_sources"
+        clauses = []
+        params = []
+        if competitor_id is not None:
+            clauses.append("competitor_id = ?")
+            params.append(competitor_id)
+        if enabled is not None:
+            clauses.append("enabled = ?")
+            params.append(_bool_to_int(enabled))
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_monitored_source_from_row(row) for row in rows]
+
+
 class _PostgresRepository:
     """Shared Postgres connection handling."""
 
@@ -544,19 +740,74 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
                 ),
             )
             inserted_count += _rowcount(cursor)
+            self._save_signal_evidence(signal)
         self.connection.commit()
         return inserted_count
 
     def get_signal(self, signal_id: str) -> Signal | None:
         row = self.connection.execute(
-            "SELECT * FROM signals WHERE id = %s",
+            """
+            SELECT
+                s.*,
+                e.competitor_id,
+                e.evidence_url,
+                e.evidence_text,
+                e.detected_at
+            FROM signals s
+            LEFT JOIN signal_evidence e ON e.signal_id = s.id
+            WHERE s.id = %s
+            """,
             (signal_id,),
         ).fetchone()
         return _signal_from_row(row) if row else None
 
     def list_signals(self) -> list[Signal]:
-        rows = self.connection.execute("SELECT * FROM signals ORDER BY id").fetchall()
+        rows = self.connection.execute(
+            """
+            SELECT
+                s.*,
+                e.competitor_id,
+                e.evidence_url,
+                e.evidence_text,
+                e.detected_at
+            FROM signals s
+            LEFT JOIN signal_evidence e ON e.signal_id = s.id
+            ORDER BY s.id
+            """
+        ).fetchall()
         return [_signal_from_row(row) for row in rows]
+
+    def _save_signal_evidence(self, signal: Signal) -> None:
+        if not any(
+            [
+                signal.competitor_id,
+                signal.evidence_url,
+                signal.evidence_text,
+                signal.detected_at,
+            ]
+        ):
+            return
+
+        self.connection.execute(
+            """
+            INSERT INTO signal_evidence (
+                signal_id, competitor_id, evidence_url, evidence_text, detected_at
+            ) VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (signal_id) DO UPDATE SET
+                competitor_id = EXCLUDED.competitor_id,
+                evidence_url = EXCLUDED.evidence_url,
+                evidence_text = EXCLUDED.evidence_text,
+                detected_at = EXCLUDED.detected_at,
+                updated_at = now()
+            """,
+            (
+                signal.id,
+                signal.competitor_id,
+                signal.evidence_url,
+                signal.evidence_text,
+                signal.detected_at or datetime.now(tz=UTC),
+            ),
+        )
 
 
 class PostgresScoreRepository(_PostgresRepository, ScoreRepository):
@@ -684,6 +935,104 @@ class PostgresSourceLocatorRepository(_PostgresRepository, SourceLocatorReposito
         return [_source_locator_from_row(row) for row in rows]
 
 
+class PostgresCompetitorRepository(_PostgresRepository, CompetitorRepository):
+    """Postgres-backed competitor repository."""
+
+    def save_competitors(self, competitors: list[Competitor]) -> int:
+        inserted_count = 0
+        for competitor in competitors:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO competitors (
+                    id, name, website, category, description, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    competitor.id,
+                    competitor.name,
+                    competitor.website,
+                    competitor.category,
+                    competitor.description,
+                    competitor.created_at,
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_competitor(self, competitor_id: str) -> Competitor | None:
+        row = self.connection.execute(
+            "SELECT * FROM competitors WHERE id = %s",
+            (competitor_id,),
+        ).fetchone()
+        return _competitor_from_row(row) if row else None
+
+    def list_competitors(self) -> list[Competitor]:
+        rows = self.connection.execute("SELECT * FROM competitors ORDER BY name").fetchall()
+        return [_competitor_from_row(row) for row in rows]
+
+
+class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepository):
+    """Postgres-backed monitored source repository."""
+
+    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
+        inserted_count = 0
+        for source in sources:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO monitored_sources (
+                    id, competitor_id, locator, source_type, enabled,
+                    limit_value, scan_frequency, last_scanned_at, last_error, options
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    source.id,
+                    source.competitor_id,
+                    source.locator,
+                    source.source_type,
+                    source.enabled,
+                    source.limit,
+                    source.scan_frequency,
+                    source.last_scanned_at,
+                    source.last_error,
+                    _to_json(source.options),
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
+        row = self.connection.execute(
+            "SELECT * FROM monitored_sources WHERE id = %s",
+            (source_id,),
+        ).fetchone()
+        return _monitored_source_from_row(row) if row else None
+
+    def list_monitored_sources(
+        self,
+        *,
+        competitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> list[MonitoredSource]:
+        query = "SELECT * FROM monitored_sources"
+        clauses = []
+        params = []
+        if competitor_id is not None:
+            clauses.append("competitor_id = %s")
+            params.append(competitor_id)
+        if enabled is not None:
+            clauses.append("enabled = %s")
+            params.append(enabled)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY id"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_monitored_source_from_row(row) for row in rows]
+
+
 def _connect_postgres(database_url: str) -> Any:
     try:
         import psycopg
@@ -765,6 +1114,10 @@ def _signal_from_row(row: sqlite3.Row) -> Signal:
         willingness_to_pay=_bool_from_int(row["willingness_to_pay"]),
         category=row["category"],
         confidence=_float(row["confidence"]),
+        competitor_id=_row_get(row, "competitor_id"),
+        evidence_url=_row_get(row, "evidence_url"),
+        evidence_text=_row_get(row, "evidence_text"),
+        detected_at=_datetime_from_text(_row_get(row, "detected_at")),
     )
 
 
@@ -800,3 +1153,36 @@ def _source_locator_from_row(row: sqlite3.Row) -> SourceLocator:
         limit=row["limit_value"],
         options=_from_json(row["options"]),
     )
+
+
+def _competitor_from_row(row: sqlite3.Row) -> Competitor:
+    return Competitor.create(
+        id=row["id"],
+        name=row["name"],
+        website=row["website"],
+        category=row["category"],
+        description=row["description"],
+        created_at=_datetime_from_text(row["created_at"]),
+    )
+
+
+def _monitored_source_from_row(row: sqlite3.Row) -> MonitoredSource:
+    return MonitoredSource.create(
+        id=row["id"],
+        competitor_id=row["competitor_id"],
+        locator=row["locator"],
+        source_type=row["source_type"],
+        enabled=bool(row["enabled"]),
+        limit=row["limit_value"],
+        scan_frequency=row["scan_frequency"],
+        last_scanned_at=_datetime_from_text(row["last_scanned_at"]),
+        last_error=row["last_error"],
+        options=_from_json(row["options"]),
+    )
+
+
+def _row_get(row: Any, key: str) -> Any:
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return None

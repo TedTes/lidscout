@@ -2,10 +2,11 @@
 from typing import Protocol
 
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import MonitoredSource, SourceLocator
 
 
 class PostRepository(Protocol):
@@ -85,4 +86,41 @@ class SourceLocatorRepository(Protocol):
 
     def list_source_locators(self, enabled: bool | None = None) -> list[SourceLocator]:
         """Load source locators, optionally filtered by enabled state."""
+        ...
+
+
+class CompetitorRepository(Protocol):
+    """Persistence boundary for monitored competitors."""
+
+    def save_competitors(self, competitors: list[Competitor]) -> int:
+        """Persist competitors and return the number saved."""
+        ...
+
+    def get_competitor(self, competitor_id: str) -> Competitor | None:
+        """Load one competitor by id."""
+        ...
+
+    def list_competitors(self) -> list[Competitor]:
+        """Load all persisted competitors."""
+        ...
+
+
+class MonitoredSourceRepository(Protocol):
+    """Persistence boundary for competitor-linked monitored sources."""
+
+    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
+        """Persist monitored sources and return the number saved."""
+        ...
+
+    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
+        """Load one monitored source by id."""
+        ...
+
+    def list_monitored_sources(
+        self,
+        *,
+        competitor_id: str | None = None,
+        enabled: bool | None = None,
+    ) -> list[MonitoredSource]:
+        """Load monitored sources, optionally filtered by competitor and enabled state."""
         ...

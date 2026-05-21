@@ -1,5 +1,6 @@
 """Signal domain entities."""
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 from domain.score import Severity
@@ -22,6 +23,10 @@ class Signal:
     willingness_to_pay: bool | None
     category: str | None
     confidence: float
+    competitor_id: str | None = None
+    evidence_url: str | None = None
+    evidence_text: str | None = None
+    detected_at: datetime | None = None
 
     @classmethod
     def create(
@@ -38,6 +43,10 @@ class Signal:
         willingness_to_pay: bool | None = None,
         category: str | None = None,
         confidence: float = 0.0,
+        competitor_id: str | None = None,
+        evidence_url: str | None = None,
+        evidence_text: str | None = None,
+        detected_at: datetime | None = None,
     ) -> "Signal":
         """Create a validated signal entity."""
         signal_id = id.strip()
@@ -69,6 +78,10 @@ class Signal:
             willingness_to_pay=willingness_to_pay,
             category=cls._clean_optional(category),
             confidence=confidence,
+            competitor_id=cls._clean_optional(competitor_id),
+            evidence_url=cls._clean_optional(evidence_url),
+            evidence_text=cls._clean_optional(evidence_text),
+            detected_at=detected_at,
         )
 
     @staticmethod

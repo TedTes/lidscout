@@ -4,12 +4,15 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
     SQLiteClusterRepository,
+    SQLiteCompetitorRepository,
+    SQLiteMonitoredSourceRepository,
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
@@ -145,6 +148,62 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(
                 repository.list_source_locators(enabled=False),
                 [disabled_locator],
+            )
+            repository.close()
+
+    def test_sqlite_competitor_repository_saves_and_loads_competitors(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteCompetitorRepository(database_path)
+            competitor = Competitor.create(
+                id="competitor-1",
+                name="Acme CRM",
+                website="https://acme.example",
+                category="crm",
+            )
+
+            saved_count = repository.save_competitors([competitor, competitor])
+            repository.close()
+
+            repository = SQLiteCompetitorRepository(database_path)
+            self.assertEqual(saved_count, 1)
+            self.assertEqual(repository.get_competitor("competitor-1"), competitor)
+            self.assertEqual(repository.list_competitors(), [competitor])
+            repository.close()
+
+    def test_sqlite_monitored_source_repository_saves_and_loads_sources(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteMonitoredSourceRepository(database_path)
+            source = MonitoredSource.create(
+                id="source-1",
+                competitor_id="competitor-1",
+                locator="https://acme.example/reviews",
+                source_type="reviews",
+                limit=10,
+            )
+            disabled_source = MonitoredSource.create(
+                id="source-2",
+                competitor_id="competitor-2",
+                locator="https://other.example/reviews",
+                enabled=False,
+            )
+
+            saved_count = repository.save_monitored_sources(
+                [source, source, disabled_source]
+            )
+            repository.close()
+
+            repository = SQLiteMonitoredSourceRepository(database_path)
+            self.assertEqual(saved_count, 2)
+            self.assertEqual(repository.get_monitored_source("source-1"), source)
+            self.assertEqual(
+                repository.list_monitored_sources(competitor_id="competitor-1"),
+                [source],
+            )
+            self.assertEqual(
+                repository.list_monitored_sources(enabled=False),
+                [disabled_source],
             )
             repository.close()
 

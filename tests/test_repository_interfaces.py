@@ -1,12 +1,15 @@
 import unittest
 
 from domain.cluster import SignalCluster
+from domain.competitor import Competitor
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
+    InMemoryCompetitorRepository,
+    InMemoryMonitoredSourceRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -91,6 +94,43 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.source_locators["locator-1"], locator)
         self.assertEqual(repository.get_source_locator("locator-1"), locator)
         self.assertEqual(repository.list_source_locators(enabled=True), [locator])
+
+    def test_competitor_repository_persists_unique_competitors(self):
+        repository = InMemoryCompetitorRepository()
+        competitor = Competitor.create(id="competitor-1", name="Acme CRM")
+
+        saved_count = repository.save_competitors([competitor, competitor])
+
+        self.assertEqual(saved_count, 1)
+        self.assertEqual(repository.competitors["competitor-1"], competitor)
+        self.assertEqual(repository.get_competitor("competitor-1"), competitor)
+        self.assertEqual(repository.list_competitors(), [competitor])
+
+    def test_monitored_source_repository_filters_sources(self):
+        repository = InMemoryMonitoredSourceRepository()
+        source = MonitoredSource.create(
+            id="source-1",
+            competitor_id="competitor-1",
+            locator="https://acme.example/reviews",
+        )
+        disabled_source = MonitoredSource.create(
+            id="source-2",
+            competitor_id="competitor-2",
+            locator="https://other.example/reviews",
+            enabled=False,
+        )
+
+        saved_count = repository.save_monitored_sources(
+            [source, source, disabled_source]
+        )
+
+        self.assertEqual(saved_count, 2)
+        self.assertEqual(repository.get_monitored_source("source-1"), source)
+        self.assertEqual(
+            repository.list_monitored_sources(competitor_id="competitor-1"),
+            [source],
+        )
+        self.assertEqual(repository.list_monitored_sources(enabled=False), [disabled_source])
 
 
 if __name__ == "__main__":
