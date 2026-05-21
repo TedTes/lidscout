@@ -5,6 +5,7 @@ import unittest
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -13,6 +14,7 @@ from infrastructure.db import (
     SQLiteClusterRepository,
     SQLiteCompetitorRepository,
     SQLiteMonitoredSourceRepository,
+    SQLiteOpportunityRepository,
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
@@ -122,6 +124,32 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_cluster("cluster-1"), cluster)
             self.assertEqual(repository.list_clusters(), [cluster])
+            repository.close()
+
+    def test_sqlite_opportunity_repository_saves_and_loads_opportunities(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteOpportunityRepository(database_path)
+            opportunity = Opportunity.create(
+                id="opportunity-1",
+                cluster_id="cluster-1",
+                title="Reduce reporting setup friction",
+                target_user="finance teams",
+                pain_summary="Finance teams cannot get useful reports quickly.",
+                why_it_matters="The cluster has repeated evidence of reporting pain.",
+                suggested_wedge="Ship a focused reporting setup assistant.",
+                evidence_count=2,
+                confidence=0.82,
+                evidence_signal_ids=["signal-1", "signal-2"],
+            )
+
+            saved_count = repository.save_opportunities([opportunity, opportunity])
+            repository.close()
+
+            repository = SQLiteOpportunityRepository(database_path)
+            self.assertEqual(saved_count, 1)
+            self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
+            self.assertEqual(repository.list_opportunities(), [opportunity])
             repository.close()
 
     def test_sqlite_source_locator_repository_saves_and_loads_locators(self):

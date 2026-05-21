@@ -505,6 +505,70 @@ class SQLiteClusterRepository(_SQLiteRepository, ClusterRepository):
         return [_cluster_from_row(row) for row in rows]
 
 
+class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
+    """SQLite-backed synthesized opportunity repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS opportunities (
+                id TEXT PRIMARY KEY,
+                cluster_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                target_user TEXT NOT NULL,
+                pain_summary TEXT NOT NULL,
+                why_it_matters TEXT NOT NULL,
+                suggested_wedge TEXT NOT NULL,
+                evidence_count INTEGER NOT NULL,
+                confidence REAL NOT NULL,
+                evidence_signal_ids TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_opportunities(self, opportunities: list[Opportunity]) -> int:
+        inserted_count = 0
+        for opportunity in opportunities:
+            cursor = self.connection.execute(
+                """
+                INSERT OR IGNORE INTO opportunities (
+                    id, cluster_id, title, target_user, pain_summary,
+                    why_it_matters, suggested_wedge, evidence_count,
+                    confidence, evidence_signal_ids
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    opportunity.id,
+                    opportunity.cluster_id,
+                    opportunity.title,
+                    opportunity.target_user,
+                    opportunity.pain_summary,
+                    opportunity.why_it_matters,
+                    opportunity.suggested_wedge,
+                    opportunity.evidence_count,
+                    opportunity.confidence,
+                    _to_json(opportunity.evidence_signal_ids),
+                ),
+            )
+            inserted_count += cursor.rowcount
+        self.connection.commit()
+        return inserted_count
+
+    def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
+        row = self.connection.execute(
+            "SELECT * FROM opportunities WHERE id = ?",
+            (opportunity_id,),
+        ).fetchone()
+        return _opportunity_from_row(row) if row else None
+
+    def list_opportunities(self) -> list[Opportunity]:
+        rows = self.connection.execute(
+            "SELECT * FROM opportunities ORDER BY id"
+        ).fetchall()
+        return [_opportunity_from_row(row) for row in rows]
+
+
 class SQLiteSourceLocatorRepository(_SQLiteRepository, SourceLocatorRepository):
     """SQLite-backed source locator repository."""
 
@@ -990,6 +1054,52 @@ class PostgresClusterRepository(_PostgresRepository, ClusterRepository):
         return [_cluster_from_row(row) for row in rows]
 
 
+class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
+    """Postgres-backed synthesized opportunity repository."""
+
+    def save_opportunities(self, opportunities: list[Opportunity]) -> int:
+        inserted_count = 0
+        for opportunity in opportunities:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO opportunities (
+                    id, cluster_id, title, target_user, pain_summary,
+                    why_it_matters, suggested_wedge, evidence_count,
+                    confidence, evidence_signal_ids
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    opportunity.id,
+                    opportunity.cluster_id,
+                    opportunity.title,
+                    opportunity.target_user,
+                    opportunity.pain_summary,
+                    opportunity.why_it_matters,
+                    opportunity.suggested_wedge,
+                    opportunity.evidence_count,
+                    opportunity.confidence,
+                    _to_json(opportunity.evidence_signal_ids),
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
+        row = self.connection.execute(
+            "SELECT * FROM opportunities WHERE id = %s",
+            (opportunity_id,),
+        ).fetchone()
+        return _opportunity_from_row(row) if row else None
+
+    def list_opportunities(self) -> list[Opportunity]:
+        rows = self.connection.execute(
+            "SELECT * FROM opportunities ORDER BY id"
+        ).fetchall()
+        return [_opportunity_from_row(row) for row in rows]
+
+
 class PostgresSourceLocatorRepository(_PostgresRepository, SourceLocatorRepository):
     """Postgres-backed source locator repository."""
 
@@ -1276,6 +1386,21 @@ def _cluster_from_row(row: sqlite3.Row) -> SignalCluster:
         frequency=row["frequency"],
         average_score=_float(row["average_score"]),
         top_examples=_from_json(row["top_examples"]),
+    )
+
+
+def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
+    return Opportunity.create(
+        id=row["id"],
+        cluster_id=row["cluster_id"],
+        title=row["title"],
+        target_user=row["target_user"],
+        pain_summary=row["pain_summary"],
+        why_it_matters=row["why_it_matters"],
+        suggested_wedge=row["suggested_wedge"],
+        evidence_count=row["evidence_count"],
+        confidence=_float(row["confidence"]),
+        evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
     )
 
 

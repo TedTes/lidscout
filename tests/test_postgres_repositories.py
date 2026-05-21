@@ -4,6 +4,7 @@ import unittest
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -12,6 +13,7 @@ from infrastructure.db import (
     PostgresClusterRepository,
     PostgresCompetitorRepository,
     PostgresMonitoredSourceRepository,
+    PostgresOpportunityRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
@@ -199,6 +201,47 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.save_clusters([cluster]), 1)
         self.assertEqual(repository.get_cluster("cluster-1"), cluster)
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_opportunity_repository_saves_and_loads_opportunities(self):
+        opportunity = Opportunity.create(
+            id="opportunity-1",
+            cluster_id="cluster-1",
+            title="Reduce reporting setup friction",
+            target_user="finance teams",
+            pain_summary="Finance teams cannot get useful reports quickly.",
+            why_it_matters="The cluster has repeated evidence of reporting pain.",
+            suggested_wedge="Ship a focused reporting setup assistant.",
+            evidence_count=2,
+            confidence=0.82,
+            evidence_signal_ids=["signal-1", "signal-2"],
+        )
+        row = {
+            "id": "opportunity-1",
+            "cluster_id": "cluster-1",
+            "title": "Reduce reporting setup friction",
+            "target_user": "finance teams",
+            "pain_summary": "Finance teams cannot get useful reports quickly.",
+            "why_it_matters": "The cluster has repeated evidence of reporting pain.",
+            "suggested_wedge": "Ship a focused reporting setup assistant.",
+            "evidence_count": 2,
+            "confidence": 0.82,
+            "evidence_signal_ids": ["signal-1", "signal-2"],
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresOpportunityRepository(connection=connection)
+
+        self.assertEqual(repository.save_opportunities([opportunity]), 1)
+        self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
+        self.assertEqual(repository.list_opportunities(), [opportunity])
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(json.loads(connection.calls[0][1][-1]), ["signal-1", "signal-2"])
         self.assertEqual(connection.commit_count, 1)
 
     def test_source_locator_repository_saves_and_loads_enabled_locators(self):
