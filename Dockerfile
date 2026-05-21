@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Install system dependencies for Playwright
@@ -37,9 +40,6 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright
-RUN pip install playwright==1.40.0
-
 # Install Chromium browser
 RUN playwright install chromium
 
@@ -51,9 +51,10 @@ COPY adapters ./adapters
 COPY infrastructure ./infrastructure
 COPY shared ./shared
 COPY workers ./workers
+COPY start.sh ./start.sh
 
-# Expose port
+# Railway injects PORT at runtime. 8000 is the local/container fallback.
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./start.sh"]

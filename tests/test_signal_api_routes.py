@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from api.main import app
+from api.main import app, health_check
 from api.routes.signals import (
     PipelineRunRequest,
     SignalApiDependencies,
@@ -75,6 +75,13 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/clusters", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
+        self.assertIn("/health", paths)
+
+    def test_health_check_response(self):
+        response = asyncio.run(health_check())
+
+        self.assertEqual(response["status"], "healthy")
+        self.assertEqual(response["service"], "lidscout-api")
 
     def test_lists_signals(self):
         signal_repository = InMemorySignalRepository()

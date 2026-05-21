@@ -49,6 +49,19 @@ async def root():
     }
 
 
+@app.get("/health")
+async def health_check():
+    """Railway health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "lidscout-api",
+        "version": settings.api_version,
+    }
+
+
 if __name__ == "__main__":
+    import os
+
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))

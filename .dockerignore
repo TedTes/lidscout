@@ -21,3 +21,10 @@ web_client/node_modules/
 web_client/.next/
 web_client/out/
 web_client/tsconfig.tsbuildinfo
+tests/
+web_client/
+supabase/
+memory/
+*.sqlite
+*.sqlite3
+lidscout.db
