@@ -361,6 +361,7 @@ async def run_pipeline(
             monitored_source_repository=dependencies.monitored_source_repository,
             source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
+            relevance_llm_client=dependencies.relevance_llm_client,
             embedding_client=dependencies.embedding_client,
             email_client=dependencies.email_client,
             recipient=request.recipient,
@@ -543,6 +544,10 @@ def _serialize_pipeline_result(result: PipelineRunResult) -> dict[str, Any]:
     return {
         "fetched_count": result.fetched_count,
         "fetch_failed_count": result.fetch_failed_count,
+        "rule_filtered_count": result.rule_filtered_count,
+        "llm_filtered_count": result.llm_filtered_count,
+        "relevance_failed_count": result.relevance_failed_count,
+        "extraction_attempted_count": result.extraction_attempted_count,
         "ingestion": {
             "received_count": result.ingestion_result.received_count,
             "inserted_count": result.ingestion_result.inserted_count,

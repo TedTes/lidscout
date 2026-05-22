@@ -29,7 +29,7 @@ class FakeSourceAdapter:
                 source="web",
                 source_id=source.locator,
                 title="Review page",
-                body="Export workflows are painful for finance teams.",
+                body="Acme CRM export workflows are painful for finance teams.",
                 url=source.locator,
                 metadata={
                     key: value
@@ -53,6 +53,10 @@ class SequentialLLMClient(LLMClient):
     ) -> str:
         self.calls.append((prompt, post_content, response_schema))
         return self.responses.pop(0)
+
+
+class RecordingLLMClient(SequentialLLMClient):
+    pass
 
 
 class FakeEmbeddingClient(EmbeddingClient):
@@ -329,6 +333,129 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.extracted_count, 0)
         self.assertEqual(result.no_signal_count, 1)
         self.assertEqual(signal_repository.list_signals(), [])
+
+    def test_filters_wrong_subject_before_extraction(self):
+        extraction_llm_client = RecordingLLMClient(
+            [
+                """
+                {
+                  "has_signal": true,
+                  "is_about_competitor": true,
+                  "competitor_match_reason": null,
+                  "signal": {
+                    "pain": "Should not be extracted",
+                    "user_type": null,
+                    "job_to_be_done": null,
+                    "current_workaround": null,
+                    "urgency": 3,
+                    "severity": 3,
+                    "willingness_to_pay": 3,
+                    "category": "other",
+                    "confidence": 0.5
+                  }
+                }
+                """
+            ]
+        )
+        relevance_llm_client = RecordingLLMClient(
+            [
+                """
+                {
+                  "is_relevant": false,
+                  "is_about_competitor": false,
+                  "has_pain_or_request": true,
+                  "rejection_category": "wrong_subject",
+                  "reason": "The complaint is about another product.",
+                  "confidence": 0.93
+                }
+                """
+            ]
+        )
+        post_repository = InMemoryPostRepository()
+        signal_repository = InMemorySignalRepository()
+        config = PipelineConfig(
+            post_repository=post_repository,
+            signal_repository=signal_repository,
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            llm_client=extraction_llm_client,
+            relevance_llm_client=relevance_llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            sources=[SourceInput.create(locator="https://example.com/reviews")],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.rule_filtered_count, 0)
+        self.assertEqual(result.llm_filtered_count, 1)
+        self.assertEqual(result.relevance_failed_count, 0)
+        self.assertEqual(result.extraction_attempted_count, 0)
+        self.assertEqual(result.extracted_count, 0)
+        self.assertEqual(extraction_llm_client.calls, [])
+        self.assertEqual(signal_repository.list_signals(), [])
+
+    def test_extracts_only_posts_that_pass_relevance_filter(self):
+        extraction_llm_client = RecordingLLMClient(
+            [
+                """
+                {
+                  "has_signal": true,
+                  "is_about_competitor": true,
+                  "competitor_match_reason": null,
+                  "signal": {
+                    "pain": "Export workflows are painful",
+                    "user_type": "finance teams",
+                    "job_to_be_done": "export reports",
+                    "current_workaround": "manual CSV cleanup",
+                    "urgency": 3,
+                    "severity": 3,
+                    "willingness_to_pay": 5,
+                    "category": "reporting",
+                    "confidence": 0.8
+                  }
+                }
+                """
+            ]
+        )
+        relevance_llm_client = RecordingLLMClient(
+            [
+                """
+                {
+                  "is_relevant": true,
+                  "is_about_competitor": true,
+                  "has_pain_or_request": true,
+                  "rejection_category": null,
+                  "reason": "The post complains about export workflows.",
+                  "confidence": 0.9
+                }
+                """
+            ]
+        )
+        signal_repository = InMemorySignalRepository()
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=signal_repository,
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            llm_client=extraction_llm_client,
+            relevance_llm_client=relevance_llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            sources=[SourceInput.create(locator="https://example.com/reviews")],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.extraction_attempted_count, 1)
+        self.assertEqual(result.extracted_count, 1)
+        self.assertEqual(len(extraction_llm_client.calls), 1)
+        self.assertEqual(signal_repository.list_signals()[0].pain, "Export workflows are painful")
 
 
 if __name__ == "__main__":

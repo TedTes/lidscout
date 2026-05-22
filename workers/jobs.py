@@ -44,6 +44,7 @@ def run_configured_daily_pipeline(
             monitored_source_repository=runtime_dependencies.monitored_source_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
             llm_client=runtime_dependencies.llm_client,
+            relevance_llm_client=runtime_dependencies.relevance_llm_client,
             embedding_client=runtime_dependencies.embedding_client,
             email_client=runtime_dependencies.email_client,
             recipient=resolved_recipient,
@@ -88,6 +89,10 @@ def _pipeline_job_summary(result: PipelineRunResult) -> dict[str, object]:
     return {
         "fetched_count": result.fetched_count,
         "fetch_failed_count": result.fetch_failed_count,
+        "rule_filtered_count": result.rule_filtered_count,
+        "llm_filtered_count": result.llm_filtered_count,
+        "relevance_failed_count": result.relevance_failed_count,
+        "extraction_attempted_count": result.extraction_attempted_count,
         "extracted_count": result.extracted_count,
         "clustered_count": result.clustered_count,
         "opportunity_synthesized_count": (

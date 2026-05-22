@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from application.clustering import ClusteringService
 from application.extraction import ExtractionService
+from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from application.ingestion import (
     IngestionResult,
     IngestionService,
@@ -48,6 +49,7 @@ class PipelineConfig:
     embedding_client: EmbeddingClient
     email_client: EmailClient
     recipient: str
+    relevance_llm_client: LLMClient | None = None
     opportunity_repository: OpportunityRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
@@ -65,6 +67,10 @@ class PipelineRunResult:
     fetched_count: int
     fetch_failed_count: int
     ingestion_result: IngestionResult
+    rule_filtered_count: int
+    llm_filtered_count: int
+    relevance_failed_count: int
+    extraction_attempted_count: int
     extracted_count: int
     no_signal_count: int
     extraction_failed_count: int
@@ -85,8 +91,12 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     ingestion_service = IngestionService(config.post_repository)
     ingestion_result = ingestion_service.ingest(posts)
 
-    signals, no_signal_count, extraction_failed_count = _extract_signals(
+    relevance_result = _filter_relevant_posts(
         posts,
+        config.relevance_llm_client,
+    )
+    signals, no_signal_count, extraction_failed_count = _extract_signals(
+        relevance_result.posts,
         config.llm_client,
     )
     signal_inserted_count = config.signal_repository.save_signals(signals)
@@ -119,6 +129,10 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         fetched_count=len(posts),
         fetch_failed_count=fetch_failed_count,
         ingestion_result=ingestion_result,
+        rule_filtered_count=relevance_result.rule_filtered_count,
+        llm_filtered_count=relevance_result.llm_filtered_count,
+        relevance_failed_count=relevance_result.failed_count,
+        extraction_attempted_count=len(relevance_result.posts),
         extracted_count=len(signals),
         no_signal_count=no_signal_count,
         extraction_failed_count=extraction_failed_count,
@@ -131,6 +145,16 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         report=report,
         email_result=email_result,
     )
+
+
+@dataclass(frozen=True)
+class RelevanceFilterResult:
+    """Posts that passed relevance gates plus filter counts."""
+
+    posts: list[RawPost]
+    rule_filtered_count: int
+    llm_filtered_count: int
+    failed_count: int
 
 
 def _synthesize_opportunities(
@@ -169,6 +193,51 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
         failed_count += source_result.failed_count
 
     return posts, failed_count
+
+
+def _filter_relevant_posts(
+    posts: list[RawPost],
+    relevance_llm_client: LLMClient | None,
+) -> RelevanceFilterResult:
+    rule_filter = RuleBasedRelevanceFilter()
+    llm_filter = (
+        LLMRelevanceFilter(relevance_llm_client)
+        if relevance_llm_client is not None
+        else None
+    )
+    relevant_posts: list[RawPost] = []
+    rule_filtered_count = 0
+    llm_filtered_count = 0
+    failed_count = 0
+
+    for post in posts:
+        rule_result = rule_filter.evaluate(post)
+        if not rule_result.is_relevant:
+            rule_filtered_count += 1
+            continue
+
+        if llm_filter is None:
+            relevant_posts.append(post)
+            continue
+
+        try:
+            llm_result = llm_filter.evaluate(post)
+        except Exception:
+            failed_count += 1
+            continue
+
+        if not llm_result.is_relevant:
+            llm_filtered_count += 1
+            continue
+
+        relevant_posts.append(post)
+
+    return RelevanceFilterResult(
+        posts=relevant_posts,
+        rule_filtered_count=rule_filtered_count,
+        llm_filtered_count=llm_filtered_count,
+        failed_count=failed_count,
+    )
 
 
 def _configured_sources(
