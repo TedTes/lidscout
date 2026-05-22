@@ -1,0 +1,102 @@
+[
+  {
+    "id": "acme-export-pain",
+    "post": {
+      "source": "web",
+      "source_id": "acme-export-pain",
+      "title": "Acme CRM exports keep failing",
+      "body": "The CSV export is broken and finance teams need a manual workaround every Friday.",
+      "url": "https://example.com/reviews/acme-export-pain",
+      "metadata": {
+        "competitor_id": "acme",
+        "competitor_name": "Acme CRM",
+        "competitor_domain": "acme.example"
+      }
+    },
+    "expected_relevant": true,
+    "expected_rejection_category": null,
+    "note": "Direct competitor complaint with workaround."
+  },
+  {
+    "id": "wrong-subject-syncbank",
+    "post": {
+      "source": "web",
+      "source_id": "wrong-subject-syncbank",
+      "title": "Rows is cheaper than SyncBank",
+      "body": "Users can save money with SyncBank compared to Rows.",
+      "url": "https://example.com/reviews/wrong-subject-syncbank",
+      "metadata": {
+        "competitor_id": "notion",
+        "competitor_name": "Notion",
+        "competitor_domain": "notion.so"
+      }
+    },
+    "expected_relevant": false,
+    "expected_rejection_category": "wrong_subject",
+    "note": "Regression fixture for cross-company contamination."
+  },
+  {
+    "id": "tutorial-template",
+    "post": {
+      "source": "web",
+      "source_id": "tutorial-template",
+      "title": "Acme CRM tutorial for dashboard templates",
+      "body": "A step by step guide with a free template for your sales dashboard.",
+      "url": "https://example.com/tutorials/acme-dashboard",
+      "metadata": {
+        "competitor_id": "acme",
+        "competitor_name": "Acme CRM"
+      }
+    },
+    "expected_relevant": false,
+    "expected_rejection_category": "tutorial_or_template"
+  },
+  {
+    "id": "job-posting",
+    "post": {
+      "source": "web",
+      "source_id": "job-posting",
+      "title": "Acme CRM is hiring",
+      "body": "We are hiring for a product manager. Apply now.",
+      "url": "https://example.com/jobs/acme-pm",
+      "metadata": {
+        "competitor_id": "acme",
+        "competitor_name": "Acme CRM"
+      }
+    },
+    "expected_relevant": false,
+    "expected_rejection_category": "job_posting"
+  },
+  {
+    "id": "feature-request",
+    "post": {
+      "source": "web",
+      "source_id": "feature-request",
+      "title": "Wish Acme CRM had bulk edits",
+      "body": "Our team needs a bulk edit feature because updating records one by one is too slow.",
+      "url": "https://example.com/forum/acme-bulk-edits",
+      "metadata": {
+        "competitor_id": "acme",
+        "competitor_name": "Acme CRM"
+      }
+    },
+    "expected_relevant": true,
+    "expected_rejection_category": null
+  },
+  {
+    "id": "news",
+    "post": {
+      "source": "web",
+      "source_id": "news",
+      "title": "Acme CRM announced today a new funding round",
+      "body": "The company raised $20 million in a Series B round.",
+      "url": "https://example.com/news/acme-series-b",
+      "metadata": {
+        "competitor_id": "acme",
+        "competitor_name": "Acme CRM"
+      }
+    },
+    "expected_relevant": false,
+    "expected_rejection_category": "news"
+  }
+]
