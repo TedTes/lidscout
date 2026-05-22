@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import { ErrorPanel, LoadingPanel, Metric } from '@/components/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { Competitor, MonitoredSource } from '@/lib/types/signals';
+import { Competitor, MonitoredSource, SourceSuggestion } from '@/lib/types/signals';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -50,6 +50,24 @@ function IconWarn() {
   );
 }
 
+function IconChevron({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function toSlug(name: string): string {
@@ -69,13 +87,13 @@ function relativeTime(value: string | null): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-// ── Shared input styles ────────────────────────────────────────────────────────
+// ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputCls =
   'rounded-md border border-slate-700/60 bg-slate-800/60 px-2.5 py-1.5 text-xs text-slate-200 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/10 disabled:opacity-40';
 
 const btnPrimary =
-  'inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50';
+  'inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed';
 
 const btnSecondary =
   'inline-flex items-center gap-1.5 rounded-md border border-slate-700/60 bg-slate-800/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-slate-600 hover:text-slate-200 disabled:opacity-50';
@@ -115,6 +133,13 @@ export default function SourcesPage() {
 
   // Filter
   const [filterCompId, setFilterCompId] = useState('all');
+
+  // Suggestions
+  const [expandedCompId, setExpandedCompId] = useState<string | null>(null);
+  const [suggestionsCache, setSuggestionsCache] = useState<Map<string, SourceSuggestion[]>>(new Map());
+  const [suggestionsLoadingIds, setSuggestionsLoadingIds] = useState<Set<string>>(new Set());
+  const [suggestionsErrors, setSuggestionsErrors] = useState<Map<string, string>>(new Map());
+  const [addingLocators, setAddingLocators] = useState<Set<string>>(new Set());
 
   // ── Load ────────────────────────────────────────────────────────────────────
 
@@ -241,6 +266,55 @@ export default function SourcesPage() {
     setShowAddSource(true);
   };
 
+  // Suggestions ───────────────────────────────────────────────────────────────
+
+  const toggleSuggestions = async (competitorId: string) => {
+    if (expandedCompId === competitorId) {
+      setExpandedCompId(null);
+      return;
+    }
+    setExpandedCompId(competitorId);
+    if (suggestionsCache.has(competitorId)) return;
+
+    setSuggestionsLoadingIds(prev => new Set(prev).add(competitorId));
+    try {
+      const res = await signalApi.getCompetitorSourceSuggestions(competitorId);
+      setSuggestionsCache(prev => new Map([...prev, [competitorId, res.suggestions]]));
+      setSuggestionsErrors(prev => { const m = new Map(prev); m.delete(competitorId); return m; });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load suggestions';
+      setSuggestionsErrors(prev => new Map([...prev, [competitorId, msg]]));
+    } finally {
+      setSuggestionsLoadingIds(prev => { const s = new Set(prev); s.delete(competitorId); return s; });
+    }
+  };
+
+  const handleAddFromSuggestion = async (competitorId: string, suggestion: SourceSuggestion) => {
+    setAddingLocators(prev => new Set(prev).add(suggestion.locator));
+    try {
+      const created = await signalApi.createCompetitorSource(competitorId, {
+        locator: suggestion.locator,
+        source_type: suggestion.source_type,
+        limit: suggestion.limit ?? null,
+        options: suggestion.options,
+      });
+      setSources(prev => [...prev, created]);
+      // Mark as monitored in cache
+      setSuggestionsCache(prev => {
+        const cached = prev.get(competitorId);
+        if (!cached) return prev;
+        const updated = cached.map(s =>
+          s.locator === suggestion.locator ? { ...s, already_monitored: true } : s,
+        );
+        return new Map([...prev, [competitorId, updated]]);
+      });
+    } catch {
+      // The button re-enables via finally; no inline error needed here
+    } finally {
+      setAddingLocators(prev => { const s = new Set(prev); s.delete(suggestion.locator); return s; });
+    }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
@@ -258,9 +332,9 @@ export default function SourcesPage() {
             <Metric label="Source errors" value={errorCount} accent={errorCount > 0} />
           </div>
 
-          {/* Competitors */}
+          {/* ── Competitors ─────────────────────────────────────────── */}
           <section className="mb-5 rounded-xl border border-slate-800/80 bg-slate-900/40">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800/80">
+            <div className="flex items-center justify-between border-b border-slate-800/80 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-200">Competitors</h2>
               <button
                 onClick={() => { setShowAddComp(v => !v); setAddCompError(null); }}
@@ -270,42 +344,22 @@ export default function SourcesPage() {
               </button>
             </div>
 
-            {/* Add competitor inline form */}
+            {/* Add competitor form */}
             {showAddComp && (
-              <form onSubmit={handleAddCompetitor} className="border-b border-slate-800/60 px-4 py-3 bg-slate-800/20">
+              <form onSubmit={handleAddCompetitor} className="border-b border-slate-800/60 bg-slate-800/20 px-4 py-3">
                 <div className="flex flex-wrap items-end gap-2">
                   <Field label="Name *">
-                    <input
-                      required
-                      value={compForm.name}
-                      onChange={e => setCompForm(f => ({ ...f, name: e.target.value }))}
-                      placeholder="Acme Corp"
-                      className={`${inputCls} w-40`}
-                    />
+                    <input required value={compForm.name} onChange={e => setCompForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Corp" className={`${inputCls} w-40`} />
                   </Field>
                   <Field label="Category">
-                    <input
-                      value={compForm.category}
-                      onChange={e => setCompForm(f => ({ ...f, category: e.target.value }))}
-                      placeholder="SaaS"
-                      className={`${inputCls} w-28`}
-                    />
+                    <input value={compForm.category} onChange={e => setCompForm(f => ({ ...f, category: e.target.value }))} placeholder="SaaS" className={`${inputCls} w-28`} />
                   </Field>
                   <Field label="Website">
-                    <input
-                      value={compForm.website}
-                      onChange={e => setCompForm(f => ({ ...f, website: e.target.value }))}
-                      placeholder="acme.com"
-                      className={`${inputCls} w-36`}
-                    />
+                    <input value={compForm.website} onChange={e => setCompForm(f => ({ ...f, website: e.target.value }))} placeholder="acme.com" className={`${inputCls} w-36`} />
                   </Field>
                   <div className="flex items-center gap-2 pt-4">
-                    <button type="submit" disabled={savingComp} className={btnPrimary}>
-                      {savingComp ? 'Saving…' : 'Add'}
-                    </button>
-                    <button type="button" onClick={() => setShowAddComp(false)} className={btnSecondary}>
-                      Cancel
-                    </button>
+                    <button type="submit" disabled={savingComp} className={btnPrimary}>{savingComp ? 'Saving…' : 'Add'}</button>
+                    <button type="button" onClick={() => setShowAddComp(false)} className={btnSecondary}>Cancel</button>
                   </div>
                 </div>
                 {addCompError && <div className="mt-2"><ErrorPanel message={addCompError} /></div>}
@@ -319,112 +373,86 @@ export default function SourcesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                {/* Header */}
-                <div className="grid grid-cols-[1fr_100px_140px_70px_90px] gap-x-4 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
+                <div className="grid grid-cols-[1fr_100px_140px_60px_90px_28px] gap-x-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
                   <span>Name</span><span>Category</span><span>Website</span>
-                  <span>Sources</span><span />
+                  <span>Sources</span><span /><span />
                 </div>
                 {competitors.map(comp => (
-                  <div
-                    key={comp.id}
-                    className="grid grid-cols-[1fr_100px_140px_70px_90px] items-center gap-x-4 border-t border-slate-800/50 px-4 py-2.5 text-xs hover:bg-white/[0.01]"
-                  >
-                    <span className="font-medium text-slate-300">{comp.name}</span>
-                    <span className="text-slate-500">{comp.category ?? '—'}</span>
-                    <span className="truncate font-mono text-slate-600 text-[11px]">
-                      {comp.website ?? '—'}
-                    </span>
-                    <span className="tabular-nums text-slate-500">
-                      {sourceCountByCompId.get(comp.id) ?? 0}
-                    </span>
-                    <button
-                      onClick={() => openAddSourceFor(comp.id)}
-                      className="text-[11px] font-medium text-violet-500 hover:text-violet-400 transition text-right"
-                    >
-                      + source
-                    </button>
+                  <div key={comp.id}>
+                    {/* Competitor row */}
+                    <div className="grid grid-cols-[1fr_100px_140px_60px_90px_28px] items-center gap-x-3 border-t border-slate-800/50 px-4 py-2.5 text-xs hover:bg-white/[0.01]">
+                      <span className="font-medium text-slate-300">{comp.name}</span>
+                      <span className="text-slate-500">{comp.category ?? '—'}</span>
+                      <span className="truncate font-mono text-[11px] text-slate-600">{comp.website ?? '—'}</span>
+                      <span className="tabular-nums text-slate-500">{sourceCountByCompId.get(comp.id) ?? 0}</span>
+                      <button onClick={() => openAddSourceFor(comp.id)} className="text-[11px] font-medium text-violet-500 hover:text-violet-400 transition text-left">
+                        + source
+                      </button>
+                      {/* Suggestions toggle */}
+                      <button
+                        onClick={() => toggleSuggestions(comp.id)}
+                        title="Show suggested sources"
+                        className={`flex items-center justify-center rounded p-0.5 transition ${expandedCompId === comp.id ? 'text-violet-400 bg-violet-500/10' : 'text-slate-700 hover:text-slate-400'}`}
+                      >
+                        <IconChevron expanded={expandedCompId === comp.id} />
+                      </button>
+                    </div>
+
+                    {/* Suggestion panel */}
+                    {expandedCompId === comp.id && (
+                      <SuggestionPanel
+                        competitorId={comp.id}
+                        suggestions={suggestionsCache.get(comp.id)}
+                        loading={suggestionsLoadingIds.has(comp.id)}
+                        error={suggestionsErrors.get(comp.id) ?? null}
+                        addingLocators={addingLocators}
+                        onAdd={(s) => handleAddFromSuggestion(comp.id, s)}
+                        btnPrimary={btnPrimary}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </section>
 
-          {/* Sources */}
+          {/* ── Sources ─────────────────────────────────────────────── */}
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-800/80">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-200">Monitored sources</h2>
               <div className="flex items-center gap-2">
-                {/* Competitor filter */}
-                <select
-                  value={filterCompId}
-                  onChange={e => setFilterCompId(e.target.value)}
-                  className={`${inputCls} pr-6`}
-                >
+                <select value={filterCompId} onChange={e => setFilterCompId(e.target.value)} className={`${inputCls} pr-6`}>
                   <option value="all">All competitors</option>
-                  {competitors.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
+                  {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                <button
-                  onClick={() => { setShowAddSource(v => !v); setAddSourceError(null); }}
-                  className={btnSecondary}
-                >
+                <button onClick={() => { setShowAddSource(v => !v); setAddSourceError(null); }} className={btnSecondary}>
                   <IconPlus /> Add source
                 </button>
               </div>
             </div>
 
-            {/* Add source inline form */}
+            {/* Add source form */}
             {showAddSource && (
-              <form onSubmit={handleAddSource} className="border-b border-slate-800/60 px-4 py-3 bg-slate-800/20">
+              <form onSubmit={handleAddSource} className="border-b border-slate-800/60 bg-slate-800/20 px-4 py-3">
                 <div className="flex flex-wrap items-end gap-2">
                   <Field label="Competitor *">
-                    <select
-                      required
-                      value={sourceForm.competitor_id}
-                      onChange={e => setSourceForm(f => ({ ...f, competitor_id: e.target.value }))}
-                      className={`${inputCls} w-36`}
-                    >
+                    <select required value={sourceForm.competitor_id} onChange={e => setSourceForm(f => ({ ...f, competitor_id: e.target.value }))} className={`${inputCls} w-36`}>
                       <option value="">Select…</option>
-                      {competitors.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
+                      {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </Field>
                   <Field label="Locator *">
-                    <input
-                      required
-                      value={sourceForm.locator}
-                      onChange={e => setSourceForm(f => ({ ...f, locator: e.target.value }))}
-                      placeholder="https://…"
-                      className={`${inputCls} w-56 font-mono`}
-                    />
+                    <input required value={sourceForm.locator} onChange={e => setSourceForm(f => ({ ...f, locator: e.target.value }))} placeholder="https://…" className={`${inputCls} w-56 font-mono`} />
                   </Field>
                   <Field label="Type">
-                    <input
-                      value={sourceForm.source_type}
-                      onChange={e => setSourceForm(f => ({ ...f, source_type: e.target.value }))}
-                      placeholder="reddit / g2 / hn"
-                      className={`${inputCls} w-28`}
-                    />
+                    <input value={sourceForm.source_type} onChange={e => setSourceForm(f => ({ ...f, source_type: e.target.value }))} placeholder="reddit / g2 / hn" className={`${inputCls} w-28`} />
                   </Field>
                   <Field label="Limit">
-                    <input
-                      type="number"
-                      min={1}
-                      value={sourceForm.limit}
-                      onChange={e => setSourceForm(f => ({ ...f, limit: e.target.value }))}
-                      placeholder="25"
-                      className={`${inputCls} w-20`}
-                    />
+                    <input type="number" min={1} value={sourceForm.limit} onChange={e => setSourceForm(f => ({ ...f, limit: e.target.value }))} placeholder="25" className={`${inputCls} w-20`} />
                   </Field>
                   <div className="flex items-center gap-2 pt-4">
-                    <button type="submit" disabled={savingSource} className={btnPrimary}>
-                      {savingSource ? 'Saving…' : 'Add'}
-                    </button>
-                    <button type="button" onClick={() => setShowAddSource(false)} className={btnSecondary}>
-                      Cancel
-                    </button>
+                    <button type="submit" disabled={savingSource} className={btnPrimary}>{savingSource ? 'Saving…' : 'Add'}</button>
+                    <button type="button" onClick={() => setShowAddSource(false)} className={btnSecondary}>Cancel</button>
                   </div>
                 </div>
                 {addSourceError && <div className="mt-2"><ErrorPanel message={addSourceError} /></div>}
@@ -435,21 +463,15 @@ export default function SourcesPage() {
             {filteredSources.length === 0 ? (
               <div className="px-4 py-10 text-center text-xs text-slate-600">
                 {sources.length === 0
-                  ? 'No sources configured. Add a source to begin scanning.'
+                  ? 'No sources configured. Add a source or use suggestions from a competitor row.'
                   : 'No sources match the selected filter.'}
               </div>
             ) : (
               <div className="overflow-x-auto">
-                {/* Header */}
                 <div className="grid grid-cols-[110px_1fr_80px_80px_55px_90px_24px_48px] items-center gap-x-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
-                  <span>Competitor</span>
-                  <span>Locator</span>
-                  <span>Type</span>
-                  <span>Status</span>
-                  <span>Limit</span>
-                  <span>Last scan</span>
-                  <span />
-                  <span />
+                  <span>Competitor</span><span>Locator</span><span>Type</span>
+                  <span>Status</span><span>Limit</span><span>Last scan</span>
+                  <span /><span />
                 </div>
 
                 {filteredSources.map(source => {
@@ -459,74 +481,28 @@ export default function SourcesPage() {
 
                   return (
                     <div key={source.id}>
-                      {/* Source row */}
-                      <div
-                        className={`group grid grid-cols-[110px_1fr_80px_80px_55px_90px_24px_48px] items-center gap-x-3 border-t border-slate-800/50 px-4 py-2.5 text-xs transition-colors hover:bg-white/[0.01] ${source.last_error ? 'border-l-2 border-l-amber-500/40' : ''}`}
-                      >
-                        {/* Competitor */}
-                        <span className="truncate text-slate-400 text-[11px]">
-                          {comp?.name ?? source.competitor_id}
-                        </span>
-
-                        {/* Locator */}
-                        <span
-                          className="truncate font-mono text-[11px] text-slate-400"
-                          title={source.locator}
-                        >
-                          {source.locator}
-                        </span>
-
-                        {/* Type */}
-                        <span className="truncate text-slate-500">
-                          {source.source_type ?? '—'}
-                        </span>
-
-                        {/* Toggle */}
+                      <div className={`group grid grid-cols-[110px_1fr_80px_80px_55px_90px_24px_48px] items-center gap-x-3 border-t border-slate-800/50 px-4 py-2.5 text-xs transition-colors hover:bg-white/[0.01] ${source.last_error ? 'border-l-2 border-l-amber-500/40' : ''}`}>
+                        <span className="truncate text-[11px] text-slate-400">{comp?.name ?? source.competitor_id}</span>
+                        <span className="truncate font-mono text-[11px] text-slate-400" title={source.locator}>{source.locator}</span>
+                        <span className="truncate text-slate-500">{source.source_type ?? '—'}</span>
                         <button
                           onClick={() => handleToggle(source)}
                           disabled={isToggling}
-                          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium transition ${
-                            source.enabled
-                              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15'
-                              : 'border-slate-700/50 bg-slate-800/50 text-slate-600 hover:border-slate-600'
-                          } disabled:opacity-50`}
+                          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium transition ${source.enabled ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15' : 'border-slate-700/50 bg-slate-800/50 text-slate-600 hover:border-slate-600'} disabled:opacity-50`}
                         >
-                          {isToggling ? (
-                            <span className="h-1.5 w-1.5 animate-spin rounded-full border border-current border-t-transparent" />
-                          ) : (
-                            <span className={`h-1.5 w-1.5 rounded-full ${source.enabled ? 'bg-emerald-400' : 'bg-slate-600'}`} />
-                          )}
+                          {isToggling
+                            ? <span className="h-1.5 w-1.5 animate-spin rounded-full border border-current border-t-transparent" />
+                            : <span className={`h-1.5 w-1.5 rounded-full ${source.enabled ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                          }
                           {source.enabled ? 'Active' : 'Paused'}
                         </button>
-
-                        {/* Limit */}
-                        <span className="tabular-nums text-slate-500">
-                          {source.limit ?? '—'}
-                        </span>
-
-                        {/* Last scan */}
-                        <span className="tabular-nums text-slate-600 text-[11px]" title={source.last_scanned_at ?? undefined}>
-                          {relativeTime(source.last_scanned_at)}
-                        </span>
-
-                        {/* Error indicator */}
-                        <span>
-                          {source.last_error && (
-                            <span className="text-amber-500" title={source.last_error}>
-                              <IconWarn />
-                            </span>
-                          )}
-                        </span>
-
-                        {/* Edit button */}
+                        <span className="tabular-nums text-slate-500">{source.limit ?? '—'}</span>
+                        <span className="tabular-nums text-[11px] text-slate-600" title={source.last_scanned_at ?? undefined}>{relativeTime(source.last_scanned_at)}</span>
+                        <span>{source.last_error && <span className="text-amber-500" title={source.last_error}><IconWarn /></span>}</span>
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => isEditing ? setEditingId(null) : startEdit(source)}
-                            className={`rounded p-1 transition ${
-                              isEditing
-                                ? 'text-violet-400 bg-violet-500/10'
-                                : 'text-slate-700 hover:text-slate-400 opacity-0 group-hover:opacity-100'
-                            }`}
+                            className={`rounded p-1 transition ${isEditing ? 'bg-violet-500/10 text-violet-400' : 'text-slate-700 opacity-0 hover:text-slate-400 group-hover:opacity-100'}`}
                           >
                             {isEditing ? <IconX /> : <IconPencil />}
                           </button>
@@ -538,45 +514,17 @@ export default function SourcesPage() {
                         <div className="border-t border-violet-500/10 bg-violet-500/[0.03] px-4 py-3">
                           <div className="flex flex-wrap items-end gap-2">
                             <Field label="Source type">
-                              <input
-                                value={editForm.source_type}
-                                onChange={e => setEditForm(f => ({ ...f, source_type: e.target.value }))}
-                                placeholder="reddit / g2 / hn"
-                                className={`${inputCls} w-32`}
-                              />
+                              <input value={editForm.source_type} onChange={e => setEditForm(f => ({ ...f, source_type: e.target.value }))} placeholder="reddit / g2 / hn" className={`${inputCls} w-32`} />
                             </Field>
                             <Field label="Limit">
-                              <input
-                                type="number"
-                                min={1}
-                                value={editForm.limit}
-                                onChange={e => setEditForm(f => ({ ...f, limit: e.target.value }))}
-                                placeholder="25"
-                                className={`${inputCls} w-20`}
-                              />
+                              <input type="number" min={1} value={editForm.limit} onChange={e => setEditForm(f => ({ ...f, limit: e.target.value }))} placeholder="25" className={`${inputCls} w-20`} />
                             </Field>
                             <div className="flex items-center gap-2 pt-4">
-                              <button
-                                onClick={handleEditSave}
-                                disabled={savingEdit}
-                                className={btnPrimary}
-                              >
-                                <IconCheck />
-                                {savingEdit ? 'Saving…' : 'Save'}
-                              </button>
-                              <button
-                                onClick={() => setEditingId(null)}
-                                className={btnSecondary}
-                              >
-                                Cancel
-                              </button>
+                              <button onClick={handleEditSave} disabled={savingEdit} className={btnPrimary}><IconCheck />{savingEdit ? 'Saving…' : 'Save'}</button>
+                              <button onClick={() => setEditingId(null)} className={btnSecondary}>Cancel</button>
                             </div>
                           </div>
-                          {source.last_error && (
-                            <p className="mt-2 text-[11px] text-amber-500/80">
-                              Last error: {source.last_error}
-                            </p>
-                          )}
+                          {source.last_error && <p className="mt-2 text-[11px] text-amber-500/80">Last error: {source.last_error}</p>}
                           {editError && <div className="mt-2"><ErrorPanel message={editError} /></div>}
                         </div>
                       )}
@@ -589,6 +537,89 @@ export default function SourcesPage() {
         </>
       )}
     </DashboardShell>
+  );
+}
+
+// ── Suggestion panel ─────────────────────────────────────────────────────────
+
+function SuggestionPanel({
+  competitorId: _competitorId,
+  suggestions,
+  loading,
+  error,
+  addingLocators,
+  onAdd,
+  btnPrimary,
+}: {
+  competitorId: string;
+  suggestions: SourceSuggestion[] | undefined;
+  loading: boolean;
+  error: string | null;
+  addingLocators: Set<string>;
+  onAdd: (suggestion: SourceSuggestion) => void;
+  btnPrimary: string;
+}) {
+  return (
+    <div className="border-t border-violet-500/10 bg-slate-950/40">
+      {loading && (
+        <div className="px-4 py-3">
+          <LoadingPanel label="Loading suggestions" />
+        </div>
+      )}
+      {error && (
+        <div className="px-4 py-3">
+          <ErrorPanel message={error} />
+        </div>
+      )}
+      {!loading && !error && (
+        <>
+          <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
+            Suggested sources {suggestions && suggestions.length > 0 && `· ${suggestions.length}`}
+          </div>
+          {(!suggestions || suggestions.length === 0) ? (
+            <div className="px-4 pb-3 text-xs text-slate-700">No suggestions available.</div>
+          ) : (
+            suggestions.map(suggestion => (
+              <div
+                key={suggestion.locator}
+                className="flex items-start justify-between gap-4 border-t border-slate-800/30 px-4 py-2.5"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-300">{suggestion.label}</span>
+                    <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                      {suggestion.source_type}
+                    </span>
+                    <span className="truncate font-mono text-[10px] text-slate-600" title={suggestion.locator}>
+                      {suggestion.locator}
+                    </span>
+                  </div>
+                  {suggestion.rationale && (
+                    <p className="mt-0.5 text-[11px] leading-snug text-slate-600">{suggestion.rationale}</p>
+                  )}
+                </div>
+                <div className="shrink-0 pt-0.5">
+                  {suggestion.already_monitored ? (
+                    <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/[0.08] px-2 py-0.5 text-[11px] font-medium text-emerald-500">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Monitored
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => onAdd(suggestion)}
+                      disabled={addingLocators.has(suggestion.locator)}
+                      className={btnPrimary}
+                    >
+                      {addingLocators.has(suggestion.locator) ? 'Adding…' : '+ Add'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
