@@ -64,15 +64,6 @@ function IconActivity() {
   );
 }
 
-function IconTerminal() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="4 17 10 11 4 5" />
-      <line x1="12" y1="19" x2="20" y2="19" />
-    </svg>
-  );
-}
-
 function IconCaret() {
   return (
     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -304,24 +295,8 @@ export default function DashboardNav() {
           ))}
         </nav>
 
-        {/* System / admin section */}
-        <div className="mt-auto px-3 pb-2">
-          <div className="mb-2 h-px bg-white/[0.04]" />
-          <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-800">
-            System
-          </p>
-          <NavLink
-            href="/pipeline/run"
-            matchPrefixes={['/pipeline']}
-            icon={<IconTerminal />}
-            label="Pipeline trigger"
-            pathname={pathname}
-            muted
-          />
-        </div>
-
         {/* API status */}
-        <div className="px-3 pb-5 pt-2">
+        <div className="mt-auto px-3 pb-5 pt-2">
           <div className="rounded-lg border border-white/[0.05] bg-slate-900/60 px-3 py-2.5">
             <div className="flex items-center gap-2.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_7px_rgba(52,211,153,0.8)]" />

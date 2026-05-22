@@ -171,7 +171,7 @@ export default function FindingsPage() {
           {status === 'ready' && filteredSignals.length === 0 && (
             <EmptyPanel
               title="No findings found"
-              detail="Run the pipeline to populate this list, or clear your filters."
+              detail="Findings appear after active sources are scanned, or clear your filters."
             />
           )}
 

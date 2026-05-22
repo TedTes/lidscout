@@ -84,7 +84,7 @@ export default function ThemesPage() {
           {themes.length === 0 ? (
             <EmptyPanel
               title="No themes identified yet"
-              detail="Run the pipeline to group findings into recurring themes."
+              detail="Themes appear after background scans group recurring findings."
             />
           ) : (
             <div className="rounded-xl border border-slate-800/80 bg-slate-900/40">

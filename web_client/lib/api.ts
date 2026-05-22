@@ -14,8 +14,6 @@ import {
   MonitoredSourceUpdateRequest,
   MonitoredSourcesResponse,
   OpportunitiesResponse,
-  PipelineRunRequest,
-  PipelineRunResult,
   SignalsResponse,
   SourceSuggestionsResponse,
 } from '@/lib/types/signals';
@@ -258,18 +256,6 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load latest report');
-      }
-      throw error;
-    }
-  }
-
-  async runPipeline(request: PipelineRunRequest): Promise<PipelineRunResult> {
-    try {
-      const response = await api.post<PipelineRunResult>('/pipeline/run', request);
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to run pipeline');
       }
       throw error;
     }

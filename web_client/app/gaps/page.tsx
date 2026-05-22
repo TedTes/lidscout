@@ -103,7 +103,7 @@ export default function GapsPage() {
           {opportunities.length === 0 ? (
             <EmptyPanel
               title="No gaps identified yet"
-              detail="Run the pipeline to generate gaps from collected findings."
+              detail="Gaps appear after active sources are scanned in the background."
             />
           ) : (
             <div className="space-y-3">

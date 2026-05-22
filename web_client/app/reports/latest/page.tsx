@@ -125,7 +125,7 @@ export default function ReportsPage() {
             {report.top_clusters.length === 0 ? (
               <EmptyPanel
                 title="No themes in report"
-                detail="Run the pipeline to generate report content."
+                detail="Reports populate after background scans collect and group findings."
               />
             ) : (
               <div className="space-y-2">
