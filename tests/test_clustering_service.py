@@ -70,6 +70,37 @@ class ClusteringServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.cluster(signals, {})
 
+    def test_does_not_cluster_signals_across_competitors(self):
+        service = ClusteringService(similarity_threshold=0.9)
+        signals = [
+            Signal.create(
+                id="signal-1",
+                post_id="reddit:1",
+                pain="Calendar sync is broken",
+                category="calendar",
+                competitor_id="notion",
+            ),
+            Signal.create(
+                id="signal-2",
+                post_id="reddit:2",
+                pain="Calendar sync is broken",
+                category="calendar",
+                competitor_id="linear",
+            ),
+        ]
+
+        clusters = service.cluster(
+            signals,
+            {
+                "signal-1": [1.0, 0.0],
+                "signal-2": [1.0, 0.0],
+            },
+        )
+
+        self.assertEqual(len(clusters), 2)
+        self.assertEqual(clusters[0].signal_ids, ["signal-1"])
+        self.assertEqual(clusters[1].signal_ids, ["signal-2"])
+
     def test_rejects_mismatched_embedding_dimensions(self):
         service = ClusteringService()
         signals = [

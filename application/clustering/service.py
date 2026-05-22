@@ -43,15 +43,24 @@ class ClusteringService:
         embeddings: SignalEmbeddings,
     ) -> list[SignalCluster]:
         buckets: list[_ClusterBucket] = []
+        competitor_groups = _signals_by_competitor(signals)
 
-        for signal in signals:
-            embedding = self._embedding_for_signal(signal, embeddings)
-            matching_bucket = self._find_matching_bucket(embedding, buckets)
+        for grouped_signals in competitor_groups:
+            group_buckets: list[_ClusterBucket] = []
+            for signal in grouped_signals:
+                embedding = self._embedding_for_signal(signal, embeddings)
+                matching_bucket = self._find_matching_bucket(
+                    embedding,
+                    group_buckets,
+                )
 
-            if matching_bucket is None:
-                buckets.append(_ClusterBucket(signals=[signal], embeddings=[embedding]))
-            else:
-                matching_bucket.add(signal, embedding)
+                if matching_bucket is None:
+                    group_buckets.append(
+                        _ClusterBucket(signals=[signal], embeddings=[embedding])
+                    )
+                else:
+                    matching_bucket.add(signal, embedding)
+            buckets.extend(group_buckets)
 
         clusters = [
             self._build_cluster(bucket=bucket, index=index)
@@ -62,6 +71,7 @@ class ClusteringService:
             "clustering_completed",
             signal_count=len(signals),
             clustered_count=len(clusters),
+            competitor_group_count=len(competitor_groups),
             similarity_threshold=self.similarity_threshold,
         )
         return clusters
@@ -124,3 +134,11 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
 
     dot_product = sum(left_value * right_value for left_value, right_value in zip(left, right))
     return dot_product / (left_norm * right_norm)
+
+
+def _signals_by_competitor(signals: list[Signal]) -> list[list[Signal]]:
+    groups: dict[str, list[Signal]] = {}
+    for signal in signals:
+        key = signal.competitor_id or "__unscoped__"
+        groups.setdefault(key, []).append(signal)
+    return list(groups.values())
