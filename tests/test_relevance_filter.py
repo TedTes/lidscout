@@ -1,7 +1,8 @@
 import unittest
 
-from application.extraction import RuleBasedRelevanceFilter
+from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from domain.post import RawPost
+from infrastructure.llm import MockLLMClient
 
 
 class RuleBasedRelevanceFilterTests(unittest.TestCase):
@@ -97,6 +98,92 @@ class RuleBasedRelevanceFilterTests(unittest.TestCase):
         return RawPost.create(
             source="web",
             source_id=title or "empty",
+            title=title,
+            body=body,
+            url="https://example.com/source",
+            metadata=metadata,
+        )
+
+
+class LLMRelevanceFilterTests(unittest.TestCase):
+    def test_accepts_structured_llm_relevance_result(self):
+        llm_client = MockLLMClient(
+            """
+            {
+              "is_relevant": true,
+              "is_about_competitor": true,
+              "has_pain_or_request": true,
+              "rejection_category": null,
+              "reason": "The post complains about Acme CRM exports.",
+              "confidence": 0.88
+            }
+            """
+        )
+
+        result = LLMRelevanceFilter(llm_client).evaluate(
+            self._post(
+                title="Acme CRM exports fail",
+                body="The export feature is broken for finance teams.",
+                competitor_name="Acme CRM",
+            )
+        )
+
+        self.assertTrue(result.is_relevant)
+        self.assertTrue(result.is_about_competitor)
+        self.assertTrue(result.has_pain_or_request)
+        self.assertEqual(result.confidence, 0.88)
+        self.assertIsNone(result.rejection_category)
+        self.assertIn("competitor_name: Acme CRM", llm_client.calls[0][1])
+
+    def test_rejects_wrong_subject_llm_relevance_result(self):
+        llm_client = MockLLMClient(
+            """
+            {
+              "is_relevant": false,
+              "is_about_competitor": false,
+              "has_pain_or_request": true,
+              "rejection_category": "wrong_subject",
+              "reason": "The complaint is about another product.",
+              "confidence": 0.92
+            }
+            """
+        )
+
+        result = LLMRelevanceFilter(llm_client).evaluate(
+            self._post(
+                title="Rows is cheaper than SyncBank",
+                body="Users can save money with another tool.",
+                competitor_name="Notion",
+            )
+        )
+
+        self.assertFalse(result.is_relevant)
+        self.assertEqual(result.rejection_category, "wrong_subject")
+        self.assertTrue(result.has_pain_or_request)
+
+    def test_rejects_invalid_llm_relevance_json(self):
+        with self.assertRaises(ValueError):
+            LLMRelevanceFilter(MockLLMClient("not-json")).evaluate(
+                self._post(
+                    title="Acme CRM exports fail",
+                    body="Exports are broken.",
+                    competitor_name="Acme CRM",
+                )
+            )
+
+    def _post(
+        self,
+        *,
+        title: str,
+        body: str,
+        competitor_name: str | None = None,
+    ) -> RawPost:
+        metadata = {"competitor_id": "acme"}
+        if competitor_name:
+            metadata["competitor_name"] = competitor_name
+        return RawPost.create(
+            source="web",
+            source_id=title,
             title=title,
             body=body,
             url="https://example.com/source",

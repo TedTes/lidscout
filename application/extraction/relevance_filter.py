@@ -1,8 +1,73 @@
 """Pre-extraction relevance filtering for raw posts."""
+import json
 from dataclasses import dataclass
+from typing import Any
 from typing import Literal
 
 from domain.post import RawPost
+from infrastructure.llm import LLMClient
+
+
+RELEVANCE_FILTER_PROMPT = """
+Classify whether a raw online post should continue to signal extraction.
+
+Return JSON only. The response must match this contract:
+- is_relevant: boolean
+- is_about_competitor: boolean
+- has_pain_or_request: boolean
+- rejection_category: one of empty, wrong_subject, tutorial_or_template,
+  promotional, news, job_posting, no_pain_signal, other, or null
+- reason: concise explanation
+- confidence: number from 0.0 to 1.0
+
+Set is_about_competitor=true only when the post is primarily about the provided
+competitor's product experience. Do not mark incidental mentions, comparisons
+where another product is the subject, or unrelated discussions as competitor
+relevant.
+
+Set has_pain_or_request=true only for dissatisfaction, missing features, pricing
+friction, switching intent, workflow pain, reliability issues, or workaround
+mentions. Generic praise, tutorials, news, promotions, and hiring posts are not
+pain signals.
+
+Set is_relevant=true only when both is_about_competitor and has_pain_or_request
+are true.
+""".strip()
+
+
+RELEVANCE_FILTER_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "is_relevant": {"type": "boolean"},
+        "is_about_competitor": {"type": "boolean"},
+        "has_pain_or_request": {"type": "boolean"},
+        "rejection_category": {
+            "type": ["string", "null"],
+            "enum": [
+                "empty",
+                "wrong_subject",
+                "tutorial_or_template",
+                "promotional",
+                "news",
+                "job_posting",
+                "no_pain_signal",
+                "other",
+                None,
+            ],
+        },
+        "reason": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    },
+    "required": [
+        "is_relevant",
+        "is_about_competitor",
+        "has_pain_or_request",
+        "rejection_category",
+        "reason",
+        "confidence",
+    ],
+}
 
 
 RejectionCategory = Literal[
@@ -119,6 +184,129 @@ class RuleBasedRelevanceFilter:
             ),
             confidence=0.65 if has_pain_or_request else 0.4,
         )
+
+
+class LLMRelevanceFilter:
+    """Second-pass relevance classifier for posts that pass hard rules."""
+
+    def __init__(self, llm_client: LLMClient):
+        self.llm_client = llm_client
+
+    def evaluate(self, post: RawPost) -> RelevanceResult:
+        """Return a relevance decision from a structured LLM classifier."""
+        raw_json = self.llm_client.generate_structured_response(
+            RELEVANCE_FILTER_PROMPT,
+            _llm_post_content(post),
+            RELEVANCE_FILTER_RESPONSE_SCHEMA,
+        )
+        payload = _parse_relevance_json(raw_json)
+        return _result_from_payload(post.id, payload)
+
+
+def _parse_relevance_json(raw_json: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError("LLM relevance filter returned invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("LLM relevance filter JSON must be an object")
+    return payload
+
+
+def _result_from_payload(post_id: str, payload: dict[str, Any]) -> RelevanceResult:
+    is_relevant = _required_bool(payload, "is_relevant")
+    is_about_competitor = _required_bool(payload, "is_about_competitor")
+    has_pain_or_request = _required_bool(payload, "has_pain_or_request")
+    reason = _required_string(payload, "reason")
+    confidence = _required_number(payload, "confidence")
+    category = _optional_rejection_category(payload.get("rejection_category"))
+
+    accepted = is_relevant and is_about_competitor and has_pain_or_request
+    if accepted:
+        return RelevanceResult.accept(
+            post_id=post_id,
+            is_about_competitor=True,
+            has_pain_or_request=True,
+            reason=reason,
+            confidence=confidence,
+        )
+
+    return RelevanceResult.reject(
+        post_id=post_id,
+        category=category or _infer_rejection_category(
+            is_about_competitor,
+            has_pain_or_request,
+        ),
+        reason=reason,
+        is_about_competitor=is_about_competitor,
+        has_pain_or_request=has_pain_or_request,
+        confidence=confidence,
+    )
+
+
+def _llm_post_content(post: RawPost) -> str:
+    return "\n".join(
+        [
+            f"competitor_id: {_metadata_text(post, 'competitor_id') or ''}",
+            f"competitor_name: {_metadata_text(post, 'competitor_name') or ''}",
+            f"competitor_domain: {_metadata_text(post, 'competitor_domain') or ''}",
+            f"competitor_website: {_metadata_text(post, 'competitor_website') or ''}",
+            f"source_type: {_metadata_text(post, 'source_type') or ''}",
+            f"url: {post.url or ''}",
+            f"title: {post.title}",
+            f"body: {post.body}",
+        ]
+    )
+
+
+def _required_bool(payload: dict[str, Any], key: str) -> bool:
+    value = payload.get(key)
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"LLM relevance filter field {key} must be a boolean")
+
+
+def _required_string(payload: dict[str, Any], key: str) -> str:
+    value = payload.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise ValueError(f"LLM relevance filter field {key} must be a non-empty string")
+
+
+def _required_number(payload: dict[str, Any], key: str) -> float:
+    value = payload.get(key)
+    if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
+        return float(value)
+    raise ValueError(f"LLM relevance filter field {key} must be between 0.0 and 1.0")
+
+
+def _optional_rejection_category(value: Any) -> RejectionCategory | None:
+    if value is None:
+        return None
+    categories = {
+        "empty",
+        "wrong_subject",
+        "tutorial_or_template",
+        "promotional",
+        "news",
+        "job_posting",
+        "no_pain_signal",
+        "other",
+    }
+    if isinstance(value, str) and value in categories:
+        return value  # type: ignore[return-value]
+    raise ValueError("LLM relevance filter rejection_category is invalid")
+
+
+def _infer_rejection_category(
+    is_about_competitor: bool,
+    has_pain_or_request: bool,
+) -> RejectionCategory:
+    if not is_about_competitor:
+        return "wrong_subject"
+    if not has_pain_or_request:
+        return "no_pain_signal"
+    return "other"
 
 
 def _content_text(post: RawPost) -> str:

@@ -12,6 +12,7 @@ class ApiDependencyTests(unittest.TestCase):
             DATABASE_URL=database_url,
             LLM_API_KEY="llm-key",
             OPENAI_RESPONSE_MODEL="response-model",
+            OPENAI_RELEVANCE_MODEL="relevance-model",
             OPENAI_EMBEDDING_MODEL="embedding-model",
             EMAIL_API_KEY=None,
             RESEND_API_KEY="resend-key",
@@ -49,10 +50,9 @@ class ApiDependencyTests(unittest.TestCase):
         competitor_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
         source_locator_repository.assert_called_once_with(connection=connection)
-        llm_client.assert_called_once_with(
-            api_key="llm-key",
-            model="response-model",
-        )
+        self.assertEqual(llm_client.call_count, 2)
+        llm_client.assert_any_call(api_key="llm-key", model="response-model")
+        llm_client.assert_any_call(api_key="llm-key", model="relevance-model")
         embedding_client.assert_called_once_with(
             api_key="llm-key",
             model="embedding-model",
@@ -88,6 +88,7 @@ class ApiDependencyTests(unittest.TestCase):
             source_locator_repository.return_value,
         )
         self.assertIs(dependencies.llm_client, llm_client.return_value)
+        self.assertIs(dependencies.relevance_llm_client, llm_client.return_value)
         self.assertIs(dependencies.embedding_client, embedding_client.return_value)
         self.assertIs(dependencies.email_client, email_client.return_value)
 
@@ -97,6 +98,7 @@ class ApiDependencyTests(unittest.TestCase):
             DATABASE_URL=database_url,
             LLM_API_KEY=None,
             OPENAI_RESPONSE_MODEL="response-model",
+            OPENAI_RELEVANCE_MODEL="relevance-model",
             OPENAI_EMBEDDING_MODEL="embedding-model",
             EMAIL_API_KEY=None,
             RESEND_API_KEY=None,
@@ -129,6 +131,7 @@ class ApiDependencyTests(unittest.TestCase):
         email_notifier.assert_not_called()
         email_client.assert_not_called()
         self.assertIsNone(dependencies.llm_client)
+        self.assertIsNone(dependencies.relevance_llm_client)
         self.assertIsNone(dependencies.embedding_client)
         self.assertIsNone(dependencies.email_client)
 
@@ -137,6 +140,7 @@ class ApiDependencyTests(unittest.TestCase):
             DATABASE_URL="sqlite:///lidscout.db",
             LLM_API_KEY=None,
             OPENAI_RESPONSE_MODEL="response-model",
+            OPENAI_RELEVANCE_MODEL="relevance-model",
             OPENAI_EMBEDDING_MODEL="embedding-model",
             EMAIL_API_KEY=None,
             RESEND_API_KEY=None,

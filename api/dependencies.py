@@ -45,6 +45,7 @@ def build_signal_api_dependencies(
             StaticUrlAdapter(),
         ],
         llm_client=_build_llm_client(app_config),
+        relevance_llm_client=_build_relevance_llm_client(app_config),
         embedding_client=_build_embedding_client(app_config),
         email_client=_build_email_client(app_config),
     )
@@ -60,6 +61,15 @@ def _build_llm_client(config: AppConfig) -> OpenAIResponsesClient | None:
     return OpenAIResponsesClient(
         api_key=config.LLM_API_KEY,
         model=config.OPENAI_RESPONSE_MODEL,
+    )
+
+
+def _build_relevance_llm_client(config: AppConfig) -> OpenAIResponsesClient | None:
+    if config.LLM_API_KEY is None:
+        return None
+    return OpenAIResponsesClient(
+        api_key=config.LLM_API_KEY,
+        model=config.OPENAI_RELEVANCE_MODEL,
     )
 
 

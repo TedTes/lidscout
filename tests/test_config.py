@@ -18,6 +18,7 @@ class AppConfigTests(unittest.TestCase):
             "DATABASE_URL": "sqlite:///tmp/lidscout.db",
             "LLM_API_KEY": "llm-key",
             "OPENAI_RESPONSE_MODEL": "response-model",
+            "OPENAI_RELEVANCE_MODEL": "relevance-model",
             "OPENAI_EMBEDDING_MODEL": "embedding-model",
             "EMAIL_API_KEY": "email-key",
             "RESEND_API_KEY": "resend-key",
@@ -32,6 +33,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.DATABASE_URL, "sqlite:///tmp/lidscout.db")
         self.assertEqual(config.LLM_API_KEY, "llm-key")
         self.assertEqual(config.OPENAI_RESPONSE_MODEL, "response-model")
+        self.assertEqual(config.OPENAI_RELEVANCE_MODEL, "relevance-model")
         self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "embedding-model")
         self.assertEqual(config.EMAIL_API_KEY, "email-key")
         self.assertEqual(config.RESEND_API_KEY, "resend-key")
@@ -44,6 +46,7 @@ class AppConfigTests(unittest.TestCase):
         env = {
             "LLM_API_KEY": " ",
             "OPENAI_RESPONSE_MODEL": " ",
+            "OPENAI_RELEVANCE_MODEL": "",
             "OPENAI_EMBEDDING_MODEL": "",
             "EMAIL_API_KEY": "",
             "RESEND_API_KEY": "",
@@ -57,6 +60,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.DATABASE_URL, "sqlite:///lidscout.db")
         self.assertIsNone(config.LLM_API_KEY)
         self.assertEqual(config.OPENAI_RESPONSE_MODEL, "gpt-4o-mini")
+        self.assertEqual(config.OPENAI_RELEVANCE_MODEL, "gpt-4o-mini")
         self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "text-embedding-3-small")
         self.assertIsNone(config.EMAIL_API_KEY)
         self.assertIsNone(config.RESEND_API_KEY)
@@ -97,6 +101,7 @@ class AppConfigTests(unittest.TestCase):
                         "DATABASE_URL=postgresql://localhost/lidscout",
                         "LLM_API_KEY=llm-from-env-file",
                         "OPENAI_RESPONSE_MODEL=response-from-env-file",
+                        "OPENAI_RELEVANCE_MODEL=relevance-from-env-file",
                         "OPENAI_EMBEDDING_MODEL=embedding-from-env-file",
                         "RESEND_API_KEY=resend-from-env-file",
                         "RESEND_FROM_EMAIL=LidScout <alerts@example.com>",
@@ -114,6 +119,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.DATABASE_URL, "postgresql://localhost/lidscout")
         self.assertEqual(config.LLM_API_KEY, "llm-from-env-file")
         self.assertEqual(config.OPENAI_RESPONSE_MODEL, "response-from-env-file")
+        self.assertEqual(config.OPENAI_RELEVANCE_MODEL, "relevance-from-env-file")
         self.assertEqual(config.OPENAI_EMBEDDING_MODEL, "embedding-from-env-file")
         self.assertEqual(config.RESEND_API_KEY, "resend-from-env-file")
         self.assertEqual(config.RESEND_FROM_EMAIL, "LidScout <alerts@example.com>")

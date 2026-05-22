@@ -115,6 +115,7 @@ class SignalApiDependencies:
     reporting_service: ReportingService = field(default_factory=ReportingService)
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     llm_client: LLMClient | None = None
+    relevance_llm_client: LLMClient | None = None
     embedding_client: EmbeddingClient | None = None
     email_client: EmailClient | None = None
 

@@ -33,6 +33,7 @@ class AppConfig:
     DATABASE_URL: str
     LLM_API_KEY: str | None
     OPENAI_RESPONSE_MODEL: str
+    OPENAI_RELEVANCE_MODEL: str
     OPENAI_EMBEDDING_MODEL: str
     EMAIL_API_KEY: str | None
     RESEND_API_KEY: str | None
@@ -95,6 +96,10 @@ def get_app_config() -> AppConfig:
         DATABASE_URL=os.getenv("DATABASE_URL", "sqlite:///lidscout.db").strip(),
         LLM_API_KEY=_optional_env("LLM_API_KEY"),
         OPENAI_RESPONSE_MODEL=_env_or_default("OPENAI_RESPONSE_MODEL", "gpt-4o-mini"),
+        OPENAI_RELEVANCE_MODEL=_env_or_default(
+            "OPENAI_RELEVANCE_MODEL",
+            "gpt-4o-mini",
+        ),
         OPENAI_EMBEDDING_MODEL=_env_or_default(
             "OPENAI_EMBEDDING_MODEL",
             "text-embedding-3-small",

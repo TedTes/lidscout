@@ -4,6 +4,7 @@ from application.extraction.service import (
     SignalExtractionResult,
 )
 from application.extraction.relevance_filter import (
+    LLMRelevanceFilter,
     RejectionCategory,
     RelevanceResult,
     RuleBasedRelevanceFilter,
@@ -12,6 +13,7 @@ from application.extraction.relevance_filter import (
 __all__ = [
     "ExtractionService",
     "SignalExtractionResult",
+    "LLMRelevanceFilter",
     "RejectionCategory",
     "RelevanceResult",
     "RuleBasedRelevanceFilter",
