@@ -206,7 +206,7 @@ export default function SourcesPage() {
       setCompForm({ name: '', website: '', category: '' });
       setShowAddComp(false);
     } catch (err) {
-      setAddCompError(err instanceof Error ? err.message : 'Failed to create competitor');
+      setAddCompError(err instanceof Error ? err.message : 'Failed to create company');
     } finally {
       setSavingComp(false);
     }
@@ -327,7 +327,7 @@ export default function SourcesPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardShell title="Sources" subtitle="Competitors and their monitored scan sources">
+    <DashboardShell title="Sources" subtitle="Companies and their monitored scan sources">
 
       {loadStatus === 'loading' && <LoadingPanel label="Loading sources" />}
       {loadStatus === 'error' && loadError && <ErrorPanel message={loadError} />}
@@ -336,7 +336,7 @@ export default function SourcesPage() {
         <>
           {/* Stats */}
           <div className="mb-5 grid gap-3 sm:grid-cols-3">
-            <Metric label="Competitors" value={competitors.length} />
+            <Metric label="Companies" value={competitors.length} />
             <Metric label="Active sources" value={activeCount} />
             <Metric label="Source errors" value={errorCount} accent={errorCount > 0} />
           </div>
@@ -344,7 +344,7 @@ export default function SourcesPage() {
           {/* ── Competitors ─────────────────────────────────────────── */}
           <section className="mb-5 rounded-xl border border-slate-800/80 bg-slate-900/40">
             <div className="flex items-center justify-between border-b border-slate-800/80 px-4 py-3">
-              <h2 className="text-sm font-semibold text-slate-200">Competitors</h2>
+              <h2 className="text-sm font-semibold text-slate-200">Companies</h2>
               <button
                 onClick={() => { setShowAddComp(v => !v); setAddCompError(null); }}
                 className={btnSecondary}
@@ -378,7 +378,7 @@ export default function SourcesPage() {
             {/* Competitors table */}
             {competitors.length === 0 ? (
               <div className="px-4 py-10 text-center text-xs text-slate-600">
-                No competitors yet. Add one to start monitoring.
+                No companies yet. Add one to start monitoring.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -430,7 +430,7 @@ export default function SourcesPage() {
               <h2 className="text-sm font-semibold text-slate-200">Monitored sources</h2>
               <div className="flex items-center gap-2">
                 <select value={filterCompId} onChange={e => setFilterCompId(e.target.value)} className={`${inputCls} pr-6`}>
-                  <option value="all">All competitors</option>
+                  <option value="all">All companies</option>
                   {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
                 <button onClick={() => { setShowAddSource(v => !v); setAddSourceError(null); }} className={btnSecondary}>
@@ -443,7 +443,7 @@ export default function SourcesPage() {
             {showAddSource && (
               <form onSubmit={handleAddSource} className="border-b border-slate-800/60 bg-slate-800/20 px-4 py-3">
                 <div className="flex flex-wrap items-end gap-2">
-                  <Field label="Competitor *">
+                  <Field label="Company *">
                     <select required value={sourceForm.competitor_id} onChange={e => setSourceForm(f => ({ ...f, competitor_id: e.target.value }))} className={`${inputCls} w-36`}>
                       <option value="">Select…</option>
                       {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -471,13 +471,13 @@ export default function SourcesPage() {
             {filteredSources.length === 0 ? (
               <div className="px-4 py-10 text-center text-xs text-slate-600">
                 {sources.length === 0
-                  ? 'No sources configured. Add a source or use suggestions from a competitor row.'
+                  ? 'No sources configured. Add a source or use suggestions from a company row.'
                   : 'No sources match the selected filter.'}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <div className="grid grid-cols-[110px_1fr_80px_80px_55px_90px_24px_48px] items-center gap-x-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
-                  <span>Competitor</span><span>Locator</span><span>Type</span>
+                  <span>Company</span><span>Locator</span><span>Type</span>
                   <span>Status</span><span>Limit</span><span>Last scan</span>
                   <span /><span />
                 </div>

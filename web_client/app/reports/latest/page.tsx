@@ -72,7 +72,7 @@ function LightbulbIcon() {
   );
 }
 
-export default function LatestReportPage() {
+export default function ReportsPage() {
   const [report, setReport] = useState<MarketSignalReport | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -95,8 +95,8 @@ export default function LatestReportPage() {
 
   return (
     <DashboardShell
-      title="Latest report"
-      subtitle={report ? `Generated ${formatDate(report.generated_at)}` : undefined}
+      title="Report"
+      subtitle={report ? `Generated ${formatDate(report.generated_at)} · all companies` : undefined}
       actions={
         <button
           onClick={load}
@@ -115,16 +115,16 @@ export default function LatestReportPage() {
         <div className="space-y-5 animate-fade-in">
           {/* Metrics */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Top clusters" value={report.top_clusters.length} />
+            <Metric label="Top themes" value={report.top_clusters.length} />
             <Metric label="Emerging pains" value={report.emerging_pains.length} />
-            <Metric label="Opportunities" value={report.recommended_opportunities.length} accent />
+            <Metric label="Gaps" value={report.recommended_opportunities.length} accent />
           </div>
 
           {/* Ranked clusters */}
-          <SectionCard title="Ranked clusters">
+          <SectionCard title="Ranked themes">
             {report.top_clusters.length === 0 ? (
               <EmptyPanel
-                title="No clusters in report"
+                title="No themes in report"
                 detail="Run the pipeline to generate report content."
               />
             ) : (
@@ -172,11 +172,11 @@ export default function LatestReportPage() {
               emptyMessage="No emerging pains identified."
             />
             <InsightList
-              title="Recommended opportunities"
+              title="Recommended gaps"
               items={[]}
               icon={<LightbulbIcon />}
               iconColor="text-amber-400"
-              emptyMessage="No opportunities recommended yet."
+              emptyMessage="No gaps recommended yet."
               renderItems={() => (
                 <OpportunityList opportunities={report.recommended_opportunities} />
               )}
@@ -241,7 +241,7 @@ function InsightList({
 
 function OpportunityList({ opportunities }: { opportunities: Opportunity[] }) {
   if (opportunities.length === 0) {
-    return <p className="text-sm text-slate-600">No opportunities recommended yet.</p>;
+    return <p className="text-sm text-slate-600">No gaps recommended yet.</p>;
   }
 
   return (

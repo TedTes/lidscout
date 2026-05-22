@@ -1,13 +1,38 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { signalApi } from '@/lib/api';
+import { Competitor } from '@/lib/types/signals';
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconRadar() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="2" fill="currentColor" />
       <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
+    </svg>
+  );
+}
+
+function IconTarget() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
+function IconLayers() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
     </svg>
   );
 }
@@ -48,16 +73,38 @@ function IconTerminal() {
   );
 }
 
+function IconCaret() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+// ── Nav items ─────────────────────────────────────────────────────────────────
+
 const navItems = [
   {
-    href: '/signals',
-    label: 'Signals',
-    matchPrefixes: ['/signals', '/clusters'],
+    href: '/gaps',
+    label: 'Gaps',
+    matchPrefixes: ['/gaps'],
+    icon: <IconTarget />,
+  },
+  {
+    href: '/themes',
+    label: 'Themes',
+    matchPrefixes: ['/themes', '/clusters'],
+    icon: <IconLayers />,
+  },
+  {
+    href: '/findings',
+    label: 'Findings',
+    matchPrefixes: ['/findings', '/signals'],
     icon: <IconZap />,
   },
   {
     href: '/reports/latest',
-    label: 'Report',
+    label: 'Reports',
     matchPrefixes: ['/reports'],
     icon: <IconFileText />,
   },
@@ -68,6 +115,95 @@ const navItems = [
     icon: <IconActivity />,
   },
 ];
+
+// ── Company selector ──────────────────────────────────────────────────────────
+
+function CompanySelector() {
+  const [companies, setCompanies] = useState<Competitor[]>([]);
+  const [selected, setSelected] = useState<Competitor | null>(null);
+  const [open, setOpen] = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    signalApi.getCompetitors()
+      .then(r => setCompanies(r.competitors))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={dropRef} className="relative mx-3 mb-3">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center gap-2 rounded-lg border border-slate-800/60 bg-slate-900/40 px-3 py-2 text-left text-xs transition hover:border-slate-700/60 hover:bg-slate-800/40"
+      >
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-violet-500' : 'bg-slate-700'}`}
+        />
+        <span className="flex-1 truncate font-medium text-slate-400">
+          {selected ? selected.name : 'All companies'}
+        </span>
+        <span className={`shrink-0 text-slate-700 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
+          <IconCaret />
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-slate-700/60 bg-[#0b0e24] py-1 shadow-xl shadow-black/50">
+          <button
+            onClick={() => { setSelected(null); setOpen(false); }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.04] ${!selected ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${!selected ? 'bg-violet-400' : 'bg-slate-800'}`} />
+            All companies
+          </button>
+
+          {companies.length > 0 && <div className="mx-2 my-1 h-px bg-slate-800/60" />}
+
+          {companies.map(c => (
+            <button
+              key={c.id}
+              onClick={() => { setSelected(c); setOpen(false); }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.04] ${selected?.id === c.id ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${selected?.id === c.id ? 'bg-violet-400' : 'bg-slate-700'}`} />
+              <span className="flex-1 truncate">{c.name}</span>
+              {c.category && (
+                <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-600">
+                  {c.category}
+                </span>
+              )}
+            </button>
+          ))}
+
+          <div className="mx-2 my-1 h-px bg-slate-800/60" />
+          <Link
+            href="/sources"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-slate-700 transition hover:text-slate-500"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add company
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── NavLink ───────────────────────────────────────────────────────────────────
 
 function NavLink({
   href,
@@ -130,6 +266,8 @@ function NavLink({
   );
 }
 
+// ── DashboardNav ──────────────────────────────────────────────────────────────
+
 export default function DashboardNav() {
   const pathname = usePathname();
 
@@ -145,14 +283,19 @@ export default function DashboardNav() {
           </div>
           <div>
             <p className="text-[13px] font-bold tracking-tight text-slate-100">LidScout</p>
-            <p className="text-[10px] leading-tight text-slate-600">Signal Intelligence</p>
+            <p className="text-[10px] leading-tight text-slate-600">Competitor pain intelligence</p>
           </div>
         </div>
 
         <div className="mx-4 h-px bg-white/[0.06]" />
 
+        {/* Company selector */}
+        <div className="mt-3">
+          <CompanySelector />
+        </div>
+
         {/* Main nav */}
-        <nav className="mt-5 flex flex-col gap-0.5 px-3">
+        <nav className="flex flex-col gap-0.5 px-3">
           <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
             Workspace
           </p>

@@ -173,7 +173,7 @@ export function Chip({ label }: { label: string }) {
 export function ClusterLink({ id, children }: { id: string; children: React.ReactNode }) {
   return (
     <Link
-      href={`/clusters/${encodeURIComponent(id)}`}
+      href={`/themes/${encodeURIComponent(id)}`}
       className="inline-flex items-center gap-1 rounded-md bg-violet-600/10 px-2 py-0.5 text-xs font-medium text-violet-400 transition hover:bg-violet-600/20 hover:text-violet-300"
     >
       {children}
