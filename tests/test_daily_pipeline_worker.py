@@ -9,6 +9,7 @@ from infrastructure.db import (
     InMemoryCompetitorRepository,
     InMemoryPostRepository,
     InMemoryOpportunityRepository,
+    InMemoryPipelineRunMetricsRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
     InMemoryMonitoredSourceRepository,
@@ -456,6 +457,44 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.extracted_count, 1)
         self.assertEqual(len(extraction_llm_client.calls), 1)
         self.assertEqual(signal_repository.list_signals()[0].pain, "Export workflows are painful")
+
+    def test_persists_pipeline_run_metrics(self):
+        metrics_repository = InMemoryPipelineRunMetricsRepository()
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            pipeline_run_metrics_repository=metrics_repository,
+            llm_client=SequentialLLMClient(
+                [
+                    """
+                    {
+                      "has_signal": false,
+                      "is_about_competitor": false,
+                      "competitor_match_reason": null,
+                      "signal": null
+                    }
+                    """
+                ]
+            ),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            sources=[SourceInput.create(locator="https://example.com/reviews")],
+        )
+
+        result = run_daily_pipeline(config)
+        metrics = metrics_repository.list_pipeline_run_metrics()[0]
+
+        self.assertEqual(metrics.fetched_count, result.fetched_count)
+        self.assertEqual(
+            metrics.extraction_attempted_count,
+            result.extraction_attempted_count,
+        )
+        self.assertEqual(metrics.extracted_count, result.extracted_count)
+        self.assertTrue(metrics.email_sent)
 
 
 if __name__ == "__main__":

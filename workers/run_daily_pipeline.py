@@ -22,6 +22,7 @@ from application.ports import (
     CompetitorRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
+    PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -30,6 +31,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
 from domain.cluster import SignalCluster
+from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
@@ -51,6 +53,7 @@ class PipelineConfig:
     recipient: str
     relevance_llm_client: LLMClient | None = None
     opportunity_repository: OpportunityRepository | None = None
+    pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
@@ -125,7 +128,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     )
     email_result = config.email_client.send_report(report, config.recipient)
 
-    return PipelineRunResult(
+    result = PipelineRunResult(
         fetched_count=len(posts),
         fetch_failed_count=fetch_failed_count,
         ingestion_result=ingestion_result,
@@ -145,6 +148,8 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         report=report,
         email_result=email_result,
     )
+    _save_pipeline_run_metrics(config.pipeline_run_metrics_repository, result)
+    return result
 
 
 @dataclass(frozen=True)
@@ -172,6 +177,45 @@ def _synthesize_opportunities(
     return OpportunitySynthesisService(opportunity_repository).synthesize(
         clusters,
         signals,
+    )
+
+
+def _save_pipeline_run_metrics(
+    metrics_repository: PipelineRunMetricsRepository | None,
+    result: PipelineRunResult,
+) -> None:
+    if metrics_repository is None:
+        return
+    metrics_repository.save_pipeline_run_metrics(
+        PipelineRunMetrics.create(
+            fetched_count=result.fetched_count,
+            fetch_failed_count=result.fetch_failed_count,
+            rule_filtered_count=result.rule_filtered_count,
+            llm_filtered_count=result.llm_filtered_count,
+            relevance_failed_count=result.relevance_failed_count,
+            extraction_attempted_count=result.extraction_attempted_count,
+            extracted_count=result.extracted_count,
+            no_signal_count=result.no_signal_count,
+            extraction_failed_count=result.extraction_failed_count,
+            signal_inserted_count=result.signal_inserted_count,
+            scored_count=result.scoring_result.scored_count,
+            scoring_failed_count=result.scoring_result.failed_count,
+            average_score=result.scoring_result.average_score,
+            embedding_failed_count=result.embedding_failed_count,
+            clustered_count=result.clustered_count,
+            cluster_inserted_count=result.cluster_inserted_count,
+            opportunity_synthesized_count=(
+                result.opportunity_synthesis_result.synthesized_count
+            ),
+            opportunity_inserted_count=(
+                result.opportunity_synthesis_result.inserted_count
+            ),
+            opportunity_failed_count=(
+                result.opportunity_synthesis_result.failed_count
+            ),
+            email_sent=result.email_result.sent,
+            email_error=result.email_result.error,
+        )
     )
 
 

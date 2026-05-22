@@ -4,6 +4,7 @@ from typing import Protocol
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.opportunity import Opportunity
+from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -95,6 +96,18 @@ class OpportunityRepository(Protocol):
 
     def list_opportunities(self) -> list[Opportunity]:
         """Load all persisted opportunities."""
+        ...
+
+
+class PipelineRunMetricsRepository(Protocol):
+    """Persistence boundary for pipeline run funnel metrics."""
+
+    def save_pipeline_run_metrics(self, metrics: PipelineRunMetrics) -> bool:
+        """Persist pipeline run metrics and return whether they were inserted."""
+        ...
+
+    def list_pipeline_run_metrics(self) -> list[PipelineRunMetrics]:
+        """Load persisted pipeline run metrics."""
         ...
 
 

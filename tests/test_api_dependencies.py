@@ -27,6 +27,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresScoreRepository") as score_repository,
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
             patch("api.dependencies.PostgresOpportunityRepository") as opportunity_repository,
+            patch("api.dependencies.PostgresPipelineRunMetricsRepository") as metrics_repository,
             patch("api.dependencies.PostgresCompetitorRepository") as competitor_repository,
             patch("api.dependencies.PostgresMonitoredSourceRepository") as monitored_source_repository,
             patch("api.dependencies.PostgresSourceLocatorRepository") as source_locator_repository,
@@ -47,6 +48,7 @@ class ApiDependencyTests(unittest.TestCase):
         score_repository.assert_called_once_with(connection=connection)
         cluster_repository.assert_called_once_with(connection=connection)
         opportunity_repository.assert_called_once_with(connection=connection)
+        metrics_repository.assert_called_once_with(connection=connection)
         competitor_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
         source_locator_repository.assert_called_once_with(connection=connection)
@@ -77,6 +79,10 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(
             dependencies.opportunity_repository,
             opportunity_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.pipeline_run_metrics_repository,
+            metrics_repository.return_value,
         )
         self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
         self.assertIs(
@@ -113,6 +119,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresScoreRepository"),
             patch("api.dependencies.PostgresClusterRepository"),
             patch("api.dependencies.PostgresOpportunityRepository"),
+            patch("api.dependencies.PostgresPipelineRunMetricsRepository"),
             patch("api.dependencies.PostgresCompetitorRepository"),
             patch("api.dependencies.PostgresMonitoredSourceRepository"),
             patch("api.dependencies.PostgresSourceLocatorRepository"),

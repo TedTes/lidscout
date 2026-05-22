@@ -6,6 +6,7 @@ from infrastructure.db import (
     PostgresCompetitorRepository,
     PostgresMonitoredSourceRepository,
     PostgresOpportunityRepository,
+    PostgresPipelineRunMetricsRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
@@ -33,6 +34,9 @@ def build_signal_api_dependencies(
         score_repository=PostgresScoreRepository(connection=connection),
         cluster_repository=PostgresClusterRepository(connection=connection),
         opportunity_repository=PostgresOpportunityRepository(connection=connection),
+        pipeline_run_metrics_repository=PostgresPipelineRunMetricsRepository(
+            connection=connection,
+        ),
         competitor_repository=PostgresCompetitorRepository(connection=connection),
         monitored_source_repository=PostgresMonitoredSourceRepository(
             connection=connection,

@@ -6,6 +6,7 @@ from unittest.mock import patch
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.opportunity import Opportunity
+from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -15,6 +16,7 @@ from infrastructure.db import (
     PostgresCompetitorRepository,
     PostgresMonitoredSourceRepository,
     PostgresOpportunityRepository,
+    PostgresPipelineRunMetricsRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
@@ -251,6 +253,70 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.list_opportunities(), [opportunity])
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
         self.assertEqual(json.loads(connection.calls[0][1][-1]), ["signal-1", "signal-2"])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_pipeline_run_metrics_repository_saves_and_loads_metrics(self):
+        metrics = PipelineRunMetrics.create(
+            id="run-1",
+            ran_at=datetime(2026, 5, 22, 13, 0, tzinfo=UTC),
+            fetched_count=10,
+            fetch_failed_count=1,
+            rule_filtered_count=2,
+            llm_filtered_count=3,
+            relevance_failed_count=0,
+            extraction_attempted_count=4,
+            extracted_count=3,
+            no_signal_count=1,
+            extraction_failed_count=0,
+            signal_inserted_count=3,
+            scored_count=3,
+            scoring_failed_count=0,
+            average_score=7.5,
+            embedding_failed_count=0,
+            clustered_count=2,
+            cluster_inserted_count=2,
+            opportunity_synthesized_count=1,
+            opportunity_inserted_count=1,
+            opportunity_failed_count=0,
+            email_sent=True,
+        )
+        row = {
+            "id": metrics.id,
+            "ran_at": metrics.ran_at,
+            "fetched_count": 10,
+            "fetch_failed_count": 1,
+            "rule_filtered_count": 2,
+            "llm_filtered_count": 3,
+            "relevance_failed_count": 0,
+            "extraction_attempted_count": 4,
+            "extracted_count": 3,
+            "no_signal_count": 1,
+            "extraction_failed_count": 0,
+            "signal_inserted_count": 3,
+            "scored_count": 3,
+            "scoring_failed_count": 0,
+            "average_score": 7.5,
+            "embedding_failed_count": 0,
+            "clustered_count": 2,
+            "cluster_inserted_count": 2,
+            "opportunity_synthesized_count": 1,
+            "opportunity_inserted_count": 1,
+            "opportunity_failed_count": 0,
+            "email_sent": True,
+            "email_error": None,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresPipelineRunMetricsRepository(connection=connection)
+
+        self.assertTrue(repository.save_pipeline_run_metrics(metrics))
+        self.assertEqual(repository.list_pipeline_run_metrics(), [metrics])
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "run-1")
         self.assertEqual(connection.commit_count, 1)
 
     def test_source_locator_repository_saves_and_loads_enabled_locators(self):

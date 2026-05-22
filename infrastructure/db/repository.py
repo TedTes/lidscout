@@ -13,6 +13,7 @@ from application.ports import (
     CompetitorRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
+    PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -21,6 +22,7 @@ from application.ports import (
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.opportunity import Opportunity
+from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -141,6 +143,22 @@ class InMemoryOpportunityRepository(OpportunityRepository):
 
     def list_opportunities(self) -> list[Opportunity]:
         return list(self.opportunities.values())
+
+
+@dataclass
+class InMemoryPipelineRunMetricsRepository(PipelineRunMetricsRepository):
+    """In-memory pipeline run metrics repository."""
+
+    metrics: dict[str, PipelineRunMetrics] = field(default_factory=dict)
+
+    def save_pipeline_run_metrics(self, metrics: PipelineRunMetrics) -> bool:
+        if metrics.id in self.metrics:
+            return False
+        self.metrics[metrics.id] = metrics
+        return True
+
+    def list_pipeline_run_metrics(self) -> list[PipelineRunMetrics]:
+        return list(self.metrics.values())
 
 
 @dataclass
@@ -567,6 +585,70 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
             "SELECT * FROM opportunities ORDER BY id"
         ).fetchall()
         return [_opportunity_from_row(row) for row in rows]
+
+
+class SQLitePipelineRunMetricsRepository(
+    _SQLiteRepository,
+    PipelineRunMetricsRepository,
+):
+    """SQLite-backed pipeline run metrics repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pipeline_run_metrics (
+                id TEXT PRIMARY KEY,
+                ran_at TEXT NOT NULL,
+                fetched_count INTEGER NOT NULL,
+                fetch_failed_count INTEGER NOT NULL,
+                rule_filtered_count INTEGER NOT NULL,
+                llm_filtered_count INTEGER NOT NULL,
+                relevance_failed_count INTEGER NOT NULL,
+                extraction_attempted_count INTEGER NOT NULL,
+                extracted_count INTEGER NOT NULL,
+                no_signal_count INTEGER NOT NULL,
+                extraction_failed_count INTEGER NOT NULL,
+                signal_inserted_count INTEGER NOT NULL,
+                scored_count INTEGER NOT NULL,
+                scoring_failed_count INTEGER NOT NULL,
+                average_score REAL NOT NULL,
+                embedding_failed_count INTEGER NOT NULL,
+                clustered_count INTEGER NOT NULL,
+                cluster_inserted_count INTEGER NOT NULL,
+                opportunity_synthesized_count INTEGER NOT NULL,
+                opportunity_inserted_count INTEGER NOT NULL,
+                opportunity_failed_count INTEGER NOT NULL,
+                email_sent INTEGER NOT NULL,
+                email_error TEXT
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_pipeline_run_metrics(self, metrics: PipelineRunMetrics) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT OR IGNORE INTO pipeline_run_metrics (
+                id, ran_at, fetched_count, fetch_failed_count,
+                rule_filtered_count, llm_filtered_count, relevance_failed_count,
+                extraction_attempted_count, extracted_count, no_signal_count,
+                extraction_failed_count, signal_inserted_count, scored_count,
+                scoring_failed_count, average_score, embedding_failed_count,
+                clustered_count, cluster_inserted_count,
+                opportunity_synthesized_count, opportunity_inserted_count,
+                opportunity_failed_count, email_sent, email_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            _pipeline_run_metrics_values(metrics, sqlite=True),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def list_pipeline_run_metrics(self) -> list[PipelineRunMetrics]:
+        rows = self.connection.execute(
+            "SELECT * FROM pipeline_run_metrics ORDER BY ran_at, id"
+        ).fetchall()
+        return [_pipeline_run_metrics_from_row(row) for row in rows]
 
 
 class SQLiteSourceLocatorRepository(_SQLiteRepository, SourceLocatorRepository):
@@ -1100,6 +1182,42 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
         return [_opportunity_from_row(row) for row in rows]
 
 
+class PostgresPipelineRunMetricsRepository(
+    _PostgresRepository,
+    PipelineRunMetricsRepository,
+):
+    """Postgres-backed pipeline run metrics repository."""
+
+    def save_pipeline_run_metrics(self, metrics: PipelineRunMetrics) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO pipeline_run_metrics (
+                id, ran_at, fetched_count, fetch_failed_count,
+                rule_filtered_count, llm_filtered_count, relevance_failed_count,
+                extraction_attempted_count, extracted_count, no_signal_count,
+                extraction_failed_count, signal_inserted_count, scored_count,
+                scoring_failed_count, average_score, embedding_failed_count,
+                clustered_count, cluster_inserted_count,
+                opportunity_synthesized_count, opportunity_inserted_count,
+                opportunity_failed_count, email_sent, email_error
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (id) DO NOTHING
+            """,
+            _pipeline_run_metrics_values(metrics, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def list_pipeline_run_metrics(self) -> list[PipelineRunMetrics]:
+        rows = self.connection.execute(
+            "SELECT * FROM pipeline_run_metrics ORDER BY ran_at, id"
+        ).fetchall()
+        return [_pipeline_run_metrics_from_row(row) for row in rows]
+
+
 class PostgresSourceLocatorRepository(_PostgresRepository, SourceLocatorRepository):
     """Postgres-backed source locator repository."""
 
@@ -1401,6 +1519,66 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
         evidence_count=row["evidence_count"],
         confidence=_float(row["confidence"]),
         evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
+    )
+
+
+def _pipeline_run_metrics_values(
+    metrics: PipelineRunMetrics,
+    *,
+    sqlite: bool,
+) -> tuple:
+    return (
+        metrics.id,
+        _datetime_to_text(metrics.ran_at) if sqlite else metrics.ran_at,
+        metrics.fetched_count,
+        metrics.fetch_failed_count,
+        metrics.rule_filtered_count,
+        metrics.llm_filtered_count,
+        metrics.relevance_failed_count,
+        metrics.extraction_attempted_count,
+        metrics.extracted_count,
+        metrics.no_signal_count,
+        metrics.extraction_failed_count,
+        metrics.signal_inserted_count,
+        metrics.scored_count,
+        metrics.scoring_failed_count,
+        metrics.average_score,
+        metrics.embedding_failed_count,
+        metrics.clustered_count,
+        metrics.cluster_inserted_count,
+        metrics.opportunity_synthesized_count,
+        metrics.opportunity_inserted_count,
+        metrics.opportunity_failed_count,
+        _bool_to_int(metrics.email_sent) if sqlite else metrics.email_sent,
+        metrics.email_error,
+    )
+
+
+def _pipeline_run_metrics_from_row(row: sqlite3.Row) -> PipelineRunMetrics:
+    return PipelineRunMetrics.create(
+        id=row["id"],
+        ran_at=_datetime_from_text(row["ran_at"]),
+        fetched_count=row["fetched_count"],
+        fetch_failed_count=row["fetch_failed_count"],
+        rule_filtered_count=row["rule_filtered_count"],
+        llm_filtered_count=row["llm_filtered_count"],
+        relevance_failed_count=row["relevance_failed_count"],
+        extraction_attempted_count=row["extraction_attempted_count"],
+        extracted_count=row["extracted_count"],
+        no_signal_count=row["no_signal_count"],
+        extraction_failed_count=row["extraction_failed_count"],
+        signal_inserted_count=row["signal_inserted_count"],
+        scored_count=row["scored_count"],
+        scoring_failed_count=row["scoring_failed_count"],
+        average_score=row["average_score"],
+        embedding_failed_count=row["embedding_failed_count"],
+        clustered_count=row["clustered_count"],
+        cluster_inserted_count=row["cluster_inserted_count"],
+        opportunity_synthesized_count=row["opportunity_synthesized_count"],
+        opportunity_inserted_count=row["opportunity_inserted_count"],
+        opportunity_failed_count=row["opportunity_failed_count"],
+        email_sent=bool(row["email_sent"]),
+        email_error=row["email_error"],
     )
 
 

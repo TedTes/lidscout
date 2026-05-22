@@ -11,6 +11,7 @@ from application.ports import (
     CompetitorRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
+    PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
@@ -28,6 +29,7 @@ from infrastructure.db import (
     InMemoryCompetitorRepository,
     InMemoryMonitoredSourceRepository,
     InMemoryOpportunityRepository,
+    InMemoryPipelineRunMetricsRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -102,6 +104,9 @@ class SignalApiDependencies:
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
     opportunity_repository: OpportunityRepository = field(
         default_factory=InMemoryOpportunityRepository
+    )
+    pipeline_run_metrics_repository: PipelineRunMetricsRepository = field(
+        default_factory=InMemoryPipelineRunMetricsRepository
     )
     competitor_repository: CompetitorRepository = field(
         default_factory=InMemoryCompetitorRepository
@@ -357,6 +362,9 @@ async def run_pipeline(
             score_repository=dependencies.score_repository,
             cluster_repository=dependencies.cluster_repository,
             opportunity_repository=dependencies.opportunity_repository,
+            pipeline_run_metrics_repository=(
+                dependencies.pipeline_run_metrics_repository
+            ),
             competitor_repository=dependencies.competitor_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
             source_locator_repository=dependencies.source_locator_repository,

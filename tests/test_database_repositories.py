@@ -6,6 +6,7 @@ import unittest
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.opportunity import Opportunity
+from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -15,6 +16,7 @@ from infrastructure.db import (
     SQLiteCompetitorRepository,
     SQLiteMonitoredSourceRepository,
     SQLiteOpportunityRepository,
+    SQLitePipelineRunMetricsRepository,
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
@@ -152,6 +154,20 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(repository.list_opportunities(), [opportunity])
             repository.close()
 
+    def test_sqlite_pipeline_run_metrics_repository_saves_and_loads_metrics(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLitePipelineRunMetricsRepository(database_path)
+            metrics = self._pipeline_run_metrics()
+
+            self.assertTrue(repository.save_pipeline_run_metrics(metrics))
+            self.assertFalse(repository.save_pipeline_run_metrics(metrics))
+            repository.close()
+
+            repository = SQLitePipelineRunMetricsRepository(database_path)
+            self.assertEqual(repository.list_pipeline_run_metrics(), [metrics])
+            repository.close()
+
     def test_sqlite_source_locator_repository_saves_and_loads_locators(self):
         with TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "lidscout.sqlite"
@@ -252,6 +268,32 @@ class DatabaseRepositoryTests(unittest.TestCase):
                 updated_source,
             )
             repository.close()
+
+    def _pipeline_run_metrics(self) -> PipelineRunMetrics:
+        return PipelineRunMetrics.create(
+            id="run-1",
+            ran_at=datetime(2026, 5, 22, 13, 0, tzinfo=UTC),
+            fetched_count=10,
+            fetch_failed_count=1,
+            rule_filtered_count=2,
+            llm_filtered_count=3,
+            relevance_failed_count=0,
+            extraction_attempted_count=4,
+            extracted_count=3,
+            no_signal_count=1,
+            extraction_failed_count=0,
+            signal_inserted_count=3,
+            scored_count=3,
+            scoring_failed_count=0,
+            average_score=7.5,
+            embedding_failed_count=0,
+            clustered_count=2,
+            cluster_inserted_count=2,
+            opportunity_synthesized_count=1,
+            opportunity_inserted_count=1,
+            opportunity_failed_count=0,
+            email_sent=True,
+        )
 
 
 if __name__ == "__main__":
