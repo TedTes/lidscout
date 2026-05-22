@@ -154,6 +154,11 @@ export default function SourcesPage() {
       setCompetitors(compRes.competitors);
       setSources(srcRes.sources);
       setLoadStatus('ready');
+      if (compRes.competitors.length > 0) {
+        const firstCompetitorId = compRes.competitors[0].id;
+        setExpandedCompId(firstCompetitorId);
+        void loadSuggestionsFor(firstCompetitorId);
+      }
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load data');
       setLoadStatus('error');
@@ -268,12 +273,7 @@ export default function SourcesPage() {
 
   // Suggestions ───────────────────────────────────────────────────────────────
 
-  const toggleSuggestions = async (competitorId: string) => {
-    if (expandedCompId === competitorId) {
-      setExpandedCompId(null);
-      return;
-    }
-    setExpandedCompId(competitorId);
+  const loadSuggestionsFor = async (competitorId: string) => {
     if (suggestionsCache.has(competitorId)) return;
 
     setSuggestionsLoadingIds(prev => new Set(prev).add(competitorId));
@@ -287,6 +287,15 @@ export default function SourcesPage() {
     } finally {
       setSuggestionsLoadingIds(prev => { const s = new Set(prev); s.delete(competitorId); return s; });
     }
+  };
+
+  const toggleSuggestions = async (competitorId: string) => {
+    if (expandedCompId === competitorId) {
+      setExpandedCompId(null);
+      return;
+    }
+    setExpandedCompId(competitorId);
+    await loadSuggestionsFor(competitorId);
   };
 
   const handleAddFromSuggestion = async (competitorId: string, suggestion: SourceSuggestion) => {
@@ -373,14 +382,14 @@ export default function SourcesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <div className="grid grid-cols-[1fr_100px_140px_60px_90px_28px] gap-x-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
+                <div className="grid grid-cols-[1fr_100px_140px_60px_90px_110px] gap-x-3 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
                   <span>Name</span><span>Category</span><span>Website</span>
                   <span>Sources</span><span /><span />
                 </div>
                 {competitors.map(comp => (
                   <div key={comp.id}>
                     {/* Competitor row */}
-                    <div className="grid grid-cols-[1fr_100px_140px_60px_90px_28px] items-center gap-x-3 border-t border-slate-800/50 px-4 py-2.5 text-xs hover:bg-white/[0.01]">
+                    <div className="grid grid-cols-[1fr_100px_140px_60px_90px_110px] items-center gap-x-3 border-t border-slate-800/50 px-4 py-2.5 text-xs hover:bg-white/[0.01]">
                       <span className="font-medium text-slate-300">{comp.name}</span>
                       <span className="text-slate-500">{comp.category ?? '—'}</span>
                       <span className="truncate font-mono text-[11px] text-slate-600">{comp.website ?? '—'}</span>
@@ -388,12 +397,11 @@ export default function SourcesPage() {
                       <button onClick={() => openAddSourceFor(comp.id)} className="text-[11px] font-medium text-violet-500 hover:text-violet-400 transition text-left">
                         + source
                       </button>
-                      {/* Suggestions toggle */}
                       <button
                         onClick={() => toggleSuggestions(comp.id)}
-                        title="Show suggested sources"
-                        className={`flex items-center justify-center rounded p-0.5 transition ${expandedCompId === comp.id ? 'text-violet-400 bg-violet-500/10' : 'text-slate-700 hover:text-slate-400'}`}
+                        className={`inline-flex items-center justify-end gap-1.5 rounded px-2 py-1 text-[11px] font-medium transition ${expandedCompId === comp.id ? 'bg-violet-500/10 text-violet-400' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300'}`}
                       >
+                        Suggestions
                         <IconChevron expanded={expandedCompId === comp.id} />
                       </button>
                     </div>
