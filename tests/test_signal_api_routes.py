@@ -13,6 +13,7 @@ from api.routes.signals import (
     create_competitor_source,
     delete_signal,
     get_latest_report,
+    list_competitor_source_suggestions,
     list_competitor_sources,
     list_competitors,
     list_clusters,
@@ -107,6 +108,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/pipeline/run", paths)
         self.assertIn("/competitors", paths)
         self.assertIn("/competitors/{competitor_id}/sources", paths)
+        self.assertIn("/competitors/{competitor_id}/source-suggestions", paths)
         self.assertIn("/sources", paths)
         self.assertIn("/sources/{source_id}", paths)
         self.assertIn("/health", paths)
@@ -243,6 +245,52 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(created["competitor_id"], "competitor-1")
         self.assertEqual(response["sources"][0]["locator"], "https://acme.example/reviews")
+
+    def test_lists_competitor_source_suggestions(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="notion",
+                    name="Notion",
+                    website="https://www.notion.so",
+                )
+            ]
+        )
+        existing_source = asyncio.run(
+            create_competitor_source(
+                "notion",
+                MonitoredSourceRequest(
+                    locator="https://www.reddit.com/search.json?q=Notion&sort=new",
+                    source_type="reddit_search",
+                ),
+                self._dependencies(
+                    competitor_repository=competitor_repository,
+                    monitored_source_repository=monitored_source_repository,
+                ),
+            )
+        )
+        dependencies = self._dependencies(
+            competitor_repository=competitor_repository,
+            monitored_source_repository=monitored_source_repository,
+        )
+
+        response = asyncio.run(
+            list_competitor_source_suggestions("notion", dependencies)
+        )
+
+        self.assertGreaterEqual(len(response["suggestions"]), 6)
+        self.assertIn(
+            "https://www.g2.com/search?query=Notion",
+            [suggestion["locator"] for suggestion in response["suggestions"]],
+        )
+        existing = next(
+            suggestion
+            for suggestion in response["suggestions"]
+            if suggestion["locator"] == existing_source["locator"]
+        )
+        self.assertTrue(existing["already_monitored"])
 
     def test_lists_sources_across_competitors(self):
         competitor_repository = InMemoryCompetitorRepository()

@@ -17,6 +17,7 @@ from application.ports import (
     SourceLocatorRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
+from application.source_suggestions import SourceSuggestion, SourceSuggestionService
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.opportunity import Opportunity
@@ -250,6 +251,30 @@ async def list_competitor_sources(
     }
 
 
+@router.get("/competitors/{competitor_id}/source-suggestions")
+async def list_competitor_source_suggestions(
+    competitor_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return opinionated default source candidates for one competitor."""
+    competitor = dependencies.competitor_repository.get_competitor(competitor_id)
+    if competitor is None:
+        raise HTTPException(status_code=404, detail="Competitor not found")
+
+    existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
+        competitor_id=competitor_id,
+    )
+    return {
+        "suggestions": [
+            _serialize_source_suggestion(suggestion)
+            for suggestion in SourceSuggestionService().suggest(
+                competitor,
+                existing_sources,
+            )
+        ]
+    }
+
+
 @router.get("/sources")
 async def list_sources(
     competitor_id: str | None = None,
@@ -446,6 +471,18 @@ def _serialize_monitored_source(source: MonitoredSource) -> dict[str, Any]:
         ),
         "last_error": source.last_error,
         "options": source.options,
+    }
+
+
+def _serialize_source_suggestion(suggestion: SourceSuggestion) -> dict[str, Any]:
+    return {
+        "locator": suggestion.locator,
+        "source_type": suggestion.source_type,
+        "label": suggestion.label,
+        "rationale": suggestion.rationale,
+        "limit": suggestion.limit,
+        "options": suggestion.options,
+        "already_monitored": suggestion.already_monitored,
     }
 
 

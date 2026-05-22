@@ -17,6 +17,7 @@ import {
   PipelineRunRequest,
   PipelineRunResult,
   SignalsResponse,
+  SourceSuggestionsResponse,
 } from '@/lib/types/signals';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -124,6 +125,22 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load monitored sources');
+      }
+      throw error;
+    }
+  }
+
+  async getCompetitorSourceSuggestions(
+    competitorId: string
+  ): Promise<SourceSuggestionsResponse> {
+    try {
+      const response = await api.get<SourceSuggestionsResponse>(
+        `/competitors/${competitorId}/source-suggestions`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load source suggestions');
       }
       throw error;
     }

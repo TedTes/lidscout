@@ -61,12 +61,26 @@ export type MonitoredSource = {
   options: Record<string, unknown>;
 };
 
+export type SourceSuggestion = {
+  locator: string;
+  source_type: string;
+  label: string;
+  rationale: string;
+  limit: number | null;
+  options: Record<string, string>;
+  already_monitored: boolean;
+};
+
 export type CompetitorsResponse = {
   competitors: Competitor[];
 };
 
 export type MonitoredSourcesResponse = {
   sources: MonitoredSource[];
+};
+
+export type SourceSuggestionsResponse = {
+  suggestions: SourceSuggestion[];
 };
 
 export type MonitoredSourceUpdateRequest = {
