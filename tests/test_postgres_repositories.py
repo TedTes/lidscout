@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 import json
 import unittest
+from unittest.mock import patch
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
@@ -18,6 +19,7 @@ from infrastructure.db import (
     PostgresScoreRepository,
     PostgresSignalRepository,
     PostgresSourceLocatorRepository,
+    connect_postgres,
 )
 
 
@@ -53,6 +55,13 @@ class FakeConnection:
 
 
 class PostgresRepositoryTests(unittest.TestCase):
+    def test_connect_postgres_uses_autocommit(self):
+        with patch("psycopg.connect") as connect:
+            connection = connect_postgres("postgresql://postgres.example/lidscout")
+
+        self.assertIs(connection, connect.return_value)
+        self.assertTrue(connect.call_args.kwargs["autocommit"])
+
     def test_post_repository_saves_and_loads_posts(self):
         created_at = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
         post = RawPost.create(

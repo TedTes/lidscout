@@ -1284,7 +1284,7 @@ def _connect_postgres(database_url: str) -> Any:
     except ImportError as exc:
         raise RuntimeError("psycopg[binary] is required for Supabase Postgres") from exc
 
-    return psycopg.connect(database_url, row_factory=dict_row)
+    return psycopg.connect(database_url, row_factory=dict_row, autocommit=True)
 
 
 def _rowcount(cursor: Any) -> int:
