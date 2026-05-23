@@ -2,6 +2,7 @@
 from application.ports.repositories import (
     ClusterRepository,
     CompetitorRepository,
+    MarketRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
@@ -14,6 +15,7 @@ from application.ports.repositories import (
 __all__ = [
     "ClusterRepository",
     "CompetitorRepository",
+    "MarketRepository",
     "MonitoredSourceRepository",
     "OpportunityRepository",
     "PipelineRunMetricsRepository",

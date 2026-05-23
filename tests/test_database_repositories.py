@@ -5,6 +5,7 @@ import unittest
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -14,6 +15,7 @@ from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
     SQLiteClusterRepository,
     SQLiteCompetitorRepository,
+    SQLiteMarketRepository,
     SQLiteMonitoredSourceRepository,
     SQLiteOpportunityRepository,
     SQLitePipelineRunMetricsRepository,
@@ -152,6 +154,28 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
             self.assertEqual(repository.list_opportunities(), [opportunity])
+            repository.close()
+
+    def test_sqlite_market_repository_saves_and_loads_markets(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteMarketRepository(database_path)
+            market = Market.create(
+                id="workspace-tools",
+                name="Workspace tools",
+                description="Tools for async teams.",
+                target_user="product teams",
+                idea_prompt="Find workflow gaps in collaboration tools.",
+                created_at=datetime(2026, 5, 23, 11, 0, tzinfo=UTC),
+            )
+
+            saved_count = repository.save_markets([market, market])
+            repository.close()
+
+            repository = SQLiteMarketRepository(database_path)
+            self.assertEqual(saved_count, 1)
+            self.assertEqual(repository.get_market("workspace-tools"), market)
+            self.assertEqual(repository.list_markets(), [market])
             repository.close()
 
     def test_sqlite_pipeline_run_metrics_repository_saves_and_loads_metrics(self):

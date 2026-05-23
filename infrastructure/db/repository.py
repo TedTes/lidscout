@@ -11,6 +11,7 @@ from typing import Any
 from application.ports import (
     ClusterRepository,
     CompetitorRepository,
+    MarketRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
@@ -21,6 +22,7 @@ from application.ports import (
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -143,6 +145,28 @@ class InMemoryOpportunityRepository(OpportunityRepository):
 
     def list_opportunities(self) -> list[Opportunity]:
         return list(self.opportunities.values())
+
+
+@dataclass
+class InMemoryMarketRepository(MarketRepository):
+    """In-memory market repository."""
+
+    markets: dict[str, Market] = field(default_factory=dict)
+
+    def save_markets(self, markets: list[Market]) -> int:
+        inserted_count = 0
+        for market in markets:
+            if market.id in self.markets:
+                continue
+            self.markets[market.id] = market
+            inserted_count += 1
+        return inserted_count
+
+    def get_market(self, market_id: str) -> Market | None:
+        return self.markets.get(market_id)
+
+    def list_markets(self) -> list[Market]:
+        return list(self.markets.values())
 
 
 @dataclass
@@ -585,6 +609,58 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
             "SELECT * FROM opportunities ORDER BY id"
         ).fetchall()
         return [_opportunity_from_row(row) for row in rows]
+
+
+class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
+    """SQLite-backed market repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS markets (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                target_user TEXT,
+                idea_prompt TEXT,
+                created_at TEXT
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_markets(self, markets: list[Market]) -> int:
+        inserted_count = 0
+        for market in markets:
+            cursor = self.connection.execute(
+                """
+                INSERT OR IGNORE INTO markets (
+                    id, name, description, target_user, idea_prompt, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    market.id,
+                    market.name,
+                    market.description,
+                    market.target_user,
+                    market.idea_prompt,
+                    _datetime_to_text(market.created_at),
+                ),
+            )
+            inserted_count += cursor.rowcount
+        self.connection.commit()
+        return inserted_count
+
+    def get_market(self, market_id: str) -> Market | None:
+        row = self.connection.execute(
+            "SELECT * FROM markets WHERE id = ?",
+            (market_id,),
+        ).fetchone()
+        return _market_from_row(row) if row else None
+
+    def list_markets(self) -> list[Market]:
+        rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
+        return [_market_from_row(row) for row in rows]
 
 
 class SQLitePipelineRunMetricsRepository(
@@ -1182,6 +1258,44 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
         return [_opportunity_from_row(row) for row in rows]
 
 
+class PostgresMarketRepository(_PostgresRepository, MarketRepository):
+    """Postgres-backed market repository."""
+
+    def save_markets(self, markets: list[Market]) -> int:
+        inserted_count = 0
+        for market in markets:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO markets (
+                    id, name, description, target_user, idea_prompt, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    market.id,
+                    market.name,
+                    market.description,
+                    market.target_user,
+                    market.idea_prompt,
+                    market.created_at,
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_market(self, market_id: str) -> Market | None:
+        row = self.connection.execute(
+            "SELECT * FROM markets WHERE id = %s",
+            (market_id,),
+        ).fetchone()
+        return _market_from_row(row) if row else None
+
+    def list_markets(self) -> list[Market]:
+        rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
+        return [_market_from_row(row) for row in rows]
+
+
 class PostgresPipelineRunMetricsRepository(
     _PostgresRepository,
     PipelineRunMetricsRepository,
@@ -1519,6 +1633,17 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
         evidence_count=row["evidence_count"],
         confidence=_float(row["confidence"]),
         evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
+    )
+
+
+def _market_from_row(row: sqlite3.Row) -> Market:
+    return Market.create(
+        id=row["id"],
+        name=row["name"],
+        description=row["description"],
+        target_user=row["target_user"],
+        idea_prompt=row["idea_prompt"],
+        created_at=_datetime_from_text(row["created_at"]),
     )
 
 

@@ -2,6 +2,7 @@ import unittest
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
@@ -10,6 +11,7 @@ from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
+    InMemoryMarketRepository,
     InMemoryMonitoredSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPostRepository,
@@ -108,6 +110,21 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.opportunities["opportunity-1"], opportunity)
         self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
         self.assertEqual(repository.list_opportunities(), [opportunity])
+
+    def test_market_repository_persists_unique_markets(self):
+        repository = InMemoryMarketRepository()
+        market = Market.create(
+            id="workspace-tools",
+            name="Workspace tools",
+            target_user="product teams",
+        )
+
+        saved_count = repository.save_markets([market, market])
+
+        self.assertEqual(saved_count, 1)
+        self.assertEqual(repository.markets["workspace-tools"], market)
+        self.assertEqual(repository.get_market("workspace-tools"), market)
+        self.assertEqual(repository.list_markets(), [market])
 
     def test_source_locator_repository_persists_unique_locators(self):
         repository = InMemorySourceLocatorRepository()

@@ -3,6 +3,7 @@ from typing import Protocol
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -96,6 +97,22 @@ class OpportunityRepository(Protocol):
 
     def list_opportunities(self) -> list[Opportunity]:
         """Load all persisted opportunities."""
+        ...
+
+
+class MarketRepository(Protocol):
+    """Persistence boundary for watched markets or niches."""
+
+    def save_markets(self, markets: list[Market]) -> int:
+        """Persist markets and return the number saved."""
+        ...
+
+    def get_market(self, market_id: str) -> Market | None:
+        """Load one market by id."""
+        ...
+
+    def list_markets(self) -> list[Market]:
+        """Load all persisted markets."""
         ...
 
 

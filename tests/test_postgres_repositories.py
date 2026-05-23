@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -14,6 +15,7 @@ from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
     PostgresClusterRepository,
     PostgresCompetitorRepository,
+    PostgresMarketRepository,
     PostgresMonitoredSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
@@ -374,6 +376,40 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.save_competitors([competitor]), 1)
         self.assertEqual(repository.get_competitor("competitor-1"), competitor)
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_market_repository_saves_and_loads_markets(self):
+        created_at = datetime(2026, 5, 23, 11, 0, tzinfo=UTC)
+        market = Market.create(
+            id="workspace-tools",
+            name="Workspace tools",
+            description="Tools for async teams.",
+            target_user="product teams",
+            idea_prompt="Find workflow gaps in collaboration tools.",
+            created_at=created_at,
+        )
+        row = {
+            "id": "workspace-tools",
+            "name": "Workspace tools",
+            "description": "Tools for async teams.",
+            "target_user": "product teams",
+            "idea_prompt": "Find workflow gaps in collaboration tools.",
+            "created_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresMarketRepository(connection=connection)
+
+        self.assertEqual(repository.save_markets([market]), 1)
+        self.assertEqual(repository.get_market("workspace-tools"), market)
+        self.assertEqual(repository.list_markets(), [market])
+        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "workspace-tools")
         self.assertEqual(connection.commit_count, 1)
 
     def test_monitored_source_repository_saves_and_loads_enabled_sources(self):
