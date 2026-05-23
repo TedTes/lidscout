@@ -12,6 +12,7 @@ class Competitor:
     website: str | None = None
     category: str | None = None
     description: str | None = None
+    market_id: str | None = None
     created_at: datetime | None = None
 
     @classmethod
@@ -23,6 +24,7 @@ class Competitor:
         website: str | None = None,
         category: str | None = None,
         description: str | None = None,
+        market_id: str | None = None,
         created_at: datetime | None = None,
     ) -> "Competitor":
         """Create a validated competitor entity."""
@@ -39,6 +41,7 @@ class Competitor:
             website=cls._clean_optional(website),
             category=cls._clean_optional(category),
             description=cls._clean_optional(description),
+            market_id=cls._clean_optional(market_id),
             created_at=created_at or datetime.now(tz=UTC),
         )
 

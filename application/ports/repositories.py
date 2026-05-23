@@ -179,7 +179,8 @@ class MonitoredSourceRepository(Protocol):
         self,
         *,
         competitor_id: str | None = None,
+        market_id: str | None = None,
         enabled: bool | None = None,
     ) -> list[MonitoredSource]:
-        """Load monitored sources, optionally filtered by competitor and enabled state."""
+        """Load monitored sources, optionally filtered by scope and enabled state."""
         ...

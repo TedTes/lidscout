@@ -18,6 +18,7 @@ class SignalModelTests(unittest.TestCase):
             category="reporting",
             confidence=0.82,
             competitor_id=" competitor-1 ",
+            market_id=" workspace-tools ",
             evidence_url=" https://example.com/reviews ",
             evidence_text=" Customer quote ",
         )
@@ -34,6 +35,7 @@ class SignalModelTests(unittest.TestCase):
         self.assertEqual(signal.category, "reporting")
         self.assertEqual(signal.confidence, 0.82)
         self.assertEqual(signal.competitor_id, "competitor-1")
+        self.assertEqual(signal.market_id, "workspace-tools")
         self.assertEqual(signal.evidence_url, "https://example.com/reviews")
         self.assertEqual(signal.evidence_text, "Customer quote")
 

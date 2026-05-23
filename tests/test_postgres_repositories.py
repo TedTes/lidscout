@@ -360,6 +360,7 @@ class PostgresRepositoryTests(unittest.TestCase):
             name="Acme CRM",
             website="https://acme.example",
             category="crm",
+            market_id="market-1",
             created_at=created_at,
         )
         row = {
@@ -368,6 +369,7 @@ class PostgresRepositoryTests(unittest.TestCase):
             "website": "https://acme.example",
             "category": "crm",
             "description": None,
+            "market_id": "market-1",
             "created_at": created_at,
         }
         connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(row=row)])
@@ -416,6 +418,7 @@ class PostgresRepositoryTests(unittest.TestCase):
         source = MonitoredSource.create(
             id="source-1",
             competitor_id="competitor-1",
+            market_id="market-1",
             locator="https://acme.example/reviews",
             source_type="reviews",
             limit=10,
@@ -424,6 +427,7 @@ class PostgresRepositoryTests(unittest.TestCase):
         row = {
             "id": "source-1",
             "competitor_id": "competitor-1",
+            "market_id": "market-1",
             "locator": "https://acme.example/reviews",
             "source_type": "reviews",
             "enabled": True,
@@ -448,16 +452,19 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(
             repository.list_monitored_sources(
                 competitor_id="competitor-1",
+                market_id="market-1",
                 enabled=True,
             ),
             [source],
         )
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
         self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
-        self.assertEqual(connection.calls[2][1], ("competitor-1", True))
+        self.assertEqual(connection.calls[2][1], ("competitor-1", "market-1", True))
+        self.assertIn("market_id = %s", connection.calls[2][0])
         updated_source = MonitoredSource.create(
             id="source-1",
             competitor_id="competitor-1",
+            market_id="market-1",
             locator="https://acme.example/reviews",
             source_type="forum",
             enabled=False,
@@ -467,8 +474,10 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertTrue(repository.update_monitored_source(updated_source))
         self.assertIn("UPDATE monitored_sources", connection.calls[3][0])
         self.assertEqual(connection.calls[3][1][0], "forum")
-        self.assertEqual(connection.calls[3][1][1], False)
-        self.assertEqual(connection.calls[3][1][2], 25)
+        self.assertEqual(connection.calls[3][1][1], "competitor-1")
+        self.assertEqual(connection.calls[3][1][2], "market-1")
+        self.assertEqual(connection.calls[3][1][3], False)
+        self.assertEqual(connection.calls[3][1][4], 25)
         self.assertEqual(json.loads(connection.calls[3][1][-2]), {"section": "support"})
         self.assertEqual(connection.calls[3][1][-1], "source-1")
         self.assertEqual(connection.commit_count, 2)

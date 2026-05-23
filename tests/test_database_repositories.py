@@ -232,6 +232,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
                 name="Acme CRM",
                 website="https://acme.example",
                 category="crm",
+                market_id="market-1",
             )
 
             saved_count = repository.save_competitors([competitor, competitor])
@@ -250,6 +251,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             source = MonitoredSource.create(
                 id="source-1",
                 competitor_id="competitor-1",
+                market_id="market-1",
                 locator="https://acme.example/reviews",
                 source_type="reviews",
                 limit=10,
@@ -257,6 +259,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             disabled_source = MonitoredSource.create(
                 id="source-2",
                 competitor_id="competitor-2",
+                market_id="market-2",
                 locator="https://other.example/reviews",
                 enabled=False,
             )
@@ -274,12 +277,17 @@ class DatabaseRepositoryTests(unittest.TestCase):
                 [source],
             )
             self.assertEqual(
+                repository.list_monitored_sources(market_id="market-1"),
+                [source],
+            )
+            self.assertEqual(
                 repository.list_monitored_sources(enabled=False),
                 [disabled_source],
             )
             updated_source = MonitoredSource.create(
                 id="source-1",
                 competitor_id="competitor-1",
+                market_id="market-1",
                 locator="https://acme.example/reviews",
                 source_type="forum",
                 enabled=False,

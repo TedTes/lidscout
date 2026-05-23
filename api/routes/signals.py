@@ -71,6 +71,7 @@ class CompetitorRequest(BaseModel):
     website: str | None = None
     category: str | None = None
     description: str | None = None
+    market_id: str | None = None
 
 
 class MonitoredSourceRequest(BaseModel):
@@ -81,6 +82,7 @@ class MonitoredSourceRequest(BaseModel):
     enabled: bool = True
     limit: int | None = Field(default=None, ge=1)
     scan_frequency: str | None = None
+    market_id: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -91,6 +93,7 @@ class MonitoredSourceUpdateRequest(BaseModel):
     enabled: bool | None = None
     limit: int | None = Field(default=None, ge=1)
     scan_frequency: str | None = None
+    market_id: str | None = None
     options: dict[str, Any] | None = None
 
 
@@ -141,13 +144,16 @@ def get_signal_api_dependencies() -> SignalApiDependencies:
 
 @router.get("/signals")
 async def list_signals(
-    competitor_id: str | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    competitor_id: str | None = None,
+    market_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return persisted extracted signals, optionally filtered by competitor."""
+    """Return persisted extracted signals, optionally filtered by scope."""
     signals = dependencies.signal_repository.list_signals()
     if competitor_id is not None:
         signals = [s for s in signals if s.competitor_id == competitor_id]
+    if market_id is not None:
+        signals = [s for s in signals if s.market_id == market_id]
     return {"signals": [_serialize_signal(s) for s in signals]}
 
 
@@ -170,40 +176,44 @@ async def delete_signal(
 
 @router.get("/clusters")
 async def list_clusters(
-    competitor_id: str | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    competitor_id: str | None = None,
+    market_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return persisted signal clusters, optionally filtered by competitor."""
+    """Return persisted signal clusters, optionally filtered by scope."""
     clusters = dependencies.cluster_repository.list_clusters()
-    if competitor_id is not None:
-        competitor_signal_ids = {
+    if competitor_id is not None or market_id is not None:
+        scoped_signal_ids = {
             s.id
             for s in dependencies.signal_repository.list_signals()
-            if s.competitor_id == competitor_id
+            if (competitor_id is None or s.competitor_id == competitor_id)
+            and (market_id is None or s.market_id == market_id)
         }
         clusters = [
             c for c in clusters
-            if any(sid in competitor_signal_ids for sid in c.signal_ids)
+            if any(sid in scoped_signal_ids for sid in c.signal_ids)
         ]
     return {"clusters": [_serialize_cluster(c) for c in clusters]}
 
 
 @router.get("/opportunities")
 async def list_opportunities(
-    competitor_id: str | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    competitor_id: str | None = None,
+    market_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return synthesized product opportunities, optionally filtered by competitor."""
+    """Return synthesized product opportunities, optionally filtered by scope."""
     opportunities = dependencies.opportunity_repository.list_opportunities()
-    if competitor_id is not None:
-        competitor_signal_ids = {
+    if competitor_id is not None or market_id is not None:
+        scoped_signal_ids = {
             s.id
             for s in dependencies.signal_repository.list_signals()
-            if s.competitor_id == competitor_id
+            if (competitor_id is None or s.competitor_id == competitor_id)
+            and (market_id is None or s.market_id == market_id)
         }
         opportunities = [
             o for o in opportunities
-            if any(sid in competitor_signal_ids for sid in o.evidence_signal_ids)
+            if any(sid in scoped_signal_ids for sid in o.evidence_signal_ids)
         ]
     return {"opportunities": [_serialize_opportunity(o) for o in opportunities]}
 
@@ -246,6 +256,7 @@ async def create_competitor(
             website=request.website,
             category=request.category,
             description=request.description,
+            market_id=request.market_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -297,6 +308,7 @@ async def list_competitor_source_suggestions(
 @router.get("/sources")
 async def list_sources(
     competitor_id: str | None = None,
+    market_id: str | None = None,
     enabled: bool | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
@@ -306,6 +318,7 @@ async def list_sources(
             _serialize_monitored_source(source)
             for source in dependencies.monitored_source_repository.list_monitored_sources(
                 competitor_id=competitor_id,
+                market_id=market_id,
                 enabled=enabled,
             )
         ]
@@ -319,12 +332,14 @@ async def create_competitor_source(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Create a monitored source for one competitor."""
-    if dependencies.competitor_repository.get_competitor(competitor_id) is None:
+    competitor = dependencies.competitor_repository.get_competitor(competitor_id)
+    if competitor is None:
         raise HTTPException(status_code=404, detail="Competitor not found")
 
     try:
         source = MonitoredSource.create(
             competitor_id=competitor_id,
+            market_id=request.market_id or competitor.market_id,
             locator=request.locator,
             source_type=request.source_type,
             enabled=request.enabled,
@@ -432,6 +447,11 @@ def _apply_source_update(
     return MonitoredSource.create(
         id=source.id,
         competitor_id=source.competitor_id,
+        market_id=(
+            request.market_id
+            if "market_id" in fields
+            else source.market_id
+        ),
         locator=source.locator,
         source_type=(
             request.source_type if "source_type" in fields else source.source_type
@@ -463,6 +483,7 @@ def _serialize_signal(signal: Signal) -> dict[str, Any]:
         "category": signal.category,
         "confidence": signal.confidence,
         "competitor_id": signal.competitor_id,
+        "market_id": signal.market_id,
         "evidence_url": signal.evidence_url,
         "evidence_text": signal.evidence_text,
         "detected_at": signal.detected_at.isoformat() if signal.detected_at else None,
@@ -476,6 +497,7 @@ def _serialize_competitor(competitor: Competitor) -> dict[str, Any]:
         "website": competitor.website,
         "category": competitor.category,
         "description": competitor.description,
+        "market_id": competitor.market_id,
         "created_at": competitor.created_at.isoformat() if competitor.created_at else None,
     }
 
@@ -484,6 +506,7 @@ def _serialize_monitored_source(source: MonitoredSource) -> dict[str, Any]:
     return {
         "id": source.id,
         "competitor_id": source.competitor_id,
+        "market_id": source.market_id,
         "locator": source.locator,
         "source_type": source.source_type,
         "enabled": source.enabled,

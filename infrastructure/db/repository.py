@@ -260,11 +260,14 @@ class InMemoryMonitoredSourceRepository(MonitoredSourceRepository):
         self,
         *,
         competitor_id: str | None = None,
+        market_id: str | None = None,
         enabled: bool | None = None,
     ) -> list[MonitoredSource]:
         sources = list(self.monitored_sources.values())
         if competitor_id is not None:
             sources = [source for source in sources if source.competitor_id == competitor_id]
+        if market_id is not None:
+            sources = [source for source in sources if source.market_id == market_id]
         if enabled is not None:
             sources = [source for source in sources if source.enabled == enabled]
         return sources
@@ -367,6 +370,7 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                 category TEXT,
                 confidence REAL NOT NULL,
                 competitor_id TEXT,
+                market_id TEXT,
                 evidence_url TEXT,
                 evidence_text TEXT,
                 detected_at TEXT
@@ -383,9 +387,9 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                 INSERT OR IGNORE INTO signals (
                     id, post_id, pain, user_type, job_to_be_done,
                     current_workaround, urgency, severity, willingness_to_pay,
-                    category, confidence, competitor_id, evidence_url,
-                    evidence_text, detected_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, confidence, competitor_id, market_id,
+                    evidence_url, evidence_text, detected_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     signal.id,
@@ -400,6 +404,7 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                     signal.category,
                     signal.confidence,
                     signal.competitor_id,
+                    signal.market_id,
                     signal.evidence_url,
                     signal.evidence_text,
                     _datetime_to_text(signal.detected_at),
@@ -797,6 +802,7 @@ class SQLiteCompetitorRepository(_SQLiteRepository, CompetitorRepository):
                 website TEXT,
                 category TEXT,
                 description TEXT,
+                market_id TEXT,
                 created_at TEXT
             )
             """
@@ -809,8 +815,8 @@ class SQLiteCompetitorRepository(_SQLiteRepository, CompetitorRepository):
             cursor = self.connection.execute(
                 """
                 INSERT OR IGNORE INTO competitors (
-                    id, name, website, category, description, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    id, name, website, category, description, market_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     competitor.id,
@@ -818,6 +824,7 @@ class SQLiteCompetitorRepository(_SQLiteRepository, CompetitorRepository):
                     competitor.website,
                     competitor.category,
                     competitor.description,
+                    competitor.market_id,
                     _datetime_to_text(competitor.created_at),
                 ),
             )
@@ -845,7 +852,8 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
             """
             CREATE TABLE IF NOT EXISTS monitored_sources (
                 id TEXT PRIMARY KEY,
-                competitor_id TEXT NOT NULL,
+                competitor_id TEXT,
+                market_id TEXT,
                 locator TEXT NOT NULL UNIQUE,
                 source_type TEXT NOT NULL,
                 enabled INTEGER NOT NULL,
@@ -865,13 +873,14 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
             cursor = self.connection.execute(
                 """
                 INSERT OR IGNORE INTO monitored_sources (
-                    id, competitor_id, locator, source_type, enabled,
+                    id, competitor_id, market_id, locator, source_type, enabled,
                     limit_value, scan_frequency, last_scanned_at, last_error, options
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source.id,
                     source.competitor_id,
+                    source.market_id,
                     source.locator,
                     source.source_type,
                     _bool_to_int(source.enabled),
@@ -899,6 +908,8 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
             UPDATE monitored_sources
             SET
                 source_type = ?,
+                competitor_id = ?,
+                market_id = ?,
                 enabled = ?,
                 limit_value = ?,
                 scan_frequency = ?,
@@ -909,6 +920,8 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
             """,
             (
                 source.source_type,
+                source.competitor_id,
+                source.market_id,
                 _bool_to_int(source.enabled),
                 source.limit,
                 source.scan_frequency,
@@ -925,6 +938,7 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
         self,
         *,
         competitor_id: str | None = None,
+        market_id: str | None = None,
         enabled: bool | None = None,
     ) -> list[MonitoredSource]:
         query = "SELECT * FROM monitored_sources"
@@ -933,6 +947,9 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
         if competitor_id is not None:
             clauses.append("competitor_id = ?")
             params.append(competitor_id)
+        if market_id is not None:
+            clauses.append("market_id = ?")
+            params.append(market_id)
         if enabled is not None:
             clauses.append("enabled = ?")
             params.append(_bool_to_int(enabled))
@@ -1052,6 +1069,7 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
             SELECT
                 s.*,
                 e.competitor_id,
+                e.market_id,
                 e.evidence_url,
                 e.evidence_text,
                 e.detected_at
@@ -1081,6 +1099,7 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
             SELECT
                 s.*,
                 e.competitor_id,
+                e.market_id,
                 e.evidence_url,
                 e.evidence_text,
                 e.detected_at
@@ -1095,6 +1114,7 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
         if not any(
             [
                 signal.competitor_id,
+                signal.market_id,
                 signal.evidence_url,
                 signal.evidence_text,
                 signal.detected_at,
@@ -1105,10 +1125,12 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
         self.connection.execute(
             """
             INSERT INTO signal_evidence (
-                signal_id, competitor_id, evidence_url, evidence_text, detected_at
-            ) VALUES (%s, %s, %s, %s, %s)
+                signal_id, competitor_id, market_id, evidence_url,
+                evidence_text, detected_at
+            ) VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (signal_id) DO UPDATE SET
                 competitor_id = EXCLUDED.competitor_id,
+                market_id = EXCLUDED.market_id,
                 evidence_url = EXCLUDED.evidence_url,
                 evidence_text = EXCLUDED.evidence_text,
                 detected_at = EXCLUDED.detected_at,
@@ -1117,6 +1139,7 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
             (
                 signal.id,
                 signal.competitor_id,
+                signal.market_id,
                 signal.evidence_url,
                 signal.evidence_text,
                 signal.detected_at or datetime.now(tz=UTC),
@@ -1386,8 +1409,8 @@ class PostgresCompetitorRepository(_PostgresRepository, CompetitorRepository):
             cursor = self.connection.execute(
                 """
                 INSERT INTO competitors (
-                    id, name, website, category, description, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s)
+                    id, name, website, category, description, market_id, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -1396,6 +1419,7 @@ class PostgresCompetitorRepository(_PostgresRepository, CompetitorRepository):
                     competitor.website,
                     competitor.category,
                     competitor.description,
+                    competitor.market_id,
                     competitor.created_at,
                 ),
             )
@@ -1424,14 +1448,15 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
             cursor = self.connection.execute(
                 """
                 INSERT INTO monitored_sources (
-                    id, competitor_id, locator, source_type, enabled,
+                    id, competitor_id, market_id, locator, source_type, enabled,
                     limit_value, scan_frequency, last_scanned_at, last_error, options
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
                     source.id,
                     source.competitor_id,
+                    source.market_id,
                     source.locator,
                     source.source_type,
                     source.enabled,
@@ -1459,6 +1484,8 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
             UPDATE monitored_sources
             SET
                 source_type = %s,
+                competitor_id = %s,
+                market_id = %s,
                 enabled = %s,
                 limit_value = %s,
                 scan_frequency = %s,
@@ -1470,6 +1497,8 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
             """,
             (
                 source.source_type,
+                source.competitor_id,
+                source.market_id,
                 source.enabled,
                 source.limit,
                 source.scan_frequency,
@@ -1486,6 +1515,7 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
         self,
         *,
         competitor_id: str | None = None,
+        market_id: str | None = None,
         enabled: bool | None = None,
     ) -> list[MonitoredSource]:
         query = "SELECT * FROM monitored_sources"
@@ -1494,6 +1524,9 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
         if competitor_id is not None:
             clauses.append("competitor_id = %s")
             params.append(competitor_id)
+        if market_id is not None:
+            clauses.append("market_id = %s")
+            params.append(market_id)
         if enabled is not None:
             clauses.append("enabled = %s")
             params.append(enabled)
@@ -1591,6 +1624,7 @@ def _signal_from_row(row: sqlite3.Row) -> Signal:
         category=row["category"],
         confidence=_float(row["confidence"]),
         competitor_id=_row_get(row, "competitor_id"),
+        market_id=_row_get(row, "market_id"),
         evidence_url=_row_get(row, "evidence_url"),
         evidence_text=_row_get(row, "evidence_text"),
         detected_at=_datetime_from_text(_row_get(row, "detected_at")),
@@ -1724,6 +1758,7 @@ def _competitor_from_row(row: sqlite3.Row) -> Competitor:
         website=row["website"],
         category=row["category"],
         description=row["description"],
+        market_id=_row_get(row, "market_id"),
         created_at=_datetime_from_text(row["created_at"]),
     )
 
@@ -1732,6 +1767,7 @@ def _monitored_source_from_row(row: sqlite3.Row) -> MonitoredSource:
     return MonitoredSource.create(
         id=row["id"],
         competitor_id=row["competitor_id"],
+        market_id=_row_get(row, "market_id"),
         locator=row["locator"],
         source_type=row["source_type"],
         enabled=bool(row["enabled"]),

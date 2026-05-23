@@ -118,6 +118,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
 
     opportunity_synthesis_result = _synthesize_opportunities(
         config.opportunity_repository,
+        config.llm_client,
         clusters,
         signals,
     )
@@ -164,6 +165,7 @@ class RelevanceFilterResult:
 
 def _synthesize_opportunities(
     opportunity_repository: OpportunityRepository | None,
+    llm_client: LLMClient,
     clusters: list[SignalCluster],
     signals: list[Signal],
 ) -> OpportunitySynthesisResult:
@@ -176,7 +178,7 @@ def _synthesize_opportunities(
         )
     return OpportunitySynthesisService(
         opportunity_repository,
-        llm_client=config.llm_client,
+        llm_client=llm_client,
     ).synthesize(clusters, signals)
 
 

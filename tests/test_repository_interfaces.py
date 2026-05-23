@@ -156,11 +156,13 @@ class RepositoryInterfaceTests(unittest.TestCase):
         source = MonitoredSource.create(
             id="source-1",
             competitor_id="competitor-1",
+            market_id="market-1",
             locator="https://acme.example/reviews",
         )
         disabled_source = MonitoredSource.create(
             id="source-2",
             competitor_id="competitor-2",
+            market_id="market-2",
             locator="https://other.example/reviews",
             enabled=False,
         )
@@ -175,10 +177,15 @@ class RepositoryInterfaceTests(unittest.TestCase):
             repository.list_monitored_sources(competitor_id="competitor-1"),
             [source],
         )
+        self.assertEqual(
+            repository.list_monitored_sources(market_id="market-1"),
+            [source],
+        )
         self.assertEqual(repository.list_monitored_sources(enabled=False), [disabled_source])
         updated_source = MonitoredSource.create(
             id="source-1",
             competitor_id="competitor-1",
+            market_id="market-1",
             locator="https://acme.example/reviews",
             source_type="forum",
             enabled=False,

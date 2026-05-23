@@ -91,12 +91,13 @@ def _source_locator_id(locator: str) -> str:
 
 @dataclass(frozen=True)
 class MonitoredSource:
-    """A competitor-linked source that is scanned by the background pipeline."""
+    """A market or competitor-linked source scanned by the background pipeline."""
 
     id: str
-    competitor_id: str
     locator: str
     source_type: str
+    competitor_id: str | None = None
+    market_id: str | None = None
     enabled: bool = True
     limit: int | None = None
     scan_frequency: str | None = None
@@ -108,8 +109,9 @@ class MonitoredSource:
     def create(
         cls,
         *,
-        competitor_id: str,
         locator: str,
+        competitor_id: str | None = None,
+        market_id: str | None = None,
         id: str | None = None,
         source_type: str = "web",
         enabled: bool = True,
@@ -120,9 +122,10 @@ class MonitoredSource:
         options: dict[str, Any] | None = None,
     ) -> "MonitoredSource":
         """Build a validated monitored source."""
-        normalized_competitor_id = competitor_id.strip()
-        if not normalized_competitor_id:
-            raise ValueError("competitor_id is required")
+        normalized_competitor_id = _clean_optional(competitor_id)
+        normalized_market_id = _clean_optional(market_id)
+        if normalized_competitor_id is None and normalized_market_id is None:
+            raise ValueError("competitor_id or market_id is required")
 
         source_input = SourceInput.create(
             locator=locator,
@@ -131,8 +134,9 @@ class MonitoredSource:
         )
         _validate_supported_locator(source_input.locator)
 
+        source_scope = normalized_competitor_id or normalized_market_id
         source_id = (
-            id or _monitored_source_id(normalized_competitor_id, source_input.locator)
+            id or _monitored_source_id(source_scope or "", source_input.locator)
         ).strip()
         normalized_source_type = source_type.strip().lower()
         if not source_id:
@@ -142,9 +146,10 @@ class MonitoredSource:
 
         return cls(
             id=source_id,
-            competitor_id=normalized_competitor_id,
             locator=source_input.locator,
             source_type=normalized_source_type,
+            competitor_id=normalized_competitor_id,
+            market_id=normalized_market_id,
             enabled=enabled,
             limit=source_input.limit,
             scan_frequency=_clean_optional(scan_frequency),
@@ -157,10 +162,13 @@ class MonitoredSource:
         """Convert a monitored source into a pipeline source input with context."""
         options = {
             **self.options,
-            "competitor_id": self.competitor_id,
             "monitored_source_id": self.id,
             "source_type": self.source_type,
         }
+        if self.competitor_id:
+            options["competitor_id"] = self.competitor_id
+        if self.market_id:
+            options["market_id"] = self.market_id
         return SourceInput.create(
             locator=self.locator,
             limit=self.limit,
