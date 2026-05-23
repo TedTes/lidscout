@@ -177,7 +177,11 @@ export default function SourcesPage() {
 
   const sourceCountByCompId = useMemo(() => {
     const m = new Map<string, number>();
-    sources.forEach(s => m.set(s.competitor_id, (m.get(s.competitor_id) ?? 0) + 1));
+    sources.forEach(s => {
+      if (s.competitor_id) {
+        m.set(s.competitor_id, (m.get(s.competitor_id) ?? 0) + 1);
+      }
+    });
     return m;
   }, [sources]);
 
@@ -483,14 +487,18 @@ export default function SourcesPage() {
                 </div>
 
                 {filteredSources.map(source => {
-                  const comp = competitorById.get(source.competitor_id);
+                  const comp = source.competitor_id
+                    ? competitorById.get(source.competitor_id)
+                    : undefined;
                   const isToggling = togglingIds.has(source.id);
                   const isEditing = editingId === source.id;
 
                   return (
                     <div key={source.id}>
                       <div className={`group grid grid-cols-[110px_1fr_80px_80px_55px_90px_24px_48px] items-center gap-x-3 border-t border-slate-800/50 px-4 py-2.5 text-xs transition-colors hover:bg-white/[0.01] ${source.last_error ? 'border-l-2 border-l-amber-500/40' : ''}`}>
-                        <span className="truncate text-[11px] text-slate-400">{comp?.name ?? source.competitor_id}</span>
+                        <span className="truncate text-[11px] text-slate-400">
+                          {comp?.name ?? source.competitor_id ?? source.market_id ?? 'Market source'}
+                        </span>
                         <span className="truncate font-mono text-[11px] text-slate-400" title={source.locator}>{source.locator}</span>
                         <span className="truncate text-slate-500">{source.source_type ?? '—'}</span>
                         <button

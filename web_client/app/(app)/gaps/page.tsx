@@ -44,6 +44,7 @@ function RefreshIcon() {
 export default function GapsPage() {
   const searchParams = useSearchParams();
   const companyId = searchParams.get('company') ?? undefined;
+  const marketId = searchParams.get('market') ?? undefined;
 
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
@@ -53,11 +54,15 @@ export default function GapsPage() {
   const load = async () => {
     setStatus('loading');
     setError(null);
-    const filter = companyId ? { competitor_id: companyId } : undefined;
+    const filter = {
+      ...(companyId ? { competitor_id: companyId } : {}),
+      ...(marketId ? { market_id: marketId } : {}),
+    };
+    const params = Object.keys(filter).length > 0 ? filter : undefined;
     try {
       const [oppsRes, clustersRes] = await Promise.all([
-        signalApi.getOpportunities(filter),
-        signalApi.getClusters(filter),
+        signalApi.getOpportunities(params),
+        signalApi.getClusters(params),
       ]);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
@@ -69,7 +74,7 @@ export default function GapsPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [companyId]);
+  useEffect(() => { load(); }, [companyId, marketId]);
 
   const clusterById = useMemo(() => {
     const m = new Map<string, SignalCluster>();

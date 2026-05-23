@@ -339,11 +339,35 @@ async def create_market_source(
 @router.get("/reports/latest")
 async def get_latest_report(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    competitor_id: str | None = None,
+    market_id: str | None = None,
 ) -> dict[str, Any]:
     """Generate and return the latest report from persisted clusters."""
+    clusters = dependencies.cluster_repository.list_clusters()
+    opportunities = dependencies.opportunity_repository.list_opportunities()
+    if competitor_id is not None or market_id is not None:
+        scoped_signal_ids = _scoped_signal_ids(
+            dependencies,
+            competitor_id=competitor_id,
+            market_id=market_id,
+        )
+        clusters = [
+            cluster
+            for cluster in clusters
+            if any(signal_id in scoped_signal_ids for signal_id in cluster.signal_ids)
+        ]
+        opportunities = [
+            opportunity
+            for opportunity in opportunities
+            if any(
+                signal_id in scoped_signal_ids
+                for signal_id in opportunity.evidence_signal_ids
+            )
+        ]
+
     report = dependencies.reporting_service.generate(
-        dependencies.cluster_repository.list_clusters(),
-        dependencies.opportunity_repository.list_opportunities(),
+        clusters,
+        opportunities,
     )
     return _serialize_report(report)
 
@@ -595,6 +619,20 @@ def _ensure_market_exists(
 ) -> None:
     if dependencies.market_repository.get_market(market_id) is None:
         raise HTTPException(status_code=404, detail="Market not found")
+
+
+def _scoped_signal_ids(
+    dependencies: SignalApiDependencies,
+    *,
+    competitor_id: str | None = None,
+    market_id: str | None = None,
+) -> set[str]:
+    return {
+        signal.id
+        for signal in dependencies.signal_repository.list_signals()
+        if (competitor_id is None or signal.competitor_id == competitor_id)
+        and (market_id is None or signal.market_id == market_id)
+    }
 
 
 def _serialize_market(market: Market) -> dict[str, Any]:

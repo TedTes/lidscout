@@ -11,6 +11,7 @@ export type Signal = {
   category: string | null;
   confidence: number;
   competitor_id: string | null;
+  market_id: string | null;
   evidence_url: string | null;
   evidence_text: string | null;
   detected_at: string | null;
@@ -45,12 +46,23 @@ export type Competitor = {
   website: string | null;
   category: string | null;
   description: string | null;
+  market_id: string | null;
+  created_at: string | null;
+};
+
+export type Market = {
+  id: string;
+  name: string;
+  description: string | null;
+  target_user: string | null;
+  idea_prompt: string | null;
   created_at: string | null;
 };
 
 export type MonitoredSource = {
   id: string;
-  competitor_id: string;
+  competitor_id: string | null;
+  market_id: string | null;
   locator: string;
   source_type: string;
   enabled: boolean;
@@ -73,6 +85,10 @@ export type SourceSuggestion = {
 
 export type CompetitorsResponse = {
   competitors: Competitor[];
+};
+
+export type MarketsResponse = {
+  markets: Market[];
 };
 
 export type MonitoredSourcesResponse = {

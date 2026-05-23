@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { signalApi } from '@/lib/api';
-import { Competitor } from '@/lib/types/signals';
+import { Competitor, Market } from '@/lib/types/signals';
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -83,6 +83,93 @@ const NAV_ITEMS = [
 ];
 
 // ── Company selector ──────────────────────────────────────────────────────────
+
+function MarketSelector() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const selectedId = searchParams.get('market');
+
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [open, setOpen] = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const selected = markets.find(m => m.id === selectedId) ?? null;
+
+  useEffect(() => {
+    signalApi.getMarkets()
+      .then(r => setMarkets(r.markets))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const selectMarket = (id: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) {
+      params.set('market', id);
+    } else {
+      params.delete('market');
+    }
+    params.delete('company');
+    const qs = params.toString();
+    router.replace(pathname + (qs ? '?' + qs : ''));
+    setOpen(false);
+  };
+
+  return (
+    <div ref={dropRef} className="relative mx-3 mb-3">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center gap-2 rounded-lg border border-slate-800/60 bg-slate-900/40 px-3 py-2 text-left text-xs transition hover:border-slate-700/60 hover:bg-slate-800/40"
+      >
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-violet-500' : 'bg-slate-700'}`}
+        />
+        <span className="flex-1 truncate font-medium text-slate-400">
+          {selected ? selected.name : 'All markets'}
+        </span>
+        <span className={`shrink-0 text-slate-700 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
+          <IconCaret />
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-slate-700/60 bg-[#0b0e24] py-1 shadow-xl shadow-black/50">
+          <button
+            onClick={() => selectMarket(null)}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.04] ${!selected ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${!selected ? 'bg-violet-400' : 'bg-slate-800'}`} />
+            All markets
+          </button>
+
+          {markets.length > 0 && <div className="mx-2 my-1 h-px bg-slate-800/60" />}
+
+          {markets.map(m => (
+            <button
+              key={m.id}
+              onClick={() => selectMarket(m.id)}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.04] ${selected?.id === m.id ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${selected?.id === m.id ? 'bg-violet-400' : 'bg-slate-700'}`} />
+              <span className="flex-1 truncate">{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CompanySelector() {
   const router = useRouter();
@@ -235,11 +322,12 @@ function NavLink({
 export default function DashboardNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const companyParam = searchParams.get('company');
 
-  // Carry company param through nav links so selection persists across pages
-  const navHref = (base: string) =>
-    companyParam ? `${base}?company=${companyParam}` : base;
+  // Carry scope params through nav links so selection persists across pages
+  const navHref = (base: string) => {
+    const qs = searchParams.toString();
+    return qs ? `${base}?${qs}` : base;
+  };
 
   return (
     <>
@@ -259,8 +347,16 @@ export default function DashboardNav() {
 
         <div className="mx-4 h-px bg-white/[0.06]" />
 
-        {/* Company selector */}
+        {/* Market selector */}
         <div className="mt-3">
+          <p className="mb-1.5 px-5 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
+            Market
+          </p>
+          <MarketSelector />
+        </div>
+
+        {/* Company selector */}
+        <div>
           <p className="mb-1.5 px-5 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
             Company
           </p>

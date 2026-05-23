@@ -31,6 +31,7 @@ function ChevronIcon() {
 export default function ThemesPage() {
   const searchParams = useSearchParams();
   const companyId = searchParams.get('company') ?? undefined;
+  const marketId = searchParams.get('market') ?? undefined;
 
   const [themes, setThemes] = useState<SignalCluster[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -39,8 +40,13 @@ export default function ThemesPage() {
   const load = async () => {
     setStatus('loading');
     setError(null);
+    const filter = {
+      ...(companyId ? { competitor_id: companyId } : {}),
+      ...(marketId ? { market_id: marketId } : {}),
+    };
+    const params = Object.keys(filter).length > 0 ? filter : undefined;
     try {
-      const res = await signalApi.getClusters(companyId ? { competitor_id: companyId } : undefined);
+      const res = await signalApi.getClusters(params);
       setThemes(res.clusters);
       setStatus('ready');
     } catch (err) {
@@ -50,7 +56,7 @@ export default function ThemesPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [companyId]);
+  useEffect(() => { load(); }, [companyId, marketId]);
 
   const avgScore =
     themes.length > 0
@@ -104,7 +110,8 @@ export default function ThemesPage() {
               </div>
 
               {themes.map((theme, i) => {
-                const href = `/themes/${encodeURIComponent(theme.id)}${companyId ? '?company=' + companyId : ''}`;
+                const query = new URLSearchParams(searchParams.toString()).toString();
+                const href = `/themes/${encodeURIComponent(theme.id)}${query ? '?' + query : ''}`;
                 return (
                   <Link
                     key={theme.id}

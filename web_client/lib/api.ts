@@ -9,6 +9,8 @@ import {
   Competitor,
   CompetitorsResponse,
   ClustersResponse,
+  Market,
+  MarketsResponse,
   MarketSignalReport,
   MonitoredSource,
   MonitoredSourceUpdateRequest,
@@ -84,6 +86,75 @@ class InteractionApiService {
 }
 
 class SignalApiService {
+  async getMarkets(): Promise<MarketsResponse> {
+    try {
+      const response = await api.get<MarketsResponse>('/markets');
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load markets');
+      }
+      throw error;
+    }
+  }
+
+  async createMarket(request: {
+    id: string;
+    name: string;
+    description?: string | null;
+    target_user?: string | null;
+    idea_prompt?: string | null;
+  }): Promise<Market> {
+    try {
+      const response = await api.post<Market>('/markets', request);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to create market');
+      }
+      throw error;
+    }
+  }
+
+  async getMarketSources(marketId: string): Promise<MonitoredSourcesResponse> {
+    try {
+      const response = await api.get<MonitoredSourcesResponse>(
+        `/markets/${marketId}/sources`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load market sources');
+      }
+      throw error;
+    }
+  }
+
+  async createMarketSource(
+    marketId: string,
+    request: {
+      locator: string;
+      source_type?: string;
+      enabled?: boolean;
+      limit?: number | null;
+      scan_frequency?: string | null;
+      options?: Record<string, unknown>;
+    }
+  ): Promise<MonitoredSource> {
+    try {
+      const response = await api.post<MonitoredSource>(
+        `/markets/${marketId}/sources`,
+        request
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to create market source');
+      }
+      throw error;
+    }
+  }
+
   async getCompetitors(): Promise<CompetitorsResponse> {
     try {
       const response = await api.get<CompetitorsResponse>('/competitors');
@@ -102,6 +173,7 @@ class SignalApiService {
     website?: string | null;
     category?: string | null;
     description?: string | null;
+    market_id?: string | null;
   }): Promise<Competitor> {
     try {
       const response = await api.post<Competitor>('/competitors', request);
@@ -146,6 +218,7 @@ class SignalApiService {
 
   async getSources(params?: {
     competitor_id?: string;
+    market_id?: string;
     enabled?: boolean;
   }): Promise<MonitoredSourcesResponse> {
     try {
@@ -168,6 +241,7 @@ class SignalApiService {
       limit?: number | null;
       scan_frequency?: string | null;
       options?: Record<string, unknown>;
+      market_id?: string | null;
     }
   ): Promise<MonitoredSource> {
     try {
@@ -199,7 +273,10 @@ class SignalApiService {
     }
   }
 
-  async getSignals(params?: { competitor_id?: string }): Promise<SignalsResponse> {
+  async getSignals(params?: {
+    competitor_id?: string;
+    market_id?: string;
+  }): Promise<SignalsResponse> {
     try {
       const response = await api.get<SignalsResponse>('/signals', { params });
       return response.data;
@@ -225,7 +302,10 @@ class SignalApiService {
     }
   }
 
-  async getClusters(params?: { competitor_id?: string }): Promise<ClustersResponse> {
+  async getClusters(params?: {
+    competitor_id?: string;
+    market_id?: string;
+  }): Promise<ClustersResponse> {
     try {
       const response = await api.get<ClustersResponse>('/clusters', { params });
       return response.data;
@@ -237,7 +317,10 @@ class SignalApiService {
     }
   }
 
-  async getOpportunities(params?: { competitor_id?: string }): Promise<OpportunitiesResponse> {
+  async getOpportunities(params?: {
+    competitor_id?: string;
+    market_id?: string;
+  }): Promise<OpportunitiesResponse> {
     try {
       const response = await api.get<OpportunitiesResponse>('/opportunities', { params });
       return response.data;
@@ -249,9 +332,12 @@ class SignalApiService {
     }
   }
 
-  async getLatestReport(): Promise<MarketSignalReport> {
+  async getLatestReport(params?: {
+    competitor_id?: string;
+    market_id?: string;
+  }): Promise<MarketSignalReport> {
     try {
-      const response = await api.get<MarketSignalReport>('/reports/latest');
+      const response = await api.get<MarketSignalReport>('/reports/latest', { params });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

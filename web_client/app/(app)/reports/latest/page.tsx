@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/app/DashboardShell';
 import {
   ClusterLink,
@@ -73,6 +74,9 @@ function LightbulbIcon() {
 }
 
 export default function ReportsPage() {
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('company') ?? undefined;
+  const marketId = searchParams.get('market') ?? undefined;
   const [report, setReport] = useState<MarketSignalReport | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -80,8 +84,13 @@ export default function ReportsPage() {
   const load = async () => {
     setStatus('loading');
     setError(null);
+    const filter = {
+      ...(companyId ? { competitor_id: companyId } : {}),
+      ...(marketId ? { market_id: marketId } : {}),
+    };
+    const params = Object.keys(filter).length > 0 ? filter : undefined;
     try {
-      setReport(await signalApi.getLatestReport());
+      setReport(await signalApi.getLatestReport(params));
       setStatus('ready');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
@@ -91,12 +100,12 @@ export default function ReportsPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [companyId, marketId]);
 
   return (
     <DashboardShell
       title="Report"
-      subtitle={report ? `Generated ${formatDate(report.generated_at)} · all companies` : undefined}
+      subtitle={report ? `Generated ${formatDate(report.generated_at)}` : undefined}
       actions={
         <button
           onClick={load}

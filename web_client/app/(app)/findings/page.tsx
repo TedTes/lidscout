@@ -53,6 +53,7 @@ function LinkIcon() {
 export default function FindingsPage() {
   const searchParams = useSearchParams();
   const companyId = searchParams.get('company') ?? undefined;
+  const marketId = searchParams.get('market') ?? undefined;
 
   const [signals, setSignals] = useState<Signal[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
@@ -64,11 +65,15 @@ export default function FindingsPage() {
   const load = async () => {
     setStatus('loading');
     setError(null);
-    const filter = companyId ? { competitor_id: companyId } : undefined;
+    const filter = {
+      ...(companyId ? { competitor_id: companyId } : {}),
+      ...(marketId ? { market_id: marketId } : {}),
+    };
+    const params = Object.keys(filter).length > 0 ? filter : undefined;
     try {
       const [signalsData, clustersData] = await Promise.all([
-        signalApi.getSignals(filter),
-        signalApi.getClusters(filter),
+        signalApi.getSignals(params),
+        signalApi.getClusters(params),
       ]);
       setSignals(signalsData.signals);
       setClusters(clustersData.clusters);
@@ -80,7 +85,7 @@ export default function FindingsPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [companyId]);
+  useEffect(() => { load(); }, [companyId, marketId]);
 
   const clusterBySignalId = useMemo(() => {
     const map = new Map<string, SignalCluster>();
