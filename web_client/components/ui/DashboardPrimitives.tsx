@@ -1,4 +1,42 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+
+// ── Company filter banner ────────────────────────────────────────────────────
+
+export function CompanyFilterBanner({ companyId }: { companyId: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const clear = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('company');
+    const qs = params.toString();
+    router.replace(pathname + (qs ? '?' + qs : ''));
+  };
+
+  const label = companyId
+    .split('-')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+
+  return (
+    <div className="mb-5 flex items-center gap-3 rounded-lg border border-violet-500/20 bg-violet-500/[0.04] px-4 py-2.5">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.8)]" />
+      <p className="flex-1 text-xs text-slate-400">
+        Scoped to <span className="font-medium text-violet-300">{label}</span>
+      </p>
+      <button
+        onClick={clear}
+        className="text-[11px] text-slate-600 transition hover:text-slate-400"
+      >
+        View all ×
+      </button>
+    </div>
+  );
+}
 
 // ── Empty state ──────────────────────────────────────────────────────────────
 
@@ -168,12 +206,16 @@ export function Chip({ label }: { label: string }) {
   );
 }
 
-// ── Cluster link ─────────────────────────────────────────────────────────────
+// ── Cluster/theme link ────────────────────────────────────────────────────────
 
 export function ClusterLink({ id, children }: { id: string; children: React.ReactNode }) {
+  const searchParams = useSearchParams();
+  const companyParam = searchParams?.get('company');
+  const href = `/themes/${encodeURIComponent(id)}${companyParam ? '?company=' + companyParam : ''}`;
+
   return (
     <Link
-      href={`/themes/${encodeURIComponent(id)}`}
+      href={href}
       className="inline-flex items-center gap-1 rounded-md bg-violet-600/10 px-2 py-0.5 text-xs font-medium text-violet-400 transition hover:bg-violet-600/20 hover:text-violet-300"
     >
       {children}

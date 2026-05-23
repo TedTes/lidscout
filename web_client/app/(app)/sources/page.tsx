@@ -1,8 +1,8 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import DashboardShell from '@/components/DashboardShell';
-import { ErrorPanel, LoadingPanel, Metric } from '@/components/DashboardPrimitives';
+import DashboardShell from '@/components/app/DashboardShell';
+import { ErrorPanel, LoadingPanel, Metric } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Competitor, MonitoredSource, SourceSuggestion } from '@/lib/types/signals';
 
@@ -395,7 +395,7 @@ export default function SourcesPage() {
                       <span className="truncate font-mono text-[11px] text-slate-600">{comp.website ?? '—'}</span>
                       <span className="tabular-nums text-slate-500">{sourceCountByCompId.get(comp.id) ?? 0}</span>
                       <button onClick={() => openAddSourceFor(comp.id)} className="text-[11px] font-medium text-violet-500 hover:text-violet-400 transition text-left">
-                        + source
+                        + Source
                       </button>
                       <button
                         onClick={() => toggleSuggestions(comp.id)}

@@ -199,9 +199,9 @@ class SignalApiService {
     }
   }
 
-  async getSignals(): Promise<SignalsResponse> {
+  async getSignals(params?: { competitor_id?: string }): Promise<SignalsResponse> {
     try {
-      const response = await api.get<SignalsResponse>('/signals');
+      const response = await api.get<SignalsResponse>('/signals', { params });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -225,9 +225,9 @@ class SignalApiService {
     }
   }
 
-  async getClusters(): Promise<ClustersResponse> {
+  async getClusters(params?: { competitor_id?: string }): Promise<ClustersResponse> {
     try {
-      const response = await api.get<ClustersResponse>('/clusters');
+      const response = await api.get<ClustersResponse>('/clusters', { params });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -237,9 +237,9 @@ class SignalApiService {
     }
   }
 
-  async getOpportunities(): Promise<OpportunitiesResponse> {
+  async getOpportunities(params?: { competitor_id?: string }): Promise<OpportunitiesResponse> {
     try {
-      const response = await api.get<OpportunitiesResponse>('/opportunities');
+      const response = await api.get<OpportunitiesResponse>('/opportunities', { params });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import DashboardShell from '@/components/DashboardShell';
+import DashboardShell from '@/components/app/DashboardShell';
 import {
   ClusterLink,
   EmptyPanel,
@@ -10,7 +10,7 @@ import {
   Metric,
   ScoreBadge,
   SectionCard,
-} from '@/components/DashboardPrimitives';
+} from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { MarketSignalReport, Opportunity } from '@/lib/types/signals';
 

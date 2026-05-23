@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import DashboardShell from '@/components/DashboardShell';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric } from '@/components/DashboardPrimitives';
+import { useSearchParams } from 'next/navigation';
+import DashboardShell from '@/components/app/DashboardShell';
+import { ClusterLink, CompanyFilterBanner, EmptyPanel, ErrorPanel, LoadingPanel, Metric } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Opportunity, SignalCluster } from '@/lib/types/signals';
 
@@ -41,6 +42,9 @@ function RefreshIcon() {
 }
 
 export default function GapsPage() {
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('company') ?? undefined;
+
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -49,10 +53,11 @@ export default function GapsPage() {
   const load = async () => {
     setStatus('loading');
     setError(null);
+    const filter = companyId ? { competitor_id: companyId } : undefined;
     try {
       const [oppsRes, clustersRes] = await Promise.all([
-        signalApi.getOpportunities(),
-        signalApi.getClusters(),
+        signalApi.getOpportunities(filter),
+        signalApi.getClusters(filter),
       ]);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
@@ -63,7 +68,8 @@ export default function GapsPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [companyId]);
 
   const clusterById = useMemo(() => {
     const m = new Map<string, SignalCluster>();
@@ -77,7 +83,7 @@ export default function GapsPage() {
   return (
     <DashboardShell
       title="Gaps"
-      subtitle="Product gaps identified from competitor complaints and user feedback"
+      subtitle="Product gaps identified from user complaints about monitored companies"
       actions={
         <button
           onClick={load}
@@ -89,6 +95,8 @@ export default function GapsPage() {
         </button>
       }
     >
+      {companyId && <CompanyFilterBanner companyId={companyId} />}
+
       {status === 'loading' && <LoadingPanel label="Loading gaps" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
@@ -190,7 +198,7 @@ function GapCard({
           </div>
 
           {opportunity.why_it_matters && (
-            <p className="mt-2.5 text-xs leading-relaxed text-slate-600">
+            <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
               {opportunity.why_it_matters}
             </p>
           )}

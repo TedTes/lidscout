@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { signalApi } from '@/lib/api';
 import { Competitor } from '@/lib/types/signals';
 
@@ -72,48 +72,29 @@ function IconCaret() {
   );
 }
 
-// ── Nav items ─────────────────────────────────────────────────────────────────
+// ── Nav item definitions ──────────────────────────────────────────────────────
 
-const navItems = [
-  {
-    href: '/gaps',
-    label: 'Gaps',
-    matchPrefixes: ['/gaps'],
-    icon: <IconTarget />,
-  },
-  {
-    href: '/themes',
-    label: 'Themes',
-    matchPrefixes: ['/themes', '/clusters'],
-    icon: <IconLayers />,
-  },
-  {
-    href: '/findings',
-    label: 'Findings',
-    matchPrefixes: ['/findings', '/signals'],
-    icon: <IconZap />,
-  },
-  {
-    href: '/reports/latest',
-    label: 'Reports',
-    matchPrefixes: ['/reports'],
-    icon: <IconFileText />,
-  },
-  {
-    href: '/sources',
-    label: 'Sources',
-    matchPrefixes: ['/sources'],
-    icon: <IconActivity />,
-  },
+const NAV_ITEMS = [
+  { href: '/gaps',           label: 'Gaps',     matchPrefixes: ['/gaps'],              icon: <IconTarget /> },
+  { href: '/themes',         label: 'Themes',   matchPrefixes: ['/themes', '/clusters'],icon: <IconLayers /> },
+  { href: '/findings',       label: 'Findings', matchPrefixes: ['/findings', '/signals'],icon: <IconZap /> },
+  { href: '/reports/latest', label: 'Reports',  matchPrefixes: ['/reports'],            icon: <IconFileText /> },
+  { href: '/sources',        label: 'Sources',  matchPrefixes: ['/sources'],            icon: <IconActivity /> },
 ];
 
 // ── Company selector ──────────────────────────────────────────────────────────
 
 function CompanySelector() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const selectedId = searchParams.get('company');
+
   const [companies, setCompanies] = useState<Competitor[]>([]);
-  const [selected, setSelected] = useState<Competitor | null>(null);
   const [open, setOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
+
+  const selected = companies.find(c => c.id === selectedId) ?? null;
 
   useEffect(() => {
     signalApi.getCompetitors()
@@ -131,6 +112,18 @@ function CompanySelector() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
+
+  const selectCompany = (id: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (id) {
+      params.set('company', id);
+    } else {
+      params.delete('company');
+    }
+    const qs = params.toString();
+    router.replace(pathname + (qs ? '?' + qs : ''));
+    setOpen(false);
+  };
 
   return (
     <div ref={dropRef} className="relative mx-3 mb-3">
@@ -152,7 +145,7 @@ function CompanySelector() {
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-slate-700/60 bg-[#0b0e24] py-1 shadow-xl shadow-black/50">
           <button
-            onClick={() => { setSelected(null); setOpen(false); }}
+            onClick={() => selectCompany(null)}
             className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.04] ${!selected ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
           >
             <span className={`h-1.5 w-1.5 rounded-full ${!selected ? 'bg-violet-400' : 'bg-slate-800'}`} />
@@ -164,7 +157,7 @@ function CompanySelector() {
           {companies.map(c => (
             <button
               key={c.id}
-              onClick={() => { setSelected(c); setOpen(false); }}
+              onClick={() => selectCompany(c.id)}
               className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition hover:bg-white/[0.04] ${selected?.id === c.id ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${selected?.id === c.id ? 'bg-violet-400' : 'bg-slate-700'}`} />
@@ -202,36 +195,16 @@ function NavLink({
   icon,
   label,
   pathname,
-  muted,
 }: {
   href: string;
   matchPrefixes: string[];
   icon: React.ReactNode;
   label: string;
   pathname: string;
-  muted?: boolean;
 }) {
   const active = matchPrefixes.some(
     prefix => pathname === prefix || pathname.startsWith(prefix + '/'),
   );
-
-  if (muted) {
-    return (
-      <Link
-        href={href}
-        className={`group flex items-center gap-2.5 rounded-md px-3 py-2 text-xs font-medium transition-all duration-150 ${
-          active
-            ? 'bg-slate-800/60 text-slate-400'
-            : 'text-slate-700 hover:bg-white/[0.03] hover:text-slate-500'
-        }`}
-      >
-        <span className={`shrink-0 transition-colors duration-150 ${active ? 'text-slate-500' : 'text-slate-700 group-hover:text-slate-600'}`}>
-          {icon}
-        </span>
-        {label}
-      </Link>
-    );
-  }
 
   return (
     <Link
@@ -261,6 +234,12 @@ function NavLink({
 
 export default function DashboardNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const companyParam = searchParams.get('company');
+
+  // Carry company param through nav links so selection persists across pages
+  const navHref = (base: string) =>
+    companyParam ? `${base}?company=${companyParam}` : base;
 
   return (
     <>
@@ -282,6 +261,9 @@ export default function DashboardNav() {
 
         {/* Company selector */}
         <div className="mt-3">
+          <p className="mb-1.5 px-5 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
+            Company
+          </p>
           <CompanySelector />
         </div>
 
@@ -290,13 +272,18 @@ export default function DashboardNav() {
           <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
             Workspace
           </p>
-          {navItems.map(item => (
-            <NavLink key={item.href} {...item} pathname={pathname} />
+          {NAV_ITEMS.map(item => (
+            <NavLink
+              key={item.href}
+              {...item}
+              href={navHref(item.href)}
+              pathname={pathname}
+            />
           ))}
         </nav>
 
         {/* API status */}
-        <div className="mt-auto px-3 pb-5 pt-2">
+        <div className="mt-auto px-3 pb-5 pt-4">
           <div className="rounded-lg border border-white/[0.05] bg-slate-900/60 px-3 py-2.5">
             <div className="flex items-center gap-2.5">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_7px_rgba(52,211,153,0.8)]" />
@@ -315,14 +302,14 @@ export default function DashboardNav() {
           <span className="text-sm font-bold tracking-tight text-slate-100">LidScout</span>
         </div>
         <nav className="flex items-center gap-0.5">
-          {navItems.map(item => {
+          {NAV_ITEMS.map(item => {
             const active = item.matchPrefixes.some(
               prefix => pathname === prefix || pathname.startsWith(prefix + '/'),
             );
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={navHref(item.href)}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   active
                     ? 'bg-violet-600/15 text-violet-300'

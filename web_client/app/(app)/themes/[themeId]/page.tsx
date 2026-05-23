@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import DashboardShell from '@/components/DashboardShell';
+import { useSearchParams } from 'next/navigation';
+import DashboardShell from '@/components/app/DashboardShell';
 import {
   Chip,
   EmptyPanel,
@@ -12,7 +13,7 @@ import {
   ScoreBadge,
   SectionCard,
   UrgencyBadge,
-} from '@/components/DashboardPrimitives';
+} from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Signal, SignalCluster } from '@/lib/types/signals';
 
@@ -38,6 +39,9 @@ function LinkIcon() {
 }
 
 export default function ThemeDetailPage({ params }: Props) {
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('company');
+
   const [signals, setSignals] = useState<Signal[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -77,7 +81,7 @@ export default function ThemeDetailPage({ params }: Props) {
       subtitle={theme?.summary}
       actions={
         <Link
-          href="/themes"
+          href={`/themes${companyId ? '?company=' + companyId : ''}`}
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-300 shadow-sm transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
         >
           <BackIcon />

@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import DashboardShell from '@/components/DashboardShell';
-import { EmptyPanel, ErrorPanel, LoadingPanel, Metric, ScoreBadge } from '@/components/DashboardPrimitives';
+import { useSearchParams } from 'next/navigation';
+import DashboardShell from '@/components/app/DashboardShell';
+import { CompanyFilterBanner, EmptyPanel, ErrorPanel, LoadingPanel, Metric, ScoreBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { SignalCluster } from '@/lib/types/signals';
 
@@ -28,6 +29,9 @@ function ChevronIcon() {
 }
 
 export default function ThemesPage() {
+  const searchParams = useSearchParams();
+  const companyId = searchParams.get('company') ?? undefined;
+
   const [themes, setThemes] = useState<SignalCluster[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +40,7 @@ export default function ThemesPage() {
     setStatus('loading');
     setError(null);
     try {
-      const res = await signalApi.getClusters();
+      const res = await signalApi.getClusters(companyId ? { competitor_id: companyId } : undefined);
       setThemes(res.clusters);
       setStatus('ready');
     } catch (err) {
@@ -45,7 +49,8 @@ export default function ThemesPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [companyId]);
 
   const avgScore =
     themes.length > 0
@@ -67,6 +72,8 @@ export default function ThemesPage() {
         </button>
       }
     >
+      {companyId && <CompanyFilterBanner companyId={companyId} />}
+
       {status === 'loading' && <LoadingPanel label="Loading themes" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
@@ -88,37 +95,39 @@ export default function ThemesPage() {
             />
           ) : (
             <div className="rounded-xl border border-slate-800/80 bg-slate-900/40">
-              <div className="grid grid-cols-[1fr_80px_80px_32px] items-center gap-x-4 border-b border-slate-800/80 px-5 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
+              <div className="grid grid-cols-[1fr_70px_70px_80px_32px] items-center gap-x-4 border-b border-slate-800/80 px-5 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
                 <span>Theme</span>
                 <span>Findings</span>
                 <span>Mentions</span>
+                <span>Strength</span>
                 <span />
               </div>
 
-              {themes.map((theme, i) => (
-                <Link
-                  key={theme.id}
-                  href={`/themes/${encodeURIComponent(theme.id)}`}
-                  className={`grid grid-cols-[1fr_80px_80px_32px] items-center gap-x-4 px-5 py-3.5 text-sm transition-colors hover:bg-white/[0.02] ${i > 0 ? 'border-t border-slate-800/50' : ''}`}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-slate-200">{theme.theme}</p>
-                    {theme.summary && (
-                      <p className="mt-0.5 truncate text-xs text-slate-600">{theme.summary}</p>
-                    )}
-                  </div>
-                  <span className="tabular-nums text-xs text-slate-500">
-                    {theme.signal_ids.length}
-                  </span>
-                  <div className="flex items-center gap-2">
+              {themes.map((theme, i) => {
+                const href = `/themes/${encodeURIComponent(theme.id)}${companyId ? '?company=' + companyId : ''}`;
+                return (
+                  <Link
+                    key={theme.id}
+                    href={href}
+                    className={`grid grid-cols-[1fr_70px_70px_80px_32px] items-center gap-x-4 px-5 py-3.5 text-sm transition-colors hover:bg-white/[0.04] ${i > 0 ? 'border-t border-slate-800/50' : ''}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-slate-200">{theme.theme}</p>
+                      {theme.summary && (
+                        <p className="mt-0.5 truncate text-xs text-slate-600">{theme.summary}</p>
+                      )}
+                    </div>
+                    <span className="tabular-nums text-xs text-slate-500">
+                      {theme.signal_ids.length}
+                    </span>
                     <span className="tabular-nums text-xs text-slate-500">{theme.frequency}</span>
                     <ScoreBadge value={theme.average_score} />
-                  </div>
-                  <span className="text-slate-700">
-                    <ChevronIcon />
-                  </span>
-                </Link>
-              ))}
+                    <span className="text-slate-700">
+                      <ChevronIcon />
+                    </span>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import DashboardShell from '@/components/DashboardShell';
+import DashboardShell from '@/components/app/DashboardShell';
 import {
   Chip,
   EmptyPanel,
@@ -12,7 +12,7 @@ import {
   ScoreBadge,
   SectionCard,
   UrgencyBadge,
-} from '@/components/DashboardPrimitives';
+} from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Signal, SignalCluster } from '@/lib/types/signals';
 
