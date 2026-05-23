@@ -6,12 +6,17 @@ from workers.seed_competitor_source import main, seed_competitor_source
 
 
 class FakeRepository:
+    saved_markets = []
     saved_competitors = []
     saved_sources = []
     closed_count = 0
 
     def __init__(self, database_url: str):
         self.database_url = database_url
+
+    def save_markets(self, markets):
+        self.__class__.saved_markets.extend(markets)
+        return len(markets)
 
     def save_competitors(self, competitors):
         self.__class__.saved_competitors.extend(competitors)
@@ -27,6 +32,7 @@ class FakeRepository:
 
 class SeedCompetitorSourceTests(unittest.TestCase):
     def setUp(self):
+        FakeRepository.saved_markets = []
         FakeRepository.saved_competitors = []
         FakeRepository.saved_sources = []
         FakeRepository.closed_count = 0
@@ -69,8 +75,44 @@ class SeedCompetitorSourceTests(unittest.TestCase):
                 database_url="sqlite:///lidscout.db",
             )
 
+    def test_seeds_market_competitor_and_monitored_source(self):
+        with (
+            patch(
+                "workers.seed_competitor_source.PostgresMarketRepository",
+                FakeRepository,
+            ),
+            patch(
+                "workers.seed_competitor_source.PostgresCompetitorRepository",
+                FakeRepository,
+            ),
+            patch(
+                "workers.seed_competitor_source.PostgresMonitoredSourceRepository",
+                FakeRepository,
+            ),
+        ):
+            result = seed_competitor_source(
+                market_id="workspace-tools",
+                market_name="Workspace tools",
+                market_target_user="product teams",
+                competitor_id="acme",
+                competitor_name="Acme CRM",
+                source_url="https://acme.example/reviews",
+                database_url="postgresql://localhost/lidscout",
+            )
+
+        self.assertEqual(result["market_inserted_count"], 1)
+        self.assertEqual(result["market"]["id"], "workspace-tools")
+        self.assertEqual(FakeRepository.saved_markets[0].target_user, "product teams")
+        self.assertEqual(FakeRepository.saved_competitors[0].market_id, "workspace-tools")
+        self.assertEqual(FakeRepository.saved_sources[0].market_id, "workspace-tools")
+        self.assertEqual(FakeRepository.closed_count, 3)
+
     def test_main_prints_seed_result(self):
         with (
+            patch(
+                "workers.seed_competitor_source.PostgresMarketRepository",
+                FakeRepository,
+            ),
             patch(
                 "workers.seed_competitor_source.PostgresCompetitorRepository",
                 FakeRepository,
