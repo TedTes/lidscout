@@ -5,18 +5,25 @@ from typing import Any
 from api.main import app, health_check
 from api.routes.signals import (
     CompetitorRequest,
+    MarketRequest,
     MonitoredSourceRequest,
     MonitoredSourceUpdateRequest,
     PipelineRunRequest,
     SignalApiDependencies,
     create_competitor,
     create_competitor_source,
+    create_market,
+    create_market_source,
     delete_signal,
+    get_market,
     get_latest_report,
     list_competitor_source_suggestions,
     list_competitor_sources,
     list_competitors,
     list_clusters,
+    list_market_competitors,
+    list_market_sources,
+    list_markets,
     list_opportunities,
     list_sources,
     list_signals,
@@ -25,6 +32,7 @@ from api.routes.signals import (
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
@@ -33,6 +41,7 @@ from domain.source import SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
+    InMemoryMarketRepository,
     InMemoryMonitoredSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPostRepository,
@@ -104,6 +113,10 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/signals/{signal_id}", paths)
         self.assertIn("/clusters", paths)
         self.assertIn("/opportunities", paths)
+        self.assertIn("/markets", paths)
+        self.assertIn("/markets/{market_id}", paths)
+        self.assertIn("/markets/{market_id}/competitors", paths)
+        self.assertIn("/markets/{market_id}/sources", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
         self.assertIn("/competitors", paths)
@@ -222,6 +235,62 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(created["id"], "competitor-1")
         self.assertEqual(response["competitors"][0]["name"], "Acme CRM")
+
+    def test_creates_and_lists_markets(self):
+        dependencies = self._dependencies()
+
+        created = asyncio.run(
+            create_market(
+                MarketRequest(
+                    id="workspace-tools",
+                    name="Workspace tools",
+                    target_user="product teams",
+                ),
+                dependencies,
+            )
+        )
+        listed = asyncio.run(list_markets(dependencies))
+        loaded = asyncio.run(get_market("workspace-tools", dependencies))
+
+        self.assertEqual(created["id"], "workspace-tools")
+        self.assertEqual(listed["markets"][0]["name"], "Workspace tools")
+        self.assertEqual(loaded["target_user"], "product teams")
+
+    def test_lists_market_competitors_and_sources(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="competitor-1",
+                    name="Acme CRM",
+                    market_id="workspace-tools",
+                )
+            ]
+        )
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            competitor_repository=competitor_repository,
+        )
+
+        source = asyncio.run(
+            create_market_source(
+                "workspace-tools",
+                MonitoredSourceRequest(locator="https://example.com/reviews"),
+                dependencies,
+            )
+        )
+        competitors = asyncio.run(
+            list_market_competitors("workspace-tools", dependencies)
+        )
+        sources = asyncio.run(list_market_sources("workspace-tools", dependencies))
+
+        self.assertEqual(competitors["competitors"][0]["id"], "competitor-1")
+        self.assertEqual(source["market_id"], "workspace-tools")
+        self.assertEqual(sources["sources"][0]["market_id"], "workspace-tools")
 
     def test_creates_and_lists_competitor_sources(self):
         competitor_repository = InMemoryCompetitorRepository()
@@ -464,6 +533,7 @@ class SignalApiRouteTests(unittest.TestCase):
         cluster_repository=None,
         opportunity_repository=None,
         competitor_repository=None,
+        market_repository=None,
         monitored_source_repository=None,
         source_locator_repository=None,
         source_adapters=None,
@@ -480,6 +550,7 @@ class SignalApiRouteTests(unittest.TestCase):
                 opportunity_repository or InMemoryOpportunityRepository()
             ),
             competitor_repository=competitor_repository or InMemoryCompetitorRepository(),
+            market_repository=market_repository or InMemoryMarketRepository(),
             monitored_source_repository=(
                 monitored_source_repository or InMemoryMonitoredSourceRepository()
             ),

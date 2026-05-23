@@ -29,6 +29,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresOpportunityRepository") as opportunity_repository,
             patch("api.dependencies.PostgresPipelineRunMetricsRepository") as metrics_repository,
             patch("api.dependencies.PostgresCompetitorRepository") as competitor_repository,
+            patch("api.dependencies.PostgresMarketRepository") as market_repository,
             patch("api.dependencies.PostgresMonitoredSourceRepository") as monitored_source_repository,
             patch("api.dependencies.PostgresSourceLocatorRepository") as source_locator_repository,
             patch("api.dependencies.JsonUrlAdapter") as json_adapter,
@@ -50,6 +51,7 @@ class ApiDependencyTests(unittest.TestCase):
         opportunity_repository.assert_called_once_with(connection=connection)
         metrics_repository.assert_called_once_with(connection=connection)
         competitor_repository.assert_called_once_with(connection=connection)
+        market_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
         source_locator_repository.assert_called_once_with(connection=connection)
         self.assertEqual(llm_client.call_count, 2)
@@ -85,6 +87,7 @@ class ApiDependencyTests(unittest.TestCase):
             metrics_repository.return_value,
         )
         self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
+        self.assertIs(dependencies.market_repository, market_repository.return_value)
         self.assertIs(
             dependencies.monitored_source_repository,
             monitored_source_repository.return_value,
@@ -121,6 +124,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresOpportunityRepository"),
             patch("api.dependencies.PostgresPipelineRunMetricsRepository"),
             patch("api.dependencies.PostgresCompetitorRepository"),
+            patch("api.dependencies.PostgresMarketRepository"),
             patch("api.dependencies.PostgresMonitoredSourceRepository"),
             patch("api.dependencies.PostgresSourceLocatorRepository"),
             patch("api.dependencies.JsonUrlAdapter"),

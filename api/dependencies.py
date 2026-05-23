@@ -4,6 +4,7 @@ from api.routes.signals import SignalApiDependencies
 from infrastructure.db import (
     PostgresClusterRepository,
     PostgresCompetitorRepository,
+    PostgresMarketRepository,
     PostgresMonitoredSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
@@ -38,6 +39,7 @@ def build_signal_api_dependencies(
             connection=connection,
         ),
         competitor_repository=PostgresCompetitorRepository(connection=connection),
+        market_repository=PostgresMarketRepository(connection=connection),
         monitored_source_repository=PostgresMonitoredSourceRepository(
             connection=connection,
         ),

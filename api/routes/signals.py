@@ -9,6 +9,7 @@ from application.ingestion import SourceAdapter
 from application.ports import (
     ClusterRepository,
     CompetitorRepository,
+    MarketRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
@@ -21,12 +22,14 @@ from application.reporting import MarketSignalReport, ReportingService
 from application.source_suggestions import SourceSuggestion, SourceSuggestionService
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
+    InMemoryMarketRepository,
     InMemoryMonitoredSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
@@ -74,6 +77,16 @@ class CompetitorRequest(BaseModel):
     market_id: str | None = None
 
 
+class MarketRequest(BaseModel):
+    """HTTP request body for creating a watched market."""
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    description: str | None = None
+    target_user: str | None = None
+    idea_prompt: str | None = None
+
+
 class MonitoredSourceRequest(BaseModel):
     """HTTP request body for creating a monitored source."""
 
@@ -114,6 +127,7 @@ class SignalApiDependencies:
     competitor_repository: CompetitorRepository = field(
         default_factory=InMemoryCompetitorRepository
     )
+    market_repository: MarketRepository = field(default_factory=InMemoryMarketRepository)
     monitored_source_repository: MonitoredSourceRepository = field(
         default_factory=InMemoryMonitoredSourceRepository
     )
@@ -216,6 +230,109 @@ async def list_opportunities(
             if any(sid in scoped_signal_ids for sid in o.evidence_signal_ids)
         ]
     return {"opportunities": [_serialize_opportunity(o) for o in opportunities]}
+
+
+@router.get("/markets")
+async def list_markets(
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return watched markets or niches."""
+    return {
+        "markets": [
+            _serialize_market(market)
+            for market in dependencies.market_repository.list_markets()
+        ]
+    }
+
+
+@router.post("/markets")
+async def create_market(
+    request: MarketRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Create a watched market or niche."""
+    try:
+        market = Market.create(
+            id=request.id,
+            name=request.name,
+            description=request.description,
+            target_user=request.target_user,
+            idea_prompt=request.idea_prompt,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.market_repository.save_markets([market])
+    return _serialize_market(market)
+
+
+@router.get("/markets/{market_id}")
+async def get_market(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return one watched market."""
+    market = dependencies.market_repository.get_market(market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    return _serialize_market(market)
+
+
+@router.get("/markets/{market_id}/competitors")
+async def list_market_competitors(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return competitors linked to one market."""
+    _ensure_market_exists(market_id, dependencies)
+    competitors = [
+        competitor
+        for competitor in dependencies.competitor_repository.list_competitors()
+        if competitor.market_id == market_id
+    ]
+    return {"competitors": [_serialize_competitor(c) for c in competitors]}
+
+
+@router.get("/markets/{market_id}/sources")
+async def list_market_sources(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return monitored sources linked to one market."""
+    _ensure_market_exists(market_id, dependencies)
+    return {
+        "sources": [
+            _serialize_monitored_source(source)
+            for source in dependencies.monitored_source_repository.list_monitored_sources(
+                market_id=market_id,
+            )
+        ]
+    }
+
+
+@router.post("/markets/{market_id}/sources")
+async def create_market_source(
+    market_id: str,
+    request: MonitoredSourceRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Create a monitored source scoped directly to one market."""
+    _ensure_market_exists(market_id, dependencies)
+    try:
+        source = MonitoredSource.create(
+            market_id=market_id,
+            locator=request.locator,
+            source_type=request.source_type,
+            enabled=request.enabled,
+            limit=request.limit,
+            scan_frequency=request.scan_frequency,
+            options=request.options,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.monitored_source_repository.save_monitored_sources([source])
+    return _serialize_monitored_source(source)
 
 
 @router.get("/reports/latest")
@@ -467,6 +584,25 @@ def _apply_source_update(
         last_error=source.last_error,
         options=options or {},
     )
+
+
+def _ensure_market_exists(
+    market_id: str,
+    dependencies: SignalApiDependencies,
+) -> None:
+    if dependencies.market_repository.get_market(market_id) is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+
+def _serialize_market(market: Market) -> dict[str, Any]:
+    return {
+        "id": market.id,
+        "name": market.name,
+        "description": market.description,
+        "target_user": market.target_user,
+        "idea_prompt": market.idea_prompt,
+        "created_at": market.created_at.isoformat() if market.created_at else None,
+    }
 
 
 def _serialize_signal(signal: Signal) -> dict[str, Any]:
