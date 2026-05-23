@@ -141,15 +141,14 @@ def get_signal_api_dependencies() -> SignalApiDependencies:
 
 @router.get("/signals")
 async def list_signals(
+    competitor_id: str | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return persisted extracted signals."""
-    return {
-        "signals": [
-            _serialize_signal(signal)
-            for signal in dependencies.signal_repository.list_signals()
-        ]
-    }
+    """Return persisted extracted signals, optionally filtered by competitor."""
+    signals = dependencies.signal_repository.list_signals()
+    if competitor_id is not None:
+        signals = [s for s in signals if s.competitor_id == competitor_id]
+    return {"signals": [_serialize_signal(s) for s in signals]}
 
 
 @router.delete("/signals/{signal_id}")
@@ -171,28 +170,42 @@ async def delete_signal(
 
 @router.get("/clusters")
 async def list_clusters(
+    competitor_id: str | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return persisted signal clusters."""
-    return {
-        "clusters": [
-            _serialize_cluster(cluster)
-            for cluster in dependencies.cluster_repository.list_clusters()
+    """Return persisted signal clusters, optionally filtered by competitor."""
+    clusters = dependencies.cluster_repository.list_clusters()
+    if competitor_id is not None:
+        competitor_signal_ids = {
+            s.id
+            for s in dependencies.signal_repository.list_signals()
+            if s.competitor_id == competitor_id
+        }
+        clusters = [
+            c for c in clusters
+            if any(sid in competitor_signal_ids for sid in c.signal_ids)
         ]
-    }
+    return {"clusters": [_serialize_cluster(c) for c in clusters]}
 
 
 @router.get("/opportunities")
 async def list_opportunities(
+    competitor_id: str | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return synthesized product opportunities."""
-    return {
-        "opportunities": [
-            _serialize_opportunity(opportunity)
-            for opportunity in dependencies.opportunity_repository.list_opportunities()
+    """Return synthesized product opportunities, optionally filtered by competitor."""
+    opportunities = dependencies.opportunity_repository.list_opportunities()
+    if competitor_id is not None:
+        competitor_signal_ids = {
+            s.id
+            for s in dependencies.signal_repository.list_signals()
+            if s.competitor_id == competitor_id
+        }
+        opportunities = [
+            o for o in opportunities
+            if any(sid in competitor_signal_ids for sid in o.evidence_signal_ids)
         ]
-    }
+    return {"opportunities": [_serialize_opportunity(o) for o in opportunities]}
 
 
 @router.get("/reports/latest")
