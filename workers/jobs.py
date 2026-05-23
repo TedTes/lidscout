@@ -22,6 +22,7 @@ async def extract_public_activity_signals(
 
 def run_configured_daily_pipeline(
     recipient: str | None = None,
+    market_id: str | None = None,
     dependencies: SignalApiDependencies | None = None,
 ) -> PipelineRunResult:
     """Run the pipeline from persisted, enabled source locators."""
@@ -44,6 +45,7 @@ def run_configured_daily_pipeline(
                 runtime_dependencies.pipeline_run_metrics_repository
             ),
             competitor_repository=runtime_dependencies.competitor_repository,
+            market_repository=runtime_dependencies.market_repository,
             monitored_source_repository=runtime_dependencies.monitored_source_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
             llm_client=runtime_dependencies.llm_client,
@@ -52,6 +54,7 @@ def run_configured_daily_pipeline(
             email_client=runtime_dependencies.email_client,
             recipient=resolved_recipient,
             source_adapters=runtime_dependencies.source_adapters,
+            market_id=market_id,
         )
     )
 
@@ -64,7 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(f"Unknown worker job: {command}")
 
     recipient = args[1] if len(args) > 1 else None
-    result = run_configured_daily_pipeline(recipient)
+    market_id = args[2] if len(args) > 2 else None
+    result = run_configured_daily_pipeline(recipient, market_id)
     print(json.dumps(_pipeline_job_summary(result), sort_keys=True))
     return 0
 

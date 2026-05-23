@@ -21,9 +21,10 @@ Return JSON only. The response must match this contract:
 - confidence: number from 0.0 to 1.0
 
 Set is_about_competitor=true only when the post is primarily about the provided
-competitor's product experience. Do not mark incidental mentions, comparisons
-where another product is the subject, or unrelated discussions as competitor
-relevant.
+competitor's product experience. If no competitor is provided but market context
+is provided, set is_about_competitor=true when the post is about that watched
+market or niche. Do not mark incidental mentions, comparisons where another
+product is the subject, or unrelated discussions as relevant.
 
 Set has_pain_or_request=true only for dissatisfaction, missing features, pricing
 friction, switching intent, workflow pain, reliability issues, or workaround
@@ -249,6 +250,10 @@ def _llm_post_content(post: RawPost) -> str:
         [
             f"competitor_id: {_metadata_text(post, 'competitor_id') or ''}",
             f"competitor_name: {_metadata_text(post, 'competitor_name') or ''}",
+            f"market_id: {_metadata_text(post, 'market_id') or ''}",
+            f"market_name: {_metadata_text(post, 'market_name') or ''}",
+            f"market_target_user: {_metadata_text(post, 'market_target_user') or ''}",
+            f"market_idea_prompt: {_metadata_text(post, 'market_idea_prompt') or ''}",
             f"competitor_domain: {_metadata_text(post, 'competitor_domain') or ''}",
             f"competitor_website: {_metadata_text(post, 'competitor_website') or ''}",
             f"source_type: {_metadata_text(post, 'source_type') or ''}",

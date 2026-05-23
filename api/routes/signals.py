@@ -62,6 +62,7 @@ class PipelineRunRequest(BaseModel):
 
     recipient: str = Field(min_length=1)
     sources: list[PipelineSourceRequest] = Field(default_factory=list)
+    market_id: str | None = None
     default_limit: int = Field(default=25, ge=1)
     similarity_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
 
@@ -511,6 +512,7 @@ async def run_pipeline(
                 dependencies.pipeline_run_metrics_repository
             ),
             competitor_repository=dependencies.competitor_repository,
+            market_repository=dependencies.market_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
             source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
@@ -527,6 +529,7 @@ async def run_pipeline(
                 )
                 for source in request.sources
             ],
+            market_id=request.market_id,
             default_limit=request.default_limit,
             similarity_threshold=request.similarity_threshold,
         )

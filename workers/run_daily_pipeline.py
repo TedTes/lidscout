@@ -20,6 +20,7 @@ from application.opportunity import (
 from application.ports import (
     ClusterRepository,
     CompetitorRepository,
+    MarketRepository,
     MonitoredSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
@@ -56,9 +57,11 @@ class PipelineConfig:
     pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
+    market_repository: MarketRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     sources: list[SourceInput] = field(default_factory=list)
+    market_id: str | None = None
     default_limit: int = 25
     similarity_threshold: float = 0.82
 
@@ -228,6 +231,8 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
         config.monitored_source_repository,
         config.source_locator_repository,
         config.competitor_repository,
+        config.market_repository,
+        config.market_id,
     )
 
     if sources:
@@ -290,11 +295,16 @@ def _configured_sources(
     monitored_source_repository: MonitoredSourceRepository | None,
     source_locator_repository: SourceLocatorRepository | None,
     competitor_repository: CompetitorRepository | None,
+    market_repository: MarketRepository | None,
+    market_id: str | None,
 ) -> list[SourceInput]:
     if monitored_source_repository is not None:
         monitored_sources = [
-            _monitored_source_input(source, competitor_repository)
-            for source in monitored_source_repository.list_monitored_sources(enabled=True)
+            _monitored_source_input(source, competitor_repository, market_repository)
+            for source in monitored_source_repository.list_monitored_sources(
+                enabled=True,
+                market_id=market_id,
+            )
         ]
         if monitored_sources:
             return monitored_sources
@@ -309,13 +319,16 @@ def _configured_sources(
 def _monitored_source_input(
     source: MonitoredSource,
     competitor_repository: CompetitorRepository | None,
+    market_repository: MarketRepository | None,
 ) -> SourceInput:
     source_input = source.to_source_input()
     options = dict(source_input.options)
 
     competitor = None
     if competitor_repository is not None:
-        competitor = competitor_repository.get_competitor(source.competitor_id)
+        competitor_id = source.competitor_id
+        if competitor_id is not None:
+            competitor = competitor_repository.get_competitor(competitor_id)
 
     if competitor is not None:
         options["competitor_name"] = competitor.name
@@ -326,6 +339,18 @@ def _monitored_source_input(
                 options["competitor_domain"] = domain
         if competitor.category:
             options["competitor_category"] = competitor.category
+        if competitor.market_id and "market_id" not in options:
+            options["market_id"] = competitor.market_id
+
+    market_id = options.get("market_id")
+    if isinstance(market_id, str) and market_repository is not None:
+        market = market_repository.get_market(market_id)
+        if market is not None:
+            options["market_name"] = market.name
+            if market.target_user:
+                options["market_target_user"] = market.target_user
+            if market.idea_prompt:
+                options["market_idea_prompt"] = market.idea_prompt
 
     return SourceInput.create(
         locator=source_input.locator,

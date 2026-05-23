@@ -2,11 +2,13 @@ import unittest
 from typing import Any
 
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
+    InMemoryMarketRepository,
     InMemoryPostRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
@@ -267,6 +269,83 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             signal.evidence_url,
             "https://example.com/reviews",
         )
+
+    def test_runs_pipeline_from_one_market_source_scope(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [
+                Market.create(
+                    id="workspace-tools",
+                    name="Workspace tools",
+                    target_user="product teams",
+                    idea_prompt="Find collaboration workflow gaps.",
+                )
+            ]
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    market_id="workspace-tools",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    limit=1,
+                ),
+                MonitoredSource.create(
+                    id="source-2",
+                    market_id="finance-tools",
+                    locator="https://example.com/other",
+                    source_type="reviews",
+                    limit=1,
+                ),
+            ]
+        )
+        signal_repository = InMemorySignalRepository()
+        llm_client = SequentialLLMClient(
+            [
+                """
+                {
+                  "has_signal": true,
+                  "is_about_competitor": true,
+                  "competitor_match_reason": "The post describes a workflow gap in the watched market.",
+                  "signal": {
+                    "pain": "Export workflows are painful",
+                    "user_type": "product teams",
+                    "job_to_be_done": null,
+                    "current_workaround": null,
+                    "urgency": 3,
+                    "severity": 3,
+                    "willingness_to_pay": 5,
+                    "category": "reporting",
+                    "confidence": 0.8
+                  }
+                }
+                """
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=signal_repository,
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            market_repository=market_repository,
+            monitored_source_repository=monitored_source_repository,
+            llm_client=llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            market_id="workspace-tools",
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertIn("market_name: Workspace tools", llm_client.calls[0][1])
+        self.assertIn("market_target_user: product teams", llm_client.calls[0][1])
+        signal = signal_repository.list_signals()[0]
+        self.assertEqual(signal.market_id, "workspace-tools")
 
     def test_rejects_unrelated_signal_from_monitored_source(self):
         competitor_repository = InMemoryCompetitorRepository()
