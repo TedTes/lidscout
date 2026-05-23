@@ -174,10 +174,10 @@ def _synthesize_opportunities(
             failed_count=0,
             opportunities=[],
         )
-    return OpportunitySynthesisService(opportunity_repository).synthesize(
-        clusters,
-        signals,
-    )
+    return OpportunitySynthesisService(
+        opportunity_repository,
+        llm_client=config.llm_client,
+    ).synthesize(clusters, signals)
 
 
 def _save_pipeline_run_metrics(

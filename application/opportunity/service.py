@@ -1,11 +1,19 @@
 """Opportunity synthesis service."""
+import json
+import logging
 from collections import Counter
 from dataclasses import dataclass
 
+from application.opportunity.synthesis_schema import (
+    OPPORTUNITY_SYNTHESIS_PROMPT,
+    OPPORTUNITY_SYNTHESIS_RESPONSE_SCHEMA,
+    validate_synthesis_response,
+)
 from application.ports import OpportunityRepository
 from domain.cluster import SignalCluster
 from domain.opportunity import Opportunity
 from domain.signal import Signal
+from infrastructure.llm import LLMClient
 from shared.logger import get_logger, log_event
 
 
@@ -30,11 +38,13 @@ class OpportunitySynthesisService:
         repository: OpportunityRepository,
         *,
         minimum_average_score: float = 7.0,
+        llm_client: LLMClient | None = None,
     ):
         if not 0.0 <= minimum_average_score <= 10.0:
             raise ValueError("minimum_average_score must be between 0.0 and 10.0")
         self.repository = repository
         self.minimum_average_score = minimum_average_score
+        self.llm_client = llm_client
 
     def synthesize(
         self,
@@ -82,6 +92,54 @@ class OpportunitySynthesisService:
         return result
 
     def _build_opportunity(
+        self,
+        cluster: SignalCluster,
+        signals: list[Signal],
+    ) -> Opportunity:
+        if self.llm_client is not None:
+            try:
+                return self._build_opportunity_with_llm(cluster, signals)
+            except Exception as exc:
+                log_event(
+                    logger,
+                    "opportunity_synthesis_llm_failed",
+                    level=logging.WARNING,
+                    cluster_id=cluster.id,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+        return self._build_opportunity_from_templates(cluster, signals)
+
+    def _build_opportunity_with_llm(
+        self,
+        cluster: SignalCluster,
+        signals: list[Signal],
+    ) -> Opportunity:
+        raw_json = self.llm_client.generate_structured_response(
+            OPPORTUNITY_SYNTHESIS_PROMPT,
+            _cluster_content(cluster, signals),
+            OPPORTUNITY_SYNTHESIS_RESPONSE_SCHEMA,
+        )
+        try:
+            payload = json.loads(raw_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM synthesis returned invalid JSON") from exc
+
+        candidate = validate_synthesis_response(payload)
+        return Opportunity.create(
+            id=f"opportunity-{cluster.id}",
+            cluster_id=cluster.id,
+            title=candidate.title,
+            target_user=candidate.target_user,
+            pain_summary=candidate.pain_summary,
+            why_it_matters=candidate.why_it_matters,
+            suggested_wedge=candidate.suggested_wedge,
+            evidence_count=cluster.frequency,
+            confidence=_confidence_for(cluster),
+            evidence_signal_ids=[signal.id for signal in signals],
+        )
+
+    def _build_opportunity_from_templates(
         self,
         cluster: SignalCluster,
         signals: list[Signal],
@@ -153,3 +211,26 @@ def _confidence_for(cluster: SignalCluster) -> float:
     score_component = min(cluster.average_score / 10.0, 1.0) * 0.7
     frequency_component = min(cluster.frequency, 5) / 5 * 0.3
     return round(min(score_component + frequency_component, 1.0), 2)
+
+
+def _cluster_content(cluster: SignalCluster, signals: list[Signal]) -> str:
+    user_types = list({s.user_type for s in signals if s.user_type})
+    categories = list({s.category for s in signals if s.category})
+    workarounds = list({s.current_workaround for s in signals if s.current_workaround})
+    wtp_count = sum(1 for s in signals if s.willingness_to_pay is True)
+    pains = [s.pain for s in signals]
+
+    lines = [
+        f"theme: {cluster.theme}",
+        f"summary: {cluster.summary}",
+        f"frequency: {cluster.frequency}",
+        f"average_score: {cluster.average_score:.1f}",
+        f"wtp_signals: {wtp_count}",
+        f"user_types: {', '.join(user_types) or 'unknown'}",
+        f"categories: {', '.join(categories) or 'unknown'}",
+        f"workarounds: {', '.join(workarounds) or 'none mentioned'}",
+        "pain_statements:",
+    ]
+    for pain in pains:
+        lines.append(f"  - {pain}")
+    return "\n".join(lines)
