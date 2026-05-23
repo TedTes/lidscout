@@ -9,7 +9,7 @@ export default function HowItWorks() {
             How it works
           </p>
           <h2 className="text-2xl font-bold text-slate-100">
-            Set it up once, get signal every week
+            Choose a market once, get signal every week
           </h2>
         </div>
 
@@ -22,31 +22,31 @@ export default function HowItWorks() {
                   1
                 </span>
                 <h3 className="text-sm font-semibold text-slate-100">
-                  Add a product to monitor
+                  Add a market watchlist
                 </h3>
               </div>
               <p className="mb-3 text-xs leading-relaxed text-slate-500">
-                Type any SaaS product name and paste their website. LidScout auto-suggests the
-                right sources to watch — Reddit communities, review platforms, HN threads, and
-                the product&apos;s own changelog.
+                Start with a niche such as workspace tools, vertical SaaS, or AI devtools.
+                Add the companies you want watched inside that market, then attach review pages,
+                forums, Reddit searches, changelogs, and JSON feeds.
               </p>
               <p className="text-xs text-slate-600 italic">
-                Example: add <span className="text-slate-400">Notion</span> → we suggest{' '}
-                <span className="text-slate-400">r/Notion, G2, notion.so/changelog, HN</span>
+                Example: add <span className="text-slate-400">Workspace tools</span> → track{' '}
+                <span className="text-slate-400">Notion, Linear, Figma, Asana</span>
               </p>
             </div>
             {/* Visual */}
             <div className="rounded-xl border border-slate-800/50 bg-[#0a0c1e] p-4 text-xs">
-              <p className="mb-3 text-slate-600 text-[10px] uppercase tracking-wider">Add company</p>
+              <p className="mb-3 text-slate-600 text-[10px] uppercase tracking-wider">Add market</p>
               <div className="mb-2 rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2 text-slate-300">
-                Notion
+                Workspace tools
               </div>
               <div className="mb-3 rounded-lg border border-slate-700/50 bg-slate-800/40 px-3 py-2 text-slate-500">
-                https://notion.so
+                Notion · Linear · Figma · Asana
               </div>
               <p className="mb-2 text-slate-700 text-[10px]">Suggested sources</p>
               <div className="flex flex-wrap gap-1.5">
-                {['r/Notion', 'G2', 'Hacker News', 'notion.so/changelog', 'Capterra'].map((s) => (
+                {['Reddit', 'G2', 'Hacker News', 'Changelogs', 'Capterra'].map((s) => (
                   <span
                     key={s}
                     className="rounded-md border border-violet-500/20 bg-violet-500/[0.06] px-2 py-0.5 text-[10px] text-violet-400"
@@ -96,14 +96,14 @@ export default function HowItWorks() {
                 </h3>
               </div>
               <p className="mb-3 text-xs leading-relaxed text-slate-500">
-                Signals are embedded and clustered by theme. Recurring clusters are synthesised
-                into ranked product gaps — each with a target user, pain summary, evidence quotes,
-                and a specific suggested wedge. Delivered to your inbox Friday morning.
+                Findings are embedded and clustered by theme within the selected market.
+                Recurring clusters become ranked product gaps — each with a target user, pain
+                summary, evidence quotes, and a specific suggested wedge.
               </p>
               <p className="text-xs text-slate-600 italic">
                 Example this week:{' '}
                 <span className="text-slate-400">
-                  &ldquo;Calendar reliability complaints crossed 14 mentions — up from 6 last week.&rdquo;
+                  &ldquo;Calendar reliability complaints now appear across 3 workspace tools.&rdquo;
                 </span>
               </p>
             </div>

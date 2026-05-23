@@ -7,11 +7,12 @@ export default function BeforeAfter() {
             The problem
           </p>
           <h2 className="text-2xl font-bold text-slate-100">
-            Every PM already does this research — just badly
+            Every team already does market research — just manually
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            You know competitor feedback lives somewhere in Reddit, G2, and Twitter. You bookmark
-            it. You mean to organise it. You never do. LidScout does the listening for you.
+            Useful market evidence lives across competitor communities, review sites, forums,
+            changelogs, and comment threads. You save links, skim a few, and still miss the
+            pattern. LidScout keeps the watchlist running.
           </p>
         </div>
 
@@ -28,9 +29,9 @@ export default function BeforeAfter() {
             <div className="rounded-xl border border-slate-800/50 bg-[#0a0c1e] p-4 font-mono text-xs">
               <p className="mb-3 text-slate-400 font-sans font-semibold text-sm">Competitor Research — Q2</p>
               <div className="space-y-1.5 text-slate-600">
-                <p>• TODO: catch up on r/notion this week</p>
+                <p>• TODO: check workspace tools market this week</p>
                 <p>• <span className="line-through opacity-50">read G2 reviews for Linear</span></p>
-                <p>• bookmark dump (47 tabs)</p>
+                <p>• bookmark dump across 47 tabs</p>
                 <p>• <span className="text-amber-600/70">⚠ 3 unread Slack threads from sales</span></p>
                 <p>• ask Sarah what she found on Figma</p>
                 <p>• <span className="line-through opacity-50">write up findings before roadmap mtg</span></p>
@@ -68,7 +69,7 @@ export default function BeforeAfter() {
             <div className="rounded-xl border border-slate-800/50 bg-[#0a0c1e] p-4 text-xs">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-slate-300 font-semibold text-sm">Week of May 19</p>
-                <span className="text-slate-700">Notion · 14 gaps tracked</span>
+                <span className="text-slate-700">Workspace tools · 14 gaps tracked</span>
               </div>
               <div className="space-y-2">
                 {[
@@ -93,7 +94,7 @@ export default function BeforeAfter() {
 
             <ul className="mt-4 space-y-2">
               {[
-                'Zero hours of manual research',
+                'Zero hours of manual source triage',
                 'Updated continuously, not when you remember',
                 'Ranked by signal strength and recency',
                 'Shareable with the whole team',

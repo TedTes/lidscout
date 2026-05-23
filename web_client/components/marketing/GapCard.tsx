@@ -34,6 +34,9 @@ export default function GapCard({ gap, dimmed = false }: { gap: SampleGap; dimme
           {cfg.label}
         </span>
         <div className="flex items-center gap-1.5 shrink-0">
+          <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-300">
+            {gap.market}
+          </span>
           <span className="rounded-md bg-slate-800/60 px-2 py-0.5 text-[11px] text-slate-500">
             {gap.company}
           </span>

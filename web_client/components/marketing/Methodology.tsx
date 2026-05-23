@@ -7,11 +7,11 @@ export default function Methodology() {
             Under the hood
           </p>
           <h2 className="text-2xl font-bold text-slate-100">
-            How we turn 300 posts into 3 ranked gaps
+            How we turn market noise into ranked gaps
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            Signal quality is everything. LidScout runs a multi-stage pipeline on every post before
-            it reaches your report — so what you see is pain, not noise.
+            Signal quality is everything. LidScout runs a multi-stage pipeline for every watched
+            market before anything reaches your report — so what you see is evidence, not noise.
           </p>
         </div>
 
@@ -24,9 +24,9 @@ export default function Methodology() {
               {
                 step: '01',
                 label: 'Fetch',
-                heading: 'Daily crawl of every source',
-                body: 'LidScout pulls the latest posts from Reddit communities, G2 and Capterra reviews, Hacker News threads, and product changelogs — typically 200–500 new items per product per day.',
-                detail: 'Sources are polled every 24 hours. New sources can be added per-product.',
+                heading: 'Daily crawl of every market source',
+                body: 'LidScout pulls the latest posts from Reddit communities, review pages, Hacker News threads, forums, feeds, and product changelogs across every company in the market.',
+                detail: 'Sources are polled every 24 hours. New sources can be added per market or per company.',
               },
               {
                 step: '02',
@@ -39,29 +39,29 @@ export default function Methodology() {
                 step: '03',
                 label: 'LLM classifier',
                 heading: 'Confirm genuine product pain',
-                body: 'Each remaining post is sent to an LLM with a structured prompt: does this express a real, specific frustration with the product? Vague complaints, feature requests without pain context, and off-topic discussions are discarded.',
+                body: 'Each remaining post is sent to an LLM with a structured prompt: is this about the watched market or company, and does it express a real pain, request, workaround, or switching signal? Off-topic discussions are discarded.',
                 detail: '~20% of posts survive to this stage; ~half of those are confirmed pain signals.',
               },
               {
                 step: '04',
                 label: 'Cluster',
                 heading: 'Group signals by theme',
-                body: 'Surviving signals are embedded and clustered by semantic similarity. Posts about calendar sync issues, posts about event conflicts, and posts about timezone bugs all resolve to the same cluster — regardless of how users described the problem.',
+                body: 'Surviving findings are embedded and clustered by semantic similarity inside the market. Posts about calendar sync issues, event conflicts, and timezone bugs resolve to the same theme regardless of wording.',
                 detail: 'Clusters are re-evaluated weekly so trends are always relative to prior state.',
               },
               {
                 step: '05',
                 label: 'Synthesise',
                 heading: 'Generate the gap card',
-                body: 'Each cluster is passed to an LLM with the full pain statements, user types, and frequency data. The model produces a structured gap card: a title, target user, pain summary, a "why it matters" framing, and a suggested product wedge.',
+                body: 'Each theme is passed to an LLM with the full pain statements, user types, company context, and evidence count. The model produces a structured gap card: title, affected user, pain summary, and suggested wedge.',
                 detail: 'Output is validated against a strict schema. Malformed responses fall back to templated summaries — the pipeline never stalls.',
               },
               {
                 step: '06',
                 label: 'Rank + deliver',
                 heading: 'Friday report, ranked by signal strength',
-                body: 'Gaps are scored by mention frequency, recency trend, and user specificity. The top gaps land in your inbox Friday morning — with direct links to the source posts so you can read the raw evidence yourself.',
-                detail: 'Email + in-app. Raw signal links preserved for every gap.',
+                body: 'Gaps are scored by evidence count, source diversity, recency, and user specificity. The top gaps land in your inbox Friday morning — with direct links to the source posts so you can read the raw evidence yourself.',
+                detail: 'Email + in-app. Raw finding links preserved for every gap.',
               },
             ].map(({ step, label, heading, body, detail }) => (
               <div key={step} className="flex gap-5 sm:gap-8">

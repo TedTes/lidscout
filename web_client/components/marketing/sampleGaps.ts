@@ -1,5 +1,6 @@
 export type SampleGap = {
   id: string;
+  market: string;
   company: string;
   title: string;
   painSummary: string;
@@ -14,6 +15,7 @@ export type SampleGap = {
 export const sampleGaps: SampleGap[] = [
   {
     id: '1',
+    market: 'Workspace tools',
     company: 'Notion',
     title: 'Calendar reliability blocks team adoption',
     painSummary:
@@ -29,6 +31,7 @@ export const sampleGaps: SampleGap[] = [
   },
   {
     id: '2',
+    market: 'Workspace tools',
     company: 'Notion',
     title: 'Database views degrade past 1,000 rows',
     painSummary:
@@ -44,6 +47,7 @@ export const sampleGaps: SampleGap[] = [
   },
   {
     id: '3',
+    market: 'Workspace tools',
     company: 'Notion',
     title: 'API rate limits prevent reliable integrations',
     painSummary:
@@ -59,6 +63,7 @@ export const sampleGaps: SampleGap[] = [
   },
   {
     id: '4',
+    market: 'Product operations',
     company: 'Linear',
     title: 'Roadmap views lack executive-friendly export',
     painSummary:
@@ -74,6 +79,7 @@ export const sampleGaps: SampleGap[] = [
   },
   {
     id: '5',
+    market: 'Design collaboration',
     company: 'Figma',
     title: 'Simultaneous edits cause silent data loss',
     painSummary:
@@ -89,6 +95,7 @@ export const sampleGaps: SampleGap[] = [
   },
   {
     id: '6',
+    market: 'Project management',
     company: 'Asana',
     title: 'Workload ignores calendar time, makes capacity meaningless',
     painSummary:
