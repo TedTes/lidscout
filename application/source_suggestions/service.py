@@ -1,4 +1,6 @@
 """Source suggestion service for competitor monitoring."""
+import re
+
 from application.source_suggestions.default_templates import get_default_source_templates
 from application.source_suggestions.template_renderer import render_source_candidates
 from domain.competitor import Competitor
@@ -33,10 +35,26 @@ class SourceSuggestionService:
             existing_locators=existing_locators,
         )
 
+    def suggest_for_market(
+        self,
+        market: Market,
+        existing_sources: list[MonitoredSource] | None = None,
+    ) -> list[SourceSuggestion]:
+        """Return rendered source suggestions for a market-level watchlist."""
+        existing_locators = {
+            source.locator
+            for source in existing_sources or []
+        }
+        return render_source_candidates(
+            self._applicable_templates(competitor=None, market=market),
+            market=market,
+            existing_locators=existing_locators,
+        )
+
     def _applicable_templates(
         self,
         *,
-        competitor: Competitor,
+        competitor: Competitor | None,
         market: Market | None,
     ) -> list[SourceTemplate]:
         categories = _template_categories(competitor=competitor, market=market)
@@ -51,12 +69,33 @@ class SourceSuggestionService:
 
 def _template_categories(
     *,
-    competitor: Competitor,
+    competitor: Competitor | None,
     market: Market | None,
 ) -> list[str]:
     categories = []
-    if competitor.category:
+    if competitor is not None and competitor.category:
         categories.append(competitor.category)
     if market is not None:
         categories.extend([market.id, market.name])
-    return categories
+    return _category_aliases(categories)
+
+
+def _category_aliases(values: list[str]) -> list[str]:
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = value.strip().lower()
+        if not cleaned:
+            continue
+        words = [part for part in re.split(r"[^a-z0-9]+", cleaned) if part]
+        variants = {
+            cleaned,
+            "_".join(words),
+            "-".join(words),
+            *words,
+        }
+        for variant in variants:
+            if variant and variant not in seen:
+                aliases.append(variant)
+                seen.add(variant)
+    return aliases

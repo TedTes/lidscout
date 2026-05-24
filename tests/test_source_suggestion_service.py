@@ -2,6 +2,7 @@ import unittest
 
 from application.source_suggestions import SourceSuggestionService
 from domain.competitor import Competitor
+from domain.market import Market
 from domain.source import MonitoredSource
 
 
@@ -48,6 +49,41 @@ class SourceSuggestionServiceTests(unittest.TestCase):
             locators,
         )
         self.assertNotIn("https://www.g2.com/search?query=Notion", locators)
+
+    def test_suggests_market_level_sources(self):
+        market = Market.create(id="ai-devtools", name="AI Devtools")
+
+        suggestions = SourceSuggestionService().suggest_for_market(market)
+        locators = [suggestion.locator for suggestion in suggestions]
+
+        self.assertIn(
+            "https://www.reddit.com/search.json?q=AI+Devtools&sort=new",
+            locators,
+        )
+        self.assertIn(
+            "https://hn.algolia.com/api/v1/search_by_date?query=AI+Devtools&tags=story",
+            locators,
+        )
+
+    def test_marks_existing_market_sources(self):
+        market = Market.create(id="ai-devtools", name="AI Devtools")
+        existing_source = MonitoredSource.create(
+            market_id="ai-devtools",
+            locator="https://www.reddit.com/search.json?q=AI+Devtools&sort=new",
+            source_type="reddit_search",
+        )
+
+        suggestions = SourceSuggestionService().suggest_for_market(
+            market,
+            [existing_source],
+        )
+
+        existing = next(
+            suggestion
+            for suggestion in suggestions
+            if suggestion.locator == existing_source.locator
+        )
+        self.assertTrue(existing.already_monitored)
 
     def test_marks_existing_sources(self):
         competitor = Competitor.create(id="notion", name="Notion")

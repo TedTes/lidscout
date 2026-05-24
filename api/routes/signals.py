@@ -436,11 +436,41 @@ async def list_competitor_source_suggestions(
     existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
         competitor_id=competitor_id,
     )
+    market = (
+        dependencies.market_repository.get_market(competitor.market_id)
+        if competitor.market_id
+        else None
+    )
     return {
         "suggestions": [
             _serialize_source_suggestion(suggestion)
             for suggestion in SourceSuggestionService().suggest(
                 competitor,
+                existing_sources,
+                market=market,
+            )
+        ]
+    }
+
+
+@router.get("/markets/{market_id}/source-suggestions")
+async def list_market_source_suggestions(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return opinionated default source candidates for one market."""
+    market = dependencies.market_repository.get_market(market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
+        market_id=market_id,
+    )
+    return {
+        "suggestions": [
+            _serialize_source_suggestion(suggestion)
+            for suggestion in SourceSuggestionService().suggest_for_market(
+                market,
                 existing_sources,
             )
         ]

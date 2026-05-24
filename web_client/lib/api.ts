@@ -216,6 +216,22 @@ class SignalApiService {
     }
   }
 
+  async getMarketSourceSuggestions(
+    marketId: string
+  ): Promise<SourceSuggestionsResponse> {
+    try {
+      const response = await api.get<SourceSuggestionsResponse>(
+        `/markets/${marketId}/source-suggestions`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load market source suggestions');
+      }
+      throw error;
+    }
+  }
+
   async getSources(params?: {
     competitor_id?: string;
     market_id?: string;

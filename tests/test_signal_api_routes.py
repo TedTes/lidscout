@@ -24,6 +24,7 @@ from api.routes.signals import (
     list_market_competitors,
     list_market_sources,
     list_markets,
+    list_market_source_suggestions,
     list_opportunities,
     list_sources,
     list_signals,
@@ -117,6 +118,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/markets/{market_id}", paths)
         self.assertIn("/markets/{market_id}/competitors", paths)
         self.assertIn("/markets/{market_id}/sources", paths)
+        self.assertIn("/markets/{market_id}/source-suggestions", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
         self.assertIn("/competitors", paths)
@@ -360,6 +362,30 @@ class SignalApiRouteTests(unittest.TestCase):
             if suggestion["locator"] == existing_source["locator"]
         )
         self.assertTrue(existing["already_monitored"])
+
+    def test_lists_market_source_suggestions(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="ai-devtools", name="AI Devtools")]
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            monitored_source_repository=monitored_source_repository,
+        )
+
+        response = asyncio.run(
+            list_market_source_suggestions("ai-devtools", dependencies)
+        )
+
+        self.assertIn(
+            "https://www.reddit.com/search.json?q=AI+Devtools&sort=new",
+            [suggestion["locator"] for suggestion in response["suggestions"]],
+        )
+        self.assertIn(
+            "source_family",
+            response["suggestions"][0],
+        )
 
     def test_lists_sources_across_competitors(self):
         competitor_repository = InMemoryCompetitorRepository()
