@@ -92,11 +92,17 @@
   100% { transform: translateY(0); }
 }
 
+@keyframes count-flash {
+  0%   { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-card-pulse,
   .anim-badge-pop,
   .anim-scan-row,
-  .anim-counter-tick {
+  .anim-counter-tick,
+  .animate-ping {
     animation: none !important;
   }
 }
