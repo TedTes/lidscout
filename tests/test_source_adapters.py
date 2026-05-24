@@ -80,6 +80,15 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(posts[1].metadata["competitor_name"], "Notion")
         self.assertEqual(posts[1].metadata["competitor_domain"], "notion.so")
 
+    def test_json_adapter_can_handle_explicit_json_api_source(self):
+        adapter = JsonUrlAdapter()
+        source = SourceInput.create(
+            locator="https://api.github.com/search/issues?q=Linear+is%3Aissue",
+            options={"adapter": "json"},
+        )
+
+        self.assertTrue(adapter.can_handle(source))
+
     def test_web_page_url_normalizes_static_page_text(self):
         response = Mock()
         response.headers = {"content-type": "text/html"}

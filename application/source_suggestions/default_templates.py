@@ -1,5 +1,31 @@
-"""Default source templates for MVP source suggestions."""
+"""Default source templates for MVP source suggestions.
+
+Template groups:
+- Company discussion/search: public social and technical discussion searches.
+- Company reviews: review surfaces with higher expected complaint density.
+- Owned-site signals: lower-signal product updates such as changelog and blog.
+- Market-level discovery: broad niche searches; currently intentionally thin.
+
+Rank score conventions:
+- 0.80-1.00: high expected pain density, usually review or complaint-heavy sources.
+- 0.60-0.79: useful discussion/search sources with mixed noise.
+- 0.40-0.59: product/news surfaces that may explain incumbent responses.
+- Below 0.40: discovery/positioning seeds; avoid default UI noise unless necessary.
+
+Supported categories today are AI tools, B2B SaaS, devtools, productivity,
+project management, and vertical SaaS. Consumer/mobile app templates are not
+enabled until App Store / Play Store fetch support is added.
+"""
 from domain.source import SourceTemplate
+
+SUPPORTED_TEMPLATE_CATEGORIES = (
+    "ai_tools",
+    "b2b_saas",
+    "devtools",
+    "productivity",
+    "project_management",
+    "vertical_saas",
+)
 
 
 DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
@@ -57,7 +83,9 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         rationale="Surface review and category pages with recurring customer pain for {company_name}.",
         default_limit=10,
         applicable_categories=[
+            "ai_tools",
             "b2b_saas",
+            "devtools",
             "productivity",
             "project_management",
             "vertical_saas",
@@ -66,15 +94,19 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         options={"adapter": "static", "source_family": "reviews"},
     ),
     SourceTemplate.create(
-        id="company-website",
-        label="{domain} website",
-        source_type="website",
-        url_template="{website}",
-        source_family="owned_site",
-        rationale="Monitor public product and positioning changes from {domain}.",
-        default_limit=1,
-        rank_score=0.35,
-        options={"adapter": "static", "source_family": "owned_site"},
+        id="github-company-issues-search",
+        label="GitHub issues",
+        source_type="github_issues_search",
+        url_template=(
+            "https://api.github.com/search/issues"
+            "?q={company_query}+is%3Aissue&sort=updated&order=desc"
+        ),
+        source_family="technical_forum",
+        rationale="Find open-source issue reports and developer complaints mentioning {company_name}.",
+        default_limit=25,
+        applicable_categories=["ai_tools", "devtools"],
+        rank_score=0.88,
+        options={"adapter": "json", "source_family": "technical_forum"},
     ),
     SourceTemplate.create(
         id="company-changelog",
@@ -120,7 +152,7 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         source_family="technical_forum",
         rationale="Find technical buyer and founder discussions about {market_name}.",
         default_limit=25,
-        applicable_categories=["ai_tools", "b2b_saas", "devtools"],
+        applicable_categories=["ai_tools", "b2b_saas", "devtools", "productivity"],
         rank_score=0.68,
         options={"adapter": "json", "source_family": "technical_forum"},
     ),

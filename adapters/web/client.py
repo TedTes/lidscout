@@ -65,7 +65,10 @@ class JsonUrlAdapter(BaseUrlAdapter):
 
     def can_handle(self, source: SourceInput) -> bool:
         """Return whether this adapter can fetch the source input."""
-        return _is_http_url(source.locator) and _looks_like_json_url(source.locator)
+        return _is_http_url(source.locator) and (
+            source.options.get("adapter") == "json"
+            or _looks_like_json_url(source.locator)
+        )
 
     def fetch_source(self, source: SourceInput, default_limit: int = 25) -> list[RawPost]:
         """Fetch a JSON URL source and normalize it into raw posts."""

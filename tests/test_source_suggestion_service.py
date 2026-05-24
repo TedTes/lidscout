@@ -29,7 +29,6 @@ class SourceSuggestionServiceTests(unittest.TestCase):
         )
         self.assertIn("https://www.g2.com/search?query=Notion", locators)
         self.assertIn("https://www.capterra.com/search/?query=Notion", locators)
-        self.assertIn("https://www.notion.so", locators)
         self.assertIn("https://www.notion.so/changelog", locators)
         self.assertIn("https://www.notion.so/blog", locators)
         self.assertTrue(all(suggestion.template_id for suggestion in suggestions))
