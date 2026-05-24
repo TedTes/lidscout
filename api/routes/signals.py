@@ -304,6 +304,36 @@ async def list_market_competitors(
     return {"competitors": [_serialize_competitor(c) for c in competitors]}
 
 
+@router.post("/markets/{market_id}/competitors")
+async def create_market_competitor(
+    market_id: str,
+    request: CompetitorRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Create a monitored competitor scoped to one market."""
+    _ensure_market_exists(market_id, dependencies)
+    if request.market_id is not None and request.market_id != market_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Request market_id must match route market_id",
+        )
+
+    try:
+        competitor = Competitor.create(
+            id=request.id,
+            name=request.name,
+            website=request.website,
+            category=request.category,
+            description=request.description,
+            market_id=market_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.competitor_repository.save_competitors([competitor])
+    return _serialize_competitor(competitor)
+
+
 @router.get("/markets/{market_id}/sources")
 async def list_market_sources(
     market_id: str,

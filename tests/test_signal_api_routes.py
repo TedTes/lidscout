@@ -2,6 +2,8 @@ import asyncio
 import unittest
 from typing import Any
 
+from fastapi import HTTPException
+
 from api.main import app, health_check
 from api.routes.signals import (
     CompetitorRequest,
@@ -13,6 +15,7 @@ from api.routes.signals import (
     create_competitor,
     create_competitor_source,
     create_market,
+    create_market_competitor,
     create_market_source,
     delete_signal,
     get_market,
@@ -467,6 +470,57 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(competitors["competitors"][0]["id"], "competitor-1")
         self.assertEqual(source["market_id"], "workspace-tools")
         self.assertEqual(sources["sources"][0]["market_id"], "workspace-tools")
+
+    def test_creates_market_competitor_from_market_route(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+        competitor_repository = InMemoryCompetitorRepository()
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            competitor_repository=competitor_repository,
+        )
+
+        created = asyncio.run(
+            create_market_competitor(
+                "workspace-tools",
+                CompetitorRequest(
+                    id="notion",
+                    name="Notion",
+                    website="https://www.notion.so",
+                ),
+                dependencies,
+            )
+        )
+        competitors = asyncio.run(
+            list_market_competitors("workspace-tools", dependencies)
+        )
+
+        self.assertEqual(created["market_id"], "workspace-tools")
+        self.assertEqual(competitors["competitors"][0]["id"], "notion")
+
+    def test_rejects_market_competitor_when_request_market_conflicts(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+        dependencies = self._dependencies(market_repository=market_repository)
+
+        with self.assertRaises(HTTPException) as exc:
+            asyncio.run(
+                create_market_competitor(
+                    "workspace-tools",
+                    CompetitorRequest(
+                        id="notion",
+                        name="Notion",
+                        market_id="finance-tools",
+                    ),
+                    dependencies,
+                )
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
 
     def test_creates_and_lists_competitor_sources(self):
         competitor_repository = InMemoryCompetitorRepository()

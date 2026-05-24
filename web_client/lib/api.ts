@@ -186,6 +186,30 @@ class SignalApiService {
     }
   }
 
+  async createMarketCompetitor(
+    marketId: string,
+    request: {
+      id: string;
+      name: string;
+      website?: string | null;
+      category?: string | null;
+      description?: string | null;
+    }
+  ): Promise<Competitor> {
+    try {
+      const response = await api.post<Competitor>(
+        `/markets/${marketId}/competitors`,
+        request
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to add market company');
+      }
+      throw error;
+    }
+  }
+
   async getCompetitorSources(competitorId: string): Promise<MonitoredSourcesResponse> {
     try {
       const response = await api.get<MonitoredSourcesResponse>(
