@@ -3,6 +3,7 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from application.opportunity.synthesis_schema import (
     OPPORTUNITY_SYNTHESIS_PROMPT,
@@ -135,7 +136,7 @@ class OpportunitySynthesisService:
             why_it_matters=candidate.why_it_matters,
             suggested_wedge=candidate.suggested_wedge,
             evidence_count=cluster.frequency,
-            confidence=_confidence_for(cluster),
+            confidence=_confidence_for(cluster, signals),
             evidence_signal_ids=[signal.id for signal in signals],
         )
 
@@ -170,7 +171,7 @@ class OpportunitySynthesisService:
             why_it_matters=_why_it_matters(cluster, signals),
             suggested_wedge=_suggested_wedge(category, workaround),
             evidence_count=cluster.frequency,
-            confidence=_confidence_for(cluster),
+            confidence=_confidence_for(cluster, signals),
             evidence_signal_ids=[signal.id for signal in signals],
         )
 
@@ -207,10 +208,26 @@ def _suggested_wedge(category: str | None, workaround: str | None) -> str:
     return f"Build a focused {category.lower()} workflow for this repeated pain."
 
 
-def _confidence_for(cluster: SignalCluster) -> float:
-    score_component = min(cluster.average_score / 10.0, 1.0) * 0.7
-    frequency_component = min(cluster.frequency, 5) / 5 * 0.3
-    return round(min(score_component + frequency_component, 1.0), 2)
+def _confidence_for(cluster: SignalCluster, signals: list[Signal]) -> float:
+    score_component = min(cluster.average_score / 10.0, 1.0) * 0.45
+    evidence_component = min(max(cluster.frequency, len(signals)), 5) / 5 * 0.25
+    source_component = min(_source_diversity(signals), 3) / 3 * 0.20
+    average_signal_confidence = (
+        sum(signal.confidence for signal in signals) / len(signals)
+        if signals
+        else 0.0
+    )
+    quality_component = min(average_signal_confidence, 1.0) * 0.10
+    return round(
+        min(
+            score_component
+            + evidence_component
+            + source_component
+            + quality_component,
+            1.0,
+        ),
+        2,
+    )
 
 
 def _cluster_content(cluster: SignalCluster, signals: list[Signal]) -> str:
@@ -218,19 +235,69 @@ def _cluster_content(cluster: SignalCluster, signals: list[Signal]) -> str:
     categories = list({s.category for s in signals if s.category})
     workarounds = list({s.current_workaround for s in signals if s.current_workaround})
     wtp_count = sum(1 for s in signals if s.willingness_to_pay is True)
-    pains = [s.pain for s in signals]
+    competitor_ids = list({s.competitor_id for s in signals if s.competitor_id})
+    market_ids = list({s.market_id for s in signals if s.market_id})
 
     lines = [
         f"theme: {cluster.theme}",
         f"summary: {cluster.summary}",
         f"frequency: {cluster.frequency}",
         f"average_score: {cluster.average_score:.1f}",
+        f"source_diversity: {_source_diversity(signals)}",
         f"wtp_signals: {wtp_count}",
+        f"market_ids: {', '.join(market_ids) or 'unknown'}",
+        f"competitor_ids: {', '.join(competitor_ids) or 'unknown'}",
         f"user_types: {', '.join(user_types) or 'unknown'}",
         f"categories: {', '.join(categories) or 'unknown'}",
         f"workarounds: {', '.join(workarounds) or 'none mentioned'}",
-        "pain_statements:",
+        "evidence_items:",
     ]
-    for pain in pains:
-        lines.append(f"  - {pain}")
+    for signal in signals:
+        lines.extend(_signal_evidence_lines(signal))
     return "\n".join(lines)
+
+
+def _signal_evidence_lines(signal: Signal) -> list[str]:
+    lines = [
+        f"  - signal_id: {signal.id}",
+        f"    competitor_id: {signal.competitor_id or 'unknown'}",
+        f"    market_id: {signal.market_id or 'unknown'}",
+        f"    pain: {signal.pain}",
+        f"    user_type: {signal.user_type or 'unknown'}",
+        f"    job_to_be_done: {signal.job_to_be_done or 'unknown'}",
+        f"    current_workaround: {signal.current_workaround or 'none mentioned'}",
+        f"    urgency: {signal.urgency}",
+        f"    severity: {signal.severity}",
+        f"    willingness_to_pay: {_format_bool(signal.willingness_to_pay)}",
+        f"    category: {signal.category or 'unknown'}",
+        f"    extraction_confidence: {signal.confidence:.2f}",
+    ]
+    if signal.evidence_text:
+        lines.append(f"    evidence_text: {signal.evidence_text}")
+    if signal.evidence_url:
+        lines.append(f"    evidence_url: {signal.evidence_url}")
+    return lines
+
+
+def _source_diversity(signals: list[Signal]) -> int:
+    sources = {_source_key(signal) for signal in signals}
+    sources.discard(None)
+    if not sources and signals:
+        return 1
+    return len(sources)
+
+
+def _source_key(signal: Signal) -> str | None:
+    if signal.evidence_url:
+        parsed = urlparse(signal.evidence_url)
+        if parsed.netloc:
+            return parsed.netloc.lower()
+    if ":" in signal.post_id:
+        return signal.post_id.split(":", 1)[0].lower()
+    return None
+
+
+def _format_bool(value: bool | None) -> str:
+    if value is None:
+        return "unknown"
+    return "true" if value else "false"

@@ -160,6 +160,126 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
         self.assertEqual(opportunity.suggested_wedge, llm_response["suggested_wedge"])
         llm_client.generate_structured_response.assert_called_once()
 
+    def test_llm_synthesis_receives_grounded_evidence_context(self):
+        repository = InMemoryOpportunityRepository()
+        llm_client = MagicMock()
+        llm_client.generate_structured_response.return_value = json.dumps(
+            {
+                "title": "Make workspace calendars reliable across timezones",
+                "target_user": "operations teams",
+                "pain_summary": "Teams lose trust when calendar sync fails.",
+                "why_it_matters": "The evidence exposes a reliability gap in daily planning.",
+                "suggested_wedge": "Build a conflict-aware calendar sync layer.",
+            }
+        )
+        signals = [
+            Signal.create(
+                id="signal-1",
+                post_id="reddit:r1",
+                pain="Calendar sync fails across timezones.",
+                user_type="operations teams",
+                job_to_be_done="coordinate weekly planning",
+                current_workaround="falling back to Google Calendar",
+                urgency="high",
+                severity="high",
+                willingness_to_pay=True,
+                category="Calendar reliability",
+                confidence=0.9,
+                competitor_id="notion",
+                market_id="workspace-tools",
+                evidence_text="Timezone sync made Notion Calendar unusable.",
+                evidence_url="https://reddit.com/r/Notion/comments/1",
+            ),
+            Signal.create(
+                id="signal-2",
+                post_id="g2:notion-1",
+                pain="Calendar events disappear for shared workspaces.",
+                user_type="operations teams",
+                job_to_be_done="coordinate weekly planning",
+                current_workaround="manual calendar checks",
+                urgency="medium",
+                severity="high",
+                willingness_to_pay=None,
+                category="Calendar reliability",
+                confidence=0.8,
+                competitor_id="notion",
+                market_id="workspace-tools",
+                evidence_text="Shared events disappear without warning.",
+                evidence_url="https://g2.com/products/notion/reviews/1",
+            ),
+        ]
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Calendar reliability",
+            summary="Teams cannot trust calendar sync.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.6,
+            top_examples=["Calendar sync fails across timezones."],
+        )
+        service = OpportunitySynthesisService(
+            repository,
+            minimum_average_score=7.0,
+            llm_client=llm_client,
+        )
+
+        result = service.synthesize([cluster], signals)
+
+        self.assertEqual(result.synthesized_count, 1)
+        _, content, _ = llm_client.generate_structured_response.call_args.args
+        self.assertIn("source_diversity: 2", content)
+        self.assertIn("market_ids: workspace-tools", content)
+        self.assertIn("competitor_ids: notion", content)
+        self.assertIn("evidence_text: Timezone sync made Notion Calendar unusable.", content)
+        self.assertIn("evidence_url: https://reddit.com/r/Notion/comments/1", content)
+        self.assertIn("job_to_be_done: coordinate weekly planning", content)
+
+    def test_confidence_uses_evidence_count_source_diversity_and_signal_confidence(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Calendar reliability",
+            summary="Teams cannot trust calendar sync.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.0,
+        )
+        shared_kwargs = {
+            "post_id": "reddit:r1",
+            "pain": "Calendar sync fails.",
+            "confidence": 0.9,
+        }
+        low_diversity_signals = [
+            Signal.create(
+                id="signal-1",
+                evidence_url="https://reddit.com/r/Notion/comments/1",
+                **shared_kwargs,
+            ),
+            Signal.create(
+                id="signal-2",
+                evidence_url="https://reddit.com/r/Notion/comments/2",
+                **shared_kwargs,
+            ),
+        ]
+        high_diversity_signals = [
+            Signal.create(
+                id="signal-1",
+                evidence_url="https://reddit.com/r/Notion/comments/1",
+                **shared_kwargs,
+            ),
+            Signal.create(
+                id="signal-2",
+                evidence_url="https://g2.com/products/notion/reviews/1",
+                **shared_kwargs,
+            ),
+        ]
+
+        low_diversity = service.synthesize([cluster], low_diversity_signals).opportunities[0]
+        high_diversity = service.synthesize([cluster], high_diversity_signals).opportunities[0]
+
+        self.assertGreater(high_diversity.confidence, low_diversity.confidence)
+
     def test_falls_back_to_templates_when_llm_raises(self):
         repository = InMemoryOpportunityRepository()
         llm_client = MagicMock()

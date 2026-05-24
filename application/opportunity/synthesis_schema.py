@@ -5,18 +5,21 @@ from pydantic import BaseModel, field_validator
 
 
 OPPORTUNITY_SYNTHESIS_PROMPT = """
-You are a product strategist. Given a cluster of similar customer pain signals
-about a competitor's product, write a concise, actionable opportunity card.
+You are a product strategist. Given a cluster of public user evidence from a
+watched market, write a concise, actionable opportunity card.
 
 Return JSON only. The response must match this contract:
 - title: sharp, specific opportunity title (not a template — name the actual problem)
 - target_user: the specific user segment most affected
 - pain_summary: 1-2 sentences summarising the core pain in plain language
-- why_it_matters: business reasoning — why this represents a real opening
+- why_it_matters: business reasoning — the competitor weakness exposed and why
+  the supplied evidence suggests a real opening
 - suggested_wedge: a concrete, specific product approach to capture this gap
 
-Do not use generic language. Do not repeat the cluster theme verbatim as the
-title. Be direct and specific about what to build and why.
+Use only the supplied evidence. Do not invent competitors, users, sources, or
+market facts. If the evidence is thin, keep the claim conservative. Do not use
+generic language. Do not repeat the cluster theme verbatim as the title. Be
+direct and specific about what to build and why.
 """.strip()
 
 
