@@ -40,13 +40,15 @@ class ReportingService:
         self,
         clusters: list[SignalCluster],
         opportunities: list[Opportunity] | None = None,
+        *,
+        title: str | None = None,
     ) -> MarketSignalReport:
         ranked_clusters = self._rank_clusters(clusters)
         top_clusters = ranked_clusters[: self.top_cluster_limit]
         ranked_opportunities = self._rank_opportunities(opportunities or [])
 
         return MarketSignalReport(
-            title=self.title,
+            title=title or self.title,
             generated_at=datetime.now(UTC),
             top_clusters=top_clusters,
             emerging_pains=[cluster.summary for cluster in top_clusters],

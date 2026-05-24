@@ -385,6 +385,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertIn("market_target_user: product teams", llm_client.calls[0][1])
         signal = signal_repository.list_signals()[0]
         self.assertEqual(signal.market_id, "workspace-tools")
+        self.assertEqual(result.report.title, "Workspace tools Market Gap Report")
 
     def test_rejects_unrelated_signal_from_monitored_source(self):
         competitor_repository = InMemoryCompetitorRepository()

@@ -265,6 +265,19 @@ class SignalApiRouteTests(unittest.TestCase):
             "opportunity-1",
         )
 
+    def test_gets_market_scoped_report_title(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace Tools")]
+        )
+        dependencies = self._dependencies(market_repository=market_repository)
+
+        response = asyncio.run(
+            get_latest_report(dependencies, market_id="workspace-tools")
+        )
+
+        self.assertEqual(response["title"], "Workspace Tools Market Gap Report")
+
     def test_lists_opportunities(self):
         opportunity_repository = InMemoryOpportunityRepository()
         opportunity_repository.save_opportunities([self._opportunity()])

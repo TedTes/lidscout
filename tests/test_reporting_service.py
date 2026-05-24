@@ -76,6 +76,11 @@ class ReportingServiceTests(unittest.TestCase):
         self.assertEqual(report.emerging_pains, [])
         self.assertEqual(report.recommended_opportunities, [])
 
+    def test_allows_report_title_override(self):
+        report = ReportingService().generate([], title="Devtools Market Gap Report")
+
+        self.assertEqual(report.title, "Devtools Market Gap Report")
+
     def test_rejects_invalid_limits(self):
         with self.assertRaises(ValueError):
             ReportingService(top_cluster_limit=0)

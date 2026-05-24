@@ -378,6 +378,7 @@ async def get_latest_report(
     report = dependencies.reporting_service.generate(
         clusters,
         opportunities,
+        title=_market_report_title(dependencies, market_id),
     )
     return _serialize_report(report, dependencies, market_id=market_id)
 
@@ -738,6 +739,18 @@ def _market_company_count(
         for competitor in dependencies.competitor_repository.list_competitors()
         if competitor.market_id == market_id
     )
+
+
+def _market_report_title(
+    dependencies: SignalApiDependencies,
+    market_id: str | None,
+) -> str | None:
+    if market_id is None:
+        return None
+    market = dependencies.market_repository.get_market(market_id)
+    if market is None:
+        return None
+    return f"{market.name} Market Gap Report"
 
 
 def _serialize_market(market: Market) -> dict[str, Any]:

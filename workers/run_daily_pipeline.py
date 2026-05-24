@@ -131,6 +131,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     report = ReportingService().generate(
         clusters,
         opportunity_synthesis_result.opportunities,
+        title=_market_report_title(config),
     )
     email_result = config.email_client.send_report(report, config.recipient)
 
@@ -404,6 +405,15 @@ def _domain_from_url(url: str) -> str | None:
     if parsed.netloc:
         return parsed.netloc.lower()
     return None
+
+
+def _market_report_title(config: PipelineConfig) -> str | None:
+    if config.market_id is None or config.market_repository is None:
+        return None
+    market = config.market_repository.get_market(config.market_id)
+    if market is None:
+        return None
+    return f"{market.name} Market Gap Report"
 
 
 def _extract_signals(
