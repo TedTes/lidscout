@@ -3,6 +3,7 @@ import re
 
 from application.source_suggestions.default_templates import get_default_source_templates
 from application.source_suggestions.template_renderer import render_source_candidates
+from application.source_suggestions.validation import validate_source_candidates
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.source import MonitoredSource, SourceCandidate, SourceTemplate
@@ -28,12 +29,13 @@ class SourceSuggestionService:
             source.locator
             for source in existing_sources or []
         }
-        return render_source_candidates(
+        candidates = render_source_candidates(
             self._applicable_templates(competitor=competitor, market=market),
             competitor=competitor,
             market=market,
             existing_locators=existing_locators,
         )
+        return validate_source_candidates(candidates)
 
     def suggest_for_market(
         self,
@@ -45,11 +47,12 @@ class SourceSuggestionService:
             source.locator
             for source in existing_sources or []
         }
-        return render_source_candidates(
+        candidates = render_source_candidates(
             self._applicable_templates(competitor=None, market=market),
             market=market,
             existing_locators=existing_locators,
         )
+        return validate_source_candidates(candidates)
 
     def _applicable_templates(
         self,

@@ -11,6 +11,10 @@ from application.source_suggestions.template_renderer import (
     render_source_candidate,
     render_source_candidates,
 )
+from application.source_suggestions.validation import (
+    validate_source_candidate,
+    validate_source_candidates,
+)
 
 __all__ = [
     "DEFAULT_SOURCE_TEMPLATES",
@@ -19,4 +23,6 @@ __all__ = [
     "get_default_source_templates",
     "render_source_candidate",
     "render_source_candidates",
+    "validate_source_candidate",
+    "validate_source_candidates",
 ]

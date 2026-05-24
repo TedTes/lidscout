@@ -33,6 +33,9 @@ class SourceSuggestionServiceTests(unittest.TestCase):
         self.assertIn("https://www.notion.so/blog", locators)
         self.assertTrue(all(suggestion.template_id for suggestion in suggestions))
         self.assertTrue(all(suggestion.source_family for suggestion in suggestions))
+        self.assertTrue(
+            all(suggestion.validation_status == "valid" for suggestion in suggestions)
+        )
 
     def test_filters_category_specific_templates_when_category_is_known(self):
         competitor = Competitor.create(
