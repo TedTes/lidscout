@@ -341,13 +341,15 @@ async def list_market_sources(
 ) -> dict[str, Any]:
     """Return monitored sources linked to one market."""
     _ensure_market_exists(market_id, dependencies)
+    sources = dependencies.monitored_source_repository.list_monitored_sources(
+        market_id=market_id,
+    )
     return {
         "sources": [
             _serialize_monitored_source(source, dependencies)
-            for source in dependencies.monitored_source_repository.list_monitored_sources(
-                market_id=market_id,
-            )
-        ]
+            for source in sources
+        ],
+        "summary": _source_coverage_summary(sources),
     }
 
 
@@ -526,15 +528,17 @@ async def list_sources(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Return monitored sources across competitors."""
+    sources = dependencies.monitored_source_repository.list_monitored_sources(
+        competitor_id=competitor_id,
+        market_id=market_id,
+        enabled=enabled,
+    )
     return {
         "sources": [
             _serialize_monitored_source(source, dependencies)
-            for source in dependencies.monitored_source_repository.list_monitored_sources(
-                competitor_id=competitor_id,
-                market_id=market_id,
-                enabled=enabled,
-            )
-        ]
+            for source in sources
+        ],
+        "summary": _source_coverage_summary(sources),
     }
 
 
@@ -864,11 +868,7 @@ def _serialize_monitored_source(
         "market_name": market.name if market else None,
         "locator": source.locator,
         "source_type": source.source_type,
-        "source_family": (
-            source.options.get("source_family")
-            if isinstance(source.options.get("source_family"), str)
-            else None
-        ),
+        "source_family": _source_family(source),
         "enabled": source.enabled,
         "limit": source.limit,
         "scan_frequency": source.scan_frequency,
@@ -878,6 +878,60 @@ def _serialize_monitored_source(
         "last_error": source.last_error,
         "options": source.options,
     }
+
+
+def _source_coverage_summary(sources: list[MonitoredSource]) -> dict[str, Any]:
+    by_family: dict[str, dict[str, Any]] = {}
+    company_ids: set[str] = set()
+    active_count = 0
+    error_count = 0
+
+    for source in sources:
+        family = _source_family(source) or "unknown"
+        entry = by_family.setdefault(
+            family,
+            {
+                "source_family": family,
+                "source_count": 0,
+                "active_count": 0,
+                "error_count": 0,
+                "company_count": 0,
+            },
+        )
+        entry["source_count"] += 1
+        if source.enabled:
+            active_count += 1
+            entry["active_count"] += 1
+        if source.last_error:
+            error_count += 1
+            entry["error_count"] += 1
+        if source.competitor_id:
+            company_ids.add(source.competitor_id)
+
+    for family, entry in by_family.items():
+        entry_company_ids = {
+            source.competitor_id
+            for source in sources
+            if source.competitor_id and (_source_family(source) or "unknown") == family
+        }
+        entry["company_count"] = len(entry_company_ids)
+
+    return {
+        "source_count": len(sources),
+        "active_count": active_count,
+        "disabled_count": len(sources) - active_count,
+        "error_count": error_count,
+        "company_count": len(company_ids),
+        "by_family": sorted(
+            by_family.values(),
+            key=lambda item: (-item["source_count"], item["source_family"]),
+        ),
+    }
+
+
+def _source_family(source: MonitoredSource) -> str | None:
+    family = source.options.get("source_family")
+    return family if isinstance(family, str) and family else None
 
 
 def _serialize_source_suggestion(suggestion: SourceSuggestion) -> dict[str, Any]:

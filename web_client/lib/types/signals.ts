@@ -86,6 +86,23 @@ export type MonitoredSource = {
   options: Record<string, unknown>;
 };
 
+export type SourceFamilySummary = {
+  source_family: string;
+  source_count: number;
+  active_count: number;
+  error_count: number;
+  company_count: number;
+};
+
+export type SourceCoverageSummary = {
+  source_count: number;
+  active_count: number;
+  disabled_count: number;
+  error_count: number;
+  company_count: number;
+  by_family: SourceFamilySummary[];
+};
+
 export type SourceSuggestion = {
   locator: string;
   source_type: string;
@@ -111,6 +128,7 @@ export type MarketsResponse = {
 
 export type MonitoredSourcesResponse = {
   sources: MonitoredSource[];
+  summary?: SourceCoverageSummary;
 };
 
 export type SourceSuggestionsResponse = {

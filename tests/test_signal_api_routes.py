@@ -470,6 +470,8 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(competitors["competitors"][0]["id"], "competitor-1")
         self.assertEqual(source["market_id"], "workspace-tools")
         self.assertEqual(sources["sources"][0]["market_id"], "workspace-tools")
+        self.assertEqual(sources["summary"]["source_count"], 1)
+        self.assertEqual(sources["summary"]["active_count"], 1)
 
     def test_creates_market_competitor_from_market_route(self):
         market_repository = InMemoryMarketRepository()
@@ -637,6 +639,7 @@ class SignalApiRouteTests(unittest.TestCase):
                 MonitoredSourceRequest(
                     locator="https://acme.example/reviews",
                     source_type="reviews",
+                    options={"source_family": "reviews"},
                 ),
                 dependencies,
             )
@@ -648,6 +651,7 @@ class SignalApiRouteTests(unittest.TestCase):
                     locator="https://other.example/reviews",
                     source_type="reviews",
                     enabled=False,
+                    options={"source_family": "reviews"},
                 ),
                 dependencies,
             )
@@ -657,6 +661,20 @@ class SignalApiRouteTests(unittest.TestCase):
         enabled_sources = asyncio.run(list_sources(enabled=True, dependencies=dependencies))
 
         self.assertEqual(len(all_sources["sources"]), 2)
+        self.assertEqual(all_sources["summary"]["source_count"], 2)
+        self.assertEqual(all_sources["summary"]["active_count"], 1)
+        self.assertEqual(all_sources["summary"]["disabled_count"], 1)
+        self.assertEqual(all_sources["summary"]["company_count"], 2)
+        self.assertEqual(
+            all_sources["summary"]["by_family"][0],
+            {
+                "source_family": "reviews",
+                "source_count": 2,
+                "active_count": 1,
+                "error_count": 0,
+                "company_count": 2,
+            },
+        )
         self.assertEqual(len(enabled_sources["sources"]), 1)
         self.assertEqual(enabled_sources["sources"][0]["competitor_id"], "competitor-1")
 
