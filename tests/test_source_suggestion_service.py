@@ -17,6 +17,7 @@ class SourceSuggestionServiceTests(unittest.TestCase):
 
         suggestions = SourceSuggestionService().suggest(competitor)
 
+        self.assertEqual(suggestions[0].source_family, "reviews")
         locators = [suggestion.locator for suggestion in suggestions]
         self.assertIn(
             "https://www.reddit.com/search.json?q=Notion&sort=new",

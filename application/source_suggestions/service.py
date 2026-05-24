@@ -2,6 +2,7 @@
 import re
 
 from application.source_suggestions.default_templates import get_default_source_templates
+from application.source_suggestions.ranking import rank_source_candidates
 from application.source_suggestions.template_renderer import render_source_candidates
 from application.source_suggestions.validation import validate_source_candidates
 from domain.competitor import Competitor
@@ -35,7 +36,7 @@ class SourceSuggestionService:
             market=market,
             existing_locators=existing_locators,
         )
-        return validate_source_candidates(candidates)
+        return rank_source_candidates(validate_source_candidates(candidates))
 
     def suggest_for_market(
         self,
@@ -52,7 +53,7 @@ class SourceSuggestionService:
             market=market,
             existing_locators=existing_locators,
         )
-        return validate_source_candidates(candidates)
+        return rank_source_candidates(validate_source_candidates(candidates))
 
     def _applicable_templates(
         self,

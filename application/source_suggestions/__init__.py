@@ -3,6 +3,7 @@ from application.source_suggestions.default_templates import (
     DEFAULT_SOURCE_TEMPLATES,
     get_default_source_templates,
 )
+from application.source_suggestions.ranking import rank_source_candidates
 from application.source_suggestions.service import (
     SourceSuggestion,
     SourceSuggestionService,
@@ -21,6 +22,7 @@ __all__ = [
     "SourceSuggestion",
     "SourceSuggestionService",
     "get_default_source_templates",
+    "rank_source_candidates",
     "render_source_candidate",
     "render_source_candidates",
     "validate_source_candidate",
