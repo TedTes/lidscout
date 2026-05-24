@@ -269,6 +269,45 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             signal.evidence_url,
             "https://example.com/reviews",
         )
+        updated_source = monitored_source_repository.get_monitored_source("source-1")
+        self.assertIsNotNone(updated_source.last_scanned_at)
+        self.assertIsNone(updated_source.last_error)
+
+    def test_records_failed_monitored_source_scan_status(self):
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    competitor_id="competitor-1",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    limit=1,
+                )
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            monitored_source_repository=monitored_source_repository,
+            llm_client=SequentialLLMClient([]),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetch_failed_count, 1)
+        updated_source = monitored_source_repository.get_monitored_source("source-1")
+        self.assertIsNotNone(updated_source.last_scanned_at)
+        self.assertEqual(
+            updated_source.last_error,
+            "No source adapter can handle locator",
+        )
 
     def test_runs_pipeline_from_one_market_source_scope(self):
         market_repository = InMemoryMarketRepository()

@@ -19,11 +19,21 @@ class SourceAdapter(Protocol):
 
 
 @dataclass(frozen=True)
+class SourceFetchDetail:
+    """Fetch outcome for one source input."""
+
+    source: SourceInput
+    fetched_count: int
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class SourceFetchResult:
-    """Fetched posts and failure count for a source batch."""
+    """Fetched posts, failure count, and per-source outcomes for a batch."""
 
     posts: list[RawPost]
     failed_count: int
+    details: list[SourceFetchDetail]
 
 
 class SourceResolver:
@@ -40,19 +50,48 @@ class SourceResolver:
         """Fetch all source inputs through matching adapters."""
         posts: list[RawPost] = []
         failed_count = 0
+        details: list[SourceFetchDetail] = []
 
         for source in sources:
             adapter = self._adapter_for(source)
             if adapter is None:
                 failed_count += 1
+                details.append(
+                    SourceFetchDetail(
+                        source=source,
+                        fetched_count=0,
+                        error="No source adapter can handle locator",
+                    )
+                )
                 continue
 
             try:
-                posts.extend(adapter.fetch_source(source, default_limit))
-            except Exception:
+                source_posts = adapter.fetch_source(source, default_limit)
+            except Exception as exc:
                 failed_count += 1
+                details.append(
+                    SourceFetchDetail(
+                        source=source,
+                        fetched_count=0,
+                        error=str(exc) or exc.__class__.__name__,
+                    )
+                )
+                continue
 
-        return SourceFetchResult(posts=posts, failed_count=failed_count)
+            posts.extend(source_posts)
+            details.append(
+                SourceFetchDetail(
+                    source=source,
+                    fetched_count=len(source_posts),
+                    error=None,
+                )
+            )
+
+        return SourceFetchResult(
+            posts=posts,
+            failed_count=failed_count,
+            details=details,
+        )
 
     def _adapter_for(self, source: SourceInput) -> SourceAdapter | None:
         for adapter in self.adapters:

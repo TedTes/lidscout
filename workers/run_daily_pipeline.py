@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from application.clustering import ClusteringService
@@ -11,6 +12,7 @@ from application.ingestion import (
     IngestionResult,
     IngestionService,
     SourceAdapter,
+    SourceFetchDetail,
     SourceResolver,
 )
 from application.opportunity import (
@@ -242,8 +244,46 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
         )
         posts.extend(source_result.posts)
         failed_count += source_result.failed_count
+        _update_monitored_source_scan_statuses(
+            config.monitored_source_repository,
+            source_result.details,
+        )
 
     return posts, failed_count
+
+
+def _update_monitored_source_scan_statuses(
+    monitored_source_repository: MonitoredSourceRepository | None,
+    details: list[SourceFetchDetail],
+) -> None:
+    if monitored_source_repository is None:
+        return
+
+    scanned_at = datetime.now(tz=UTC)
+    for detail in details:
+        source_id = detail.source.options.get("monitored_source_id")
+        if not isinstance(source_id, str):
+            continue
+
+        existing = monitored_source_repository.get_monitored_source(source_id)
+        if existing is None:
+            continue
+
+        monitored_source_repository.update_monitored_source(
+            MonitoredSource.create(
+                id=existing.id,
+                locator=existing.locator,
+                source_type=existing.source_type,
+                competitor_id=existing.competitor_id,
+                market_id=existing.market_id,
+                enabled=existing.enabled,
+                limit=existing.limit,
+                scan_frequency=existing.scan_frequency,
+                last_scanned_at=scanned_at,
+                last_error=detail.error,
+                options=existing.options,
+            )
+        )
 
 
 def _filter_relevant_posts(
