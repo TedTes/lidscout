@@ -128,6 +128,17 @@ Reframe from "company management" to:
 
 Use `/sources?market_id=...`.
 
+The source list response now includes an optional `summary` object:
+
+- `source_count`
+- `active_count`
+- `disabled_count`
+- `error_count`
+- `company_count`
+- `by_family[]` with `source_family`, `source_count`, `active_count`, `error_count`, `company_count`
+
+Use this summary for the page stat row and source-family grouping counts instead of recalculating everything ad hoc in the component.
+
 Show a flat list grouped by source family/type:
 
 - Reviews
@@ -159,6 +170,17 @@ Company-level suggestions are secondary:
 - Use `GET /competitors/{competitor_id}/source-suggestions`
 
 If company suggestions are shown, present them under a market setup or source setup flow, not as global navigation.
+
+## Company Setup
+
+Companies are managed inside a market context.
+
+Use:
+
+- `GET /markets/{market_id}/competitors`
+- `POST /markets/{market_id}/competitors`
+
+Avoid using global `POST /competitors` from the UI when the user is inside an active market. The global route can remain as a backend/admin escape hatch.
 
 ## Reports Page
 
