@@ -11,7 +11,9 @@ export type Signal = {
   category: string | null;
   confidence: number;
   competitor_id: string | null;
+  competitor_name: string | null;
   market_id: string | null;
+  market_name: string | null;
   evidence_url: string | null;
   evidence_text: string | null;
   detected_at: string | null;
@@ -25,6 +27,10 @@ export type SignalCluster = {
   frequency: number;
   average_score: number;
   top_examples: string[];
+  company_ids: string[];
+  company_names: string[];
+  company_count: number;
+  market_company_count: number | null;
 };
 
 export type Opportunity = {
@@ -38,6 +44,10 @@ export type Opportunity = {
   evidence_count: number;
   confidence: number;
   evidence_signal_ids: string[];
+  company_ids: string[];
+  company_names: string[];
+  company_count: number;
+  market_company_count: number | null;
 };
 
 export type Competitor = {
@@ -62,9 +72,12 @@ export type Market = {
 export type MonitoredSource = {
   id: string;
   competitor_id: string | null;
+  competitor_name: string | null;
   market_id: string | null;
+  market_name: string | null;
   locator: string;
   source_type: string;
+  source_family: string | null;
   enabled: boolean;
   limit: number | null;
   scan_frequency: string | null;

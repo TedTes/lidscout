@@ -136,6 +136,14 @@ class SignalApiRouteTests(unittest.TestCase):
 
     def test_lists_signals(self):
         signal_repository = InMemorySignalRepository()
+        competitor_repository = InMemoryCompetitorRepository()
+        market_repository = InMemoryMarketRepository()
+        competitor_repository.save_competitors(
+            [Competitor.create(id="competitor-1", name="Acme CRM")]
+        )
+        market_repository.save_markets(
+            [Market.create(id="market-1", name="CRM tools")]
+        )
         signal_repository.save_signals(
             [
                 Signal.create(
@@ -144,15 +152,23 @@ class SignalApiRouteTests(unittest.TestCase):
                     pain="Manual reporting is slow",
                     category="reporting",
                     confidence=0.8,
+                    competitor_id="competitor-1",
+                    market_id="market-1",
                 )
             ]
         )
-        dependencies = self._dependencies(signal_repository=signal_repository)
+        dependencies = self._dependencies(
+            signal_repository=signal_repository,
+            competitor_repository=competitor_repository,
+            market_repository=market_repository,
+        )
 
         response = asyncio.run(list_signals(dependencies))
 
         self.assertEqual(response["signals"][0]["id"], "signal-1")
         self.assertEqual(response["signals"][0]["pain"], "Manual reporting is slow")
+        self.assertEqual(response["signals"][0]["competitor_name"], "Acme CRM")
+        self.assertEqual(response["signals"][0]["market_name"], "CRM tools")
 
     def test_deletes_signal_and_score(self):
         signal_repository = InMemorySignalRepository()
@@ -184,6 +200,51 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(response["clusters"][0]["id"], "cluster-1")
         self.assertEqual(response["clusters"][0]["theme"], "reporting")
+        self.assertEqual(response["clusters"][0]["company_ids"], [])
+
+    def test_cluster_response_includes_company_breadth(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="competitor-1",
+                    name="Acme CRM",
+                    market_id="market-1",
+                ),
+                Competitor.create(
+                    id="competitor-2",
+                    name="Beta CRM",
+                    market_id="market-1",
+                ),
+            ]
+        )
+        signal_repository = InMemorySignalRepository()
+        signal_repository.save_signals(
+            [
+                Signal.create(
+                    id="signal-1",
+                    post_id="reddit:r1",
+                    pain="Reports are slow",
+                    competitor_id="competitor-1",
+                    market_id="market-1",
+                )
+            ]
+        )
+        cluster_repository = InMemoryClusterRepository()
+        cluster_repository.save_clusters([self._cluster()])
+        dependencies = self._dependencies(
+            competitor_repository=competitor_repository,
+            signal_repository=signal_repository,
+            cluster_repository=cluster_repository,
+        )
+
+        response = asyncio.run(list_clusters(dependencies, market_id="market-1"))
+
+        cluster = response["clusters"][0]
+        self.assertEqual(cluster["company_ids"], ["competitor-1"])
+        self.assertEqual(cluster["company_names"], ["Acme CRM"])
+        self.assertEqual(cluster["company_count"], 1)
+        self.assertEqual(cluster["market_company_count"], 2)
 
     def test_gets_latest_report(self):
         cluster_repository = InMemoryClusterRepository()
@@ -316,6 +377,8 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(created["competitor_id"], "competitor-1")
         self.assertEqual(response["sources"][0]["locator"], "https://acme.example/reviews")
+        self.assertEqual(response["sources"][0]["competitor_name"], "Acme CRM")
+        self.assertEqual(response["sources"][0]["source_family"], None)
 
     def test_lists_competitor_source_suggestions(self):
         competitor_repository = InMemoryCompetitorRepository()
