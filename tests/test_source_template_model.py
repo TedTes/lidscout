@@ -11,6 +11,7 @@ class SourceTemplateModelTests(unittest.TestCase):
             source_type=" Reddit_Search ",
             url_template=" https://www.reddit.com/search.json?q={company_query} ",
             source_family=" Social ",
+            rationale=" Finds recent public discussions. ",
             default_limit=25,
             applicable_categories=[
                 "B2B_SaaS",
@@ -30,6 +31,7 @@ class SourceTemplateModelTests(unittest.TestCase):
             "https://www.reddit.com/search.json?q={company_query}",
         )
         self.assertEqual(template.source_family, "social")
+        self.assertEqual(template.rationale, "Finds recent public discussions.")
         self.assertEqual(template.default_limit, 25)
         self.assertEqual(template.applicable_categories, ["b2b_saas", "devtools"])
         self.assertEqual(template.rank_score, 0.8)
@@ -42,6 +44,7 @@ class SourceTemplateModelTests(unittest.TestCase):
             source_type="website",
             url_template="{website}",
             source_family="owned_site",
+            rationale="Monitor the company website.",
         )
 
         self.assertTrue(template.applies_to_any_category([]))
@@ -54,6 +57,7 @@ class SourceTemplateModelTests(unittest.TestCase):
             source_type="hackernews_search",
             url_template="https://hn.algolia.com/api/v1/search_by_date?query={company_query}",
             source_family="technical_forum",
+            rationale="Find technical discussions.",
             applicable_categories=["devtools", "ai_tools"],
         )
 
@@ -68,6 +72,7 @@ class SourceTemplateModelTests(unittest.TestCase):
                 source_type="reddit_search",
                 url_template=" ",
                 source_family="social",
+                rationale="Find discussions.",
             )
 
         with self.assertRaises(ValueError):
@@ -77,7 +82,18 @@ class SourceTemplateModelTests(unittest.TestCase):
                 source_type="reddit_search",
                 url_template="https://example.com",
                 source_family="social",
+                rationale="Find discussions.",
                 default_limit=0,
+            )
+
+        with self.assertRaises(ValueError):
+            SourceTemplate.create(
+                id="template-1",
+                label="Reddit",
+                source_type="reddit_search",
+                url_template="https://example.com",
+                source_family="social",
+                rationale=" ",
             )
 
     def test_creates_source_candidate(self):

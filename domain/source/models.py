@@ -188,6 +188,7 @@ class SourceTemplate:
     source_type: str
     url_template: str
     source_family: str
+    rationale: str
     default_limit: int | None = None
     applicable_categories: list[str] = field(default_factory=list)
     enabled: bool = True
@@ -203,6 +204,7 @@ class SourceTemplate:
         source_type: str,
         url_template: str,
         source_family: str,
+        rationale: str,
         default_limit: int | None = None,
         applicable_categories: list[str] | None = None,
         enabled: bool = True,
@@ -215,6 +217,7 @@ class SourceTemplate:
         normalized_source_type = source_type.strip().lower()
         normalized_url_template = url_template.strip()
         normalized_source_family = source_family.strip().lower()
+        normalized_rationale = rationale.strip()
         normalized_categories = _clean_list(applicable_categories or [])
 
         if not template_id:
@@ -227,6 +230,8 @@ class SourceTemplate:
             raise ValueError("url_template is required")
         if not normalized_source_family:
             raise ValueError("source_family is required")
+        if not normalized_rationale:
+            raise ValueError("rationale is required")
         if default_limit is not None and default_limit < 1:
             raise ValueError("default_limit must be at least 1")
         if rank_score < 0.0:
@@ -238,6 +243,7 @@ class SourceTemplate:
             source_type=normalized_source_type,
             url_template=normalized_url_template,
             source_family=normalized_source_family,
+            rationale=normalized_rationale,
             default_limit=default_limit,
             applicable_categories=normalized_categories,
             enabled=enabled,
