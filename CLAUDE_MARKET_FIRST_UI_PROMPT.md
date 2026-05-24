@@ -164,6 +164,9 @@ The UI may still allow adding a source for a company, but that interaction shoul
 Market-first suggestions:
 
 - Use `GET /markets/{market_id}/source-suggestions`
+- This endpoint returns both market-level suggestions and suggestions for companies inside the active market.
+- Each suggestion includes `competitor_id`, `competitor_name`, `market_id`, and `market_name`.
+- Use that metadata to display company tags on company-scoped source suggestions and a market tag on market-scoped suggestions.
 
 Company-level suggestions are secondary:
 
