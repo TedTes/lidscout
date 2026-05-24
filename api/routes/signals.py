@@ -703,9 +703,14 @@ def _serialize_source_suggestion(suggestion: SourceSuggestion) -> dict[str, Any]
         "source_type": suggestion.source_type,
         "label": suggestion.label,
         "rationale": suggestion.rationale,
+        "source_family": suggestion.source_family,
         "limit": suggestion.limit,
         "options": suggestion.options,
+        "template_id": suggestion.template_id,
         "already_monitored": suggestion.already_monitored,
+        "rank_score": suggestion.rank_score,
+        "validation_status": suggestion.validation_status,
+        "validation_error": suggestion.validation_error,
     }
 
 

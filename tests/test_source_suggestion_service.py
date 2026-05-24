@@ -30,6 +30,24 @@ class SourceSuggestionServiceTests(unittest.TestCase):
         self.assertIn("https://www.notion.so", locators)
         self.assertIn("https://www.notion.so/changelog", locators)
         self.assertIn("https://www.notion.so/blog", locators)
+        self.assertTrue(all(suggestion.template_id for suggestion in suggestions))
+        self.assertTrue(all(suggestion.source_family for suggestion in suggestions))
+
+    def test_filters_category_specific_templates_when_category_is_known(self):
+        competitor = Competitor.create(
+            id="notion",
+            name="Notion",
+            category="consumer_app",
+        )
+
+        suggestions = SourceSuggestionService().suggest(competitor)
+        locators = [suggestion.locator for suggestion in suggestions]
+
+        self.assertIn(
+            "https://www.reddit.com/search.json?q=Notion&sort=new",
+            locators,
+        )
+        self.assertNotIn("https://www.g2.com/search?query=Notion", locators)
 
     def test_marks_existing_sources(self):
         competitor = Competitor.create(id="notion", name="Notion")

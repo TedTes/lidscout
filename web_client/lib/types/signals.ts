@@ -78,9 +78,14 @@ export type SourceSuggestion = {
   source_type: string;
   label: string;
   rationale: string;
+  source_family: string;
   limit: number | null;
-  options: Record<string, string>;
+  options: Record<string, unknown>;
+  template_id: string | null;
   already_monitored: boolean;
+  rank_score: number;
+  validation_status: 'unknown' | 'valid' | 'invalid';
+  validation_error: string | null;
 };
 
 export type CompetitorsResponse = {

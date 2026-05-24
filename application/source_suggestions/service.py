@@ -1,144 +1,62 @@
 """Source suggestion service for competitor monitoring."""
-from dataclasses import dataclass, field
-from urllib.parse import quote_plus, urlparse
-
+from application.source_suggestions.default_templates import get_default_source_templates
+from application.source_suggestions.template_renderer import render_source_candidates
 from domain.competitor import Competitor
-from domain.source import MonitoredSource
+from domain.market import Market
+from domain.source import MonitoredSource, SourceCandidate, SourceTemplate
 
-
-@dataclass(frozen=True)
-class SourceSuggestion:
-    """A candidate source an admin can add to a competitor watchlist."""
-
-    locator: str
-    source_type: str
-    label: str
-    rationale: str
-    limit: int | None = None
-    options: dict[str, str] = field(default_factory=dict)
-    already_monitored: bool = False
+SourceSuggestion = SourceCandidate
 
 
 class SourceSuggestionService:
-    """Builds opinionated default source candidates for a competitor."""
+    """Build source candidates from reusable templates."""
+
+    def __init__(self, templates: list[SourceTemplate] | None = None) -> None:
+        self.templates = templates or get_default_source_templates()
 
     def suggest(
         self,
         competitor: Competitor,
         existing_sources: list[MonitoredSource] | None = None,
+        *,
+        market: Market | None = None,
     ) -> list[SourceSuggestion]:
+        """Return rendered source suggestions for a competitor and optional market."""
         existing_locators = {
-            source.locator.rstrip("/")
+            source.locator
             for source in existing_sources or []
         }
-        suggestions = self._candidate_suggestions(competitor)
+        return render_source_candidates(
+            self._applicable_templates(competitor=competitor, market=market),
+            competitor=competitor,
+            market=market,
+            existing_locators=existing_locators,
+        )
+
+    def _applicable_templates(
+        self,
+        *,
+        competitor: Competitor,
+        market: Market | None,
+    ) -> list[SourceTemplate]:
+        categories = _template_categories(competitor=competitor, market=market)
+        if not categories:
+            return [template for template in self.templates if template.enabled]
         return [
-            _mark_existing(suggestion, existing_locators)
-            for suggestion in _dedupe_suggestions(suggestions)
+            template
+            for template in self.templates
+            if template.enabled and template.applies_to_any_category(categories)
         ]
 
-    def _candidate_suggestions(self, competitor: Competitor) -> list[SourceSuggestion]:
-        query = quote_plus(competitor.name)
-        suggestions = [
-            SourceSuggestion(
-                locator=f"https://www.reddit.com/search.json?q={query}&sort=new",
-                source_type="reddit_search",
-                label="Reddit search",
-                rationale="Find recent public discussions and complaints mentioning the competitor.",
-                limit=25,
-                options={"adapter": "json", "source_family": "social"},
-            ),
-            SourceSuggestion(
-                locator=(
-                    "https://hn.algolia.com/api/v1/search_by_date"
-                    f"?query={query}&tags=story"
-                ),
-                source_type="hackernews_search",
-                label="Hacker News search",
-                rationale="Find technical buyer and founder discussions mentioning the competitor.",
-                limit=25,
-                options={"adapter": "json", "source_family": "technical_forum"},
-            ),
-            SourceSuggestion(
-                locator=f"https://www.g2.com/search?query={query}",
-                source_type="review_search",
-                label="G2 search",
-                rationale="Surface B2B software review pages and competitor comparisons.",
-                limit=10,
-                options={"adapter": "static", "source_family": "reviews"},
-            ),
-            SourceSuggestion(
-                locator=f"https://www.capterra.com/search/?query={query}",
-                source_type="review_search",
-                label="Capterra search",
-                rationale="Surface review and category pages for recurring customer pain.",
-                limit=10,
-                options={"adapter": "static", "source_family": "reviews"},
-            ),
-        ]
 
-        if competitor.website:
-            website = competitor.website.rstrip("/")
-            domain = _domain_label(website)
-            suggestions.extend(
-                [
-                    SourceSuggestion(
-                        locator=website,
-                        source_type="website",
-                        label=f"{domain} website",
-                        rationale="Monitor public product and positioning changes from the competitor.",
-                        limit=1,
-                        options={"adapter": "static", "source_family": "owned_site"},
-                    ),
-                    SourceSuggestion(
-                        locator=f"{website}/changelog",
-                        source_type="changelog",
-                        label=f"{domain} changelog",
-                        rationale="Track product changes that may respond to customer complaints.",
-                        limit=5,
-                        options={"adapter": "static", "source_family": "owned_site"},
-                    ),
-                    SourceSuggestion(
-                        locator=f"{website}/blog",
-                        source_type="blog",
-                        label=f"{domain} blog",
-                        rationale="Track product announcements and customer-facing roadmap signals.",
-                        limit=10,
-                        options={"adapter": "static", "source_family": "owned_site"},
-                    ),
-                ]
-            )
-
-        return suggestions
-
-
-def _mark_existing(
-    suggestion: SourceSuggestion,
-    existing_locators: set[str],
-) -> SourceSuggestion:
-    return SourceSuggestion(
-        locator=suggestion.locator,
-        source_type=suggestion.source_type,
-        label=suggestion.label,
-        rationale=suggestion.rationale,
-        limit=suggestion.limit,
-        options=suggestion.options,
-        already_monitored=suggestion.locator.rstrip("/") in existing_locators,
-    )
-
-
-def _dedupe_suggestions(suggestions: list[SourceSuggestion]) -> list[SourceSuggestion]:
-    seen = set()
-    deduped = []
-    for suggestion in suggestions:
-        key = suggestion.locator.rstrip("/")
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(suggestion)
-    return deduped
-
-
-def _domain_label(url: str) -> str:
-    parsed = urlparse(url)
-    return parsed.netloc or "competitor"
+def _template_categories(
+    *,
+    competitor: Competitor,
+    market: Market | None,
+) -> list[str]:
+    categories = []
+    if competitor.category:
+        categories.append(competitor.category)
+    if market is not None:
+        categories.extend([market.id, market.name])
+    return categories
