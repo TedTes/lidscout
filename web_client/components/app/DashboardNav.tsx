@@ -341,7 +341,7 @@ export default function DashboardNav() {
           </div>
           <div>
             <p className="text-[13px] font-bold tracking-tight text-slate-100">LidScout</p>
-            <p className="text-[10px] leading-tight text-slate-600">Competitor pain intelligence</p>
+            <p className="text-[10px] leading-tight text-slate-600">Market opportunity intelligence</p>
           </div>
         </div>
 
