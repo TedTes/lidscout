@@ -280,6 +280,106 @@ class SignalApiRouteTests(unittest.TestCase):
             "Build a reporting setup assistant.",
         )
 
+    def test_market_scoped_reads_do_not_mix_markets(self):
+        signal_repository = InMemorySignalRepository()
+        signal_repository.save_signals(
+            [
+                Signal.create(
+                    id="signal-workspace",
+                    post_id="reddit:workspace",
+                    pain="Workspace reports are slow",
+                    competitor_id="competitor-workspace",
+                    market_id="workspace-tools",
+                ),
+                Signal.create(
+                    id="signal-finance",
+                    post_id="reddit:finance",
+                    pain="Finance exports are slow",
+                    competitor_id="competitor-finance",
+                    market_id="finance-tools",
+                ),
+            ]
+        )
+        cluster_repository = InMemoryClusterRepository()
+        cluster_repository.save_clusters(
+            [
+                SignalCluster.create(
+                    id="cluster-workspace",
+                    theme="workspace reporting",
+                    summary="Workspace teams need faster reports.",
+                    signal_ids=["signal-workspace"],
+                    frequency=1,
+                    average_score=7.0,
+                ),
+                SignalCluster.create(
+                    id="cluster-finance",
+                    theme="finance exports",
+                    summary="Finance teams need faster exports.",
+                    signal_ids=["signal-finance"],
+                    frequency=1,
+                    average_score=8.0,
+                ),
+            ]
+        )
+        opportunity_repository = InMemoryOpportunityRepository()
+        opportunity_repository.save_opportunities(
+            [
+                Opportunity.create(
+                    id="opportunity-workspace",
+                    cluster_id="cluster-workspace",
+                    title="Workspace reporting assistant",
+                    target_user="workspace teams",
+                    pain_summary="Workspace reports are slow.",
+                    why_it_matters="Reporting blocks planning.",
+                    suggested_wedge="Build a faster reporting workflow.",
+                    evidence_count=1,
+                    confidence=0.8,
+                    evidence_signal_ids=["signal-workspace"],
+                ),
+                Opportunity.create(
+                    id="opportunity-finance",
+                    cluster_id="cluster-finance",
+                    title="Finance export assistant",
+                    target_user="finance teams",
+                    pain_summary="Finance exports are slow.",
+                    why_it_matters="Exports block close workflows.",
+                    suggested_wedge="Build a better export workflow.",
+                    evidence_count=1,
+                    confidence=0.7,
+                    evidence_signal_ids=["signal-finance"],
+                ),
+            ]
+        )
+        dependencies = self._dependencies(
+            signal_repository=signal_repository,
+            cluster_repository=cluster_repository,
+            opportunity_repository=opportunity_repository,
+        )
+
+        signals = asyncio.run(list_signals(dependencies, market_id="workspace-tools"))
+        clusters = asyncio.run(list_clusters(dependencies, market_id="workspace-tools"))
+        opportunities = asyncio.run(
+            list_opportunities(dependencies, market_id="workspace-tools")
+        )
+        report = asyncio.run(get_latest_report(dependencies, market_id="workspace-tools"))
+
+        self.assertEqual(
+            [signal["id"] for signal in signals["signals"]],
+            ["signal-workspace"],
+        )
+        self.assertEqual(
+            [cluster["id"] for cluster in clusters["clusters"]],
+            ["cluster-workspace"],
+        )
+        self.assertEqual(
+            [opportunity["id"] for opportunity in opportunities["opportunities"]],
+            ["opportunity-workspace"],
+        )
+        self.assertEqual(
+            [cluster["id"] for cluster in report["top_clusters"]],
+            ["cluster-workspace"],
+        )
+
     def test_creates_and_lists_competitors(self):
         dependencies = self._dependencies()
 
