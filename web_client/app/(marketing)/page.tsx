@@ -1,8 +1,8 @@
 import Hero from '@/components/marketing/Hero';
 import BeforeAfter from '@/components/marketing/BeforeAfter';
+import EvidenceTrail from '@/components/marketing/EvidenceTrail';
 import HowItWorks from '@/components/marketing/HowItWorks';
-import OutputSamples from '@/components/marketing/OutputSamples';
-import Methodology from '@/components/marketing/Methodology';
+import UseCases from '@/components/marketing/UseCases';
 import Pricing from '@/components/marketing/Pricing';
 
 export default function LandingPage() {
@@ -10,9 +10,9 @@ export default function LandingPage() {
     <>
       <Hero />
       <BeforeAfter />
+      <EvidenceTrail />
       <HowItWorks />
-      <OutputSamples />
-      <Methodology />
+      <UseCases />
       <Pricing />
     </>
   );

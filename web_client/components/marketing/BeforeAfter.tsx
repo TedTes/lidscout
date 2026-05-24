@@ -1,110 +1,92 @@
+const NOISE: Array<{ time: string; text: string; state: 'normal' | 'crossed' | 'faded' }> = [
+  { time: '09:14', text: 'r/notion — "timezone sync still broken after update"', state: 'normal' },
+  { time: '09:31', text: 'Linear roadmap export thread — bookmark for later', state: 'crossed' },
+  { time: '10:02', text: '47 tabs open ← review before standup', state: 'crossed' },
+  { time: '11:48', text: 'Figma silent data loss HN thread (find again?)', state: 'faded' },
+  { time: '14:20', text: 'G2 reviews Asana — something about meetings + workload', state: 'normal' },
+  { time: '14:55', text: 'Ask Sarah what she found on Notion calendar', state: 'crossed' },
+  { time: 'Fri',   text: 'Roadmap meeting was yesterday. Start again Monday.', state: 'faded' },
+];
+
 export default function BeforeAfter() {
   return (
-    <section className="py-20 border-t border-slate-800/40">
+    <section className="border-t border-slate-800/40 py-20">
       <div className="mx-auto max-w-5xl px-6">
-        <div className="mb-10 max-w-xl">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
-            The problem
-          </p>
-          <h2 className="text-2xl font-bold text-slate-100">
-            Every team already does market research — just manually
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            Useful market evidence lives across competitor communities, review sites, forums,
-            changelogs, and comment threads. You save links, skim a few, and still miss the
-            pattern. LidScout keeps the watchlist running.
-          </p>
-        </div>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-slate-600">
+          The alternative
+        </p>
+        <h2 className="mb-14 max-w-xl text-3xl font-bold leading-snug text-slate-100">
+          The market is already talking.{' '}
+          <br className="hidden sm:block" />
+          You&apos;re just not watching.
+        </h2>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Before */}
-          <div className="rounded-2xl border border-slate-800/60 bg-slate-900/30 p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-400">
-                Without LidScout
-              </span>
-            </div>
-
-            {/* Mock messy doc */}
-            <div className="rounded-xl border border-slate-800/50 bg-[#0a0c1e] p-4 font-mono text-xs">
-              <p className="mb-3 text-slate-400 font-sans font-semibold text-sm">Competitor Research — Q2</p>
-              <div className="space-y-1.5 text-slate-600">
-                <p>• TODO: check workspace tools market this week</p>
-                <p>• <span className="line-through opacity-50">read G2 reviews for Linear</span></p>
-                <p>• bookmark dump across 47 tabs</p>
-                <p>• <span className="text-amber-600/70">⚠ 3 unread Slack threads from sales</span></p>
-                <p>• ask Sarah what she found on Figma</p>
-                <p>• <span className="line-through opacity-50">write up findings before roadmap mtg</span></p>
-                <p className="text-rose-600/60">• roadmap meeting was yesterday</p>
-              </div>
-              <div className="mt-4 border-t border-slate-800/50 pt-3 text-slate-700">
-                <p>Last updated: 3 weeks ago</p>
-              </div>
-            </div>
-
-            <ul className="mt-4 space-y-2">
-              {[
-                '4–6 hours per week of manual triage',
-                'Stale by the time you read it',
-                'No way to prioritise signal vs. noise',
-                'Lives in one person\'s head',
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2 text-xs text-slate-600">
-                  <span className="mt-0.5 shrink-0 text-rose-600">✕</span>
-                  {item}
-                </li>
+        <div className="grid items-start gap-14 lg:grid-cols-2">
+          {/* Left — research pile */}
+          <div>
+            <p className="mb-5 text-[11px] font-semibold uppercase tracking-widest text-slate-700">
+              Manual research — last week
+            </p>
+            <div className="space-y-3 font-mono text-[11px] leading-relaxed">
+              {NOISE.map((item, i) => (
+                <div key={i} className="flex items-baseline gap-3">
+                  <span className="w-9 shrink-0 text-right text-slate-800">{item.time}</span>
+                  <span
+                    className={
+                      item.state === 'crossed'
+                        ? 'text-slate-700 line-through'
+                        : item.state === 'faded'
+                        ? 'text-slate-800'
+                        : 'text-slate-500'
+                    }
+                  >
+                    {item.text}
+                  </span>
+                </div>
               ))}
-            </ul>
+            </div>
+            <p className="mt-6 pl-12 text-[11px] italic text-slate-800">
+              Next week: start again.
+            </p>
           </div>
 
-          {/* After */}
-          <div className="rounded-2xl border border-violet-500/15 bg-slate-900/40 p-5">
-            <div className="mb-4 flex items-center gap-2">
-              <span className="rounded-md bg-violet-500/10 px-2 py-0.5 text-[11px] font-semibold text-violet-400">
-                With LidScout
-              </span>
-            </div>
+          {/* Right — product output */}
+          <div>
+            <p className="mb-5 text-[11px] font-semibold uppercase tracking-widest text-slate-700">
+              LidScout — this Friday
+            </p>
 
-            {/* Mock clean report */}
-            <div className="rounded-xl border border-slate-800/50 bg-[#0a0c1e] p-4 text-xs">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-slate-300 font-semibold text-sm">Week of May 19</p>
-                <span className="text-slate-700">Workspace tools · 14 gaps tracked</span>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { label: 'Calendar reliability', count: 14, up: true },
-                  { label: 'Database performance', count: 11, up: true },
-                  { label: 'API rate limits', count: 9, up: false },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-lg border border-slate-800/40 bg-slate-800/20 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.6)]" />
-                      <span className="text-slate-300">{item.label}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-slate-600">
-                      <span className="tabular-nums">{item.count}</span>
-                      {item.up && <span className="text-emerald-600 text-[10px]">↑</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-3 text-slate-700">Delivered Friday 07:00 · next in 5 days</p>
-            </div>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-emerald-600">
+              Strong evidence · 14 mentions
+            </p>
+            <h3 className="mb-3 text-xl font-bold leading-snug text-slate-100">
+              Calendar reliability blocks team adoption
+            </h3>
 
-            <ul className="mt-4 space-y-2">
+            <blockquote className="mb-5 border-l-2 border-slate-700 pl-4 text-xs italic leading-relaxed text-slate-500">
+              &ldquo;We tried to move our whole team to Notion Calendar but the timezone sync
+              issues made it unusable after two weeks. Back to Google Calendar.&rdquo;
+              <footer className="mt-1.5 not-italic text-slate-700">r/Notion</footer>
+            </blockquote>
+
+            <p className="text-xs text-slate-600">
+              <span className="font-medium text-slate-500">Suggested wedge — </span>
+              A lightweight timezone-aware sync layer that treats Notion as the source of truth
+              while resolving conflicts server-side.
+            </p>
+
+            <div className="mt-8 flex gap-8 border-t border-slate-800/50 pt-5">
               {[
-                'Zero hours of manual source triage',
-                'Updated continuously, not when you remember',
-                'Ranked by signal strength and recency',
-                'Shareable with the whole team',
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2 text-xs text-slate-400">
-                  <span className="mt-0.5 shrink-0 text-emerald-500">✓</span>
-                  {item}
-                </li>
+                { n: '147', label: 'findings scanned' },
+                { n: '12',  label: 'themes grouped'   },
+                { n: '4',   label: 'gaps ranked'       },
+              ].map(({ n, label }) => (
+                <div key={label}>
+                  <p className="text-2xl font-black tabular-nums text-violet-400">{n}</p>
+                  <p className="text-[10px] text-slate-700">{label}</p>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </div>
       </div>

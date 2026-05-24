@@ -4,12 +4,12 @@ import type { SampleGap } from './sampleGaps';
 const strengthCfg = {
   strong: {
     dot: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]',
-    label: 'Strong signal',
+    label: 'Strong evidence',
     badge: 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-400',
   },
   moderate: {
     dot: 'bg-amber-400',
-    label: 'Moderate signal',
+    label: 'Moderate evidence',
     badge: 'border-amber-500/20 bg-amber-500/[0.07] text-amber-400',
   },
 };
