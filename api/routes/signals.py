@@ -509,12 +509,18 @@ async def list_market_source_suggestions(
     existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
         market_id=market_id,
     )
+    competitors = [
+        competitor
+        for competitor in dependencies.competitor_repository.list_competitors()
+        if competitor.market_id == market_id
+    ]
     return {
         "suggestions": [
             _serialize_source_suggestion(suggestion)
             for suggestion in SourceSuggestionService().suggest_for_market(
                 market,
                 existing_sources,
+                competitors=competitors,
             )
         ]
     }
@@ -941,6 +947,10 @@ def _serialize_source_suggestion(suggestion: SourceSuggestion) -> dict[str, Any]
         "label": suggestion.label,
         "rationale": suggestion.rationale,
         "source_family": suggestion.source_family,
+        "competitor_id": suggestion.competitor_id,
+        "competitor_name": suggestion.competitor_name,
+        "market_id": suggestion.market_id,
+        "market_name": suggestion.market_name,
         "limit": suggestion.limit,
         "options": suggestion.options,
         "template_id": suggestion.template_id,

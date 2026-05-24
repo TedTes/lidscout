@@ -600,9 +600,21 @@ class SignalApiRouteTests(unittest.TestCase):
         market_repository.save_markets(
             [Market.create(id="ai-devtools", name="AI Devtools")]
         )
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="supabase",
+                    name="Supabase",
+                    category="devtools",
+                    market_id="ai-devtools",
+                )
+            ]
+        )
         monitored_source_repository = InMemoryMonitoredSourceRepository()
         dependencies = self._dependencies(
             market_repository=market_repository,
+            competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
         )
 
@@ -618,6 +630,13 @@ class SignalApiRouteTests(unittest.TestCase):
             "source_family",
             response["suggestions"][0],
         )
+        company_suggestion = next(
+            suggestion
+            for suggestion in response["suggestions"]
+            if suggestion["locator"] == "https://www.g2.com/search?query=Supabase"
+        )
+        self.assertEqual(company_suggestion["competitor_id"], "supabase")
+        self.assertEqual(company_suggestion["market_id"], "ai-devtools")
 
     def test_lists_sources_across_competitors(self):
         competitor_repository = InMemoryCompetitorRepository()

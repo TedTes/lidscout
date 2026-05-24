@@ -67,6 +67,32 @@ class SourceSuggestionServiceTests(unittest.TestCase):
             "https://hn.algolia.com/api/v1/search_by_date?query=AI+Devtools&tags=story",
             locators,
         )
+        self.assertTrue(all(suggestion.competitor_id is None for suggestion in suggestions))
+        self.assertTrue(all(suggestion.market_id == "ai-devtools" for suggestion in suggestions))
+
+    def test_suggests_company_sources_for_market_companies(self):
+        market = Market.create(id="ai-devtools", name="AI Devtools")
+        competitor = Competitor.create(
+            id="supabase",
+            name="Supabase",
+            category="devtools",
+            market_id="ai-devtools",
+        )
+
+        suggestions = SourceSuggestionService().suggest_for_market(
+            market,
+            competitors=[competitor],
+        )
+        company_suggestion = next(
+            suggestion
+            for suggestion in suggestions
+            if suggestion.locator == "https://www.g2.com/search?query=Supabase"
+        )
+
+        self.assertEqual(company_suggestion.competitor_id, "supabase")
+        self.assertEqual(company_suggestion.competitor_name, "Supabase")
+        self.assertEqual(company_suggestion.market_id, "ai-devtools")
+        self.assertEqual(company_suggestion.market_name, "AI Devtools")
 
     def test_marks_existing_market_sources(self):
         market = Market.create(id="ai-devtools", name="AI Devtools")

@@ -7,6 +7,7 @@ from typing import Literal
 from urllib.parse import urlparse
 
 ValidationStatus = Literal["unknown", "valid", "invalid"]
+TemplateScope = Literal["company", "market"]
 
 
 @dataclass(frozen=True)
@@ -189,6 +190,7 @@ class SourceTemplate:
     url_template: str
     source_family: str
     rationale: str
+    scope: TemplateScope = "company"
     default_limit: int | None = None
     applicable_categories: list[str] = field(default_factory=list)
     enabled: bool = True
@@ -205,6 +207,7 @@ class SourceTemplate:
         url_template: str,
         source_family: str,
         rationale: str,
+        scope: TemplateScope = "company",
         default_limit: int | None = None,
         applicable_categories: list[str] | None = None,
         enabled: bool = True,
@@ -218,6 +221,7 @@ class SourceTemplate:
         normalized_url_template = url_template.strip()
         normalized_source_family = source_family.strip().lower()
         normalized_rationale = rationale.strip()
+        normalized_scope = scope.strip().lower()
         normalized_categories = _clean_list(applicable_categories or [])
 
         if not template_id:
@@ -232,6 +236,8 @@ class SourceTemplate:
             raise ValueError("source_family is required")
         if not normalized_rationale:
             raise ValueError("rationale is required")
+        if normalized_scope not in {"company", "market"}:
+            raise ValueError("scope must be company or market")
         if default_limit is not None and default_limit < 1:
             raise ValueError("default_limit must be at least 1")
         if rank_score < 0.0:
@@ -244,6 +250,7 @@ class SourceTemplate:
             url_template=normalized_url_template,
             source_family=normalized_source_family,
             rationale=normalized_rationale,
+            scope=normalized_scope,  # type: ignore[arg-type]
             default_limit=default_limit,
             applicable_categories=normalized_categories,
             enabled=enabled,
@@ -268,6 +275,10 @@ class SourceCandidate:
     label: str
     rationale: str
     source_family: str
+    competitor_id: str | None = None
+    competitor_name: str | None = None
+    market_id: str | None = None
+    market_name: str | None = None
     limit: int | None = None
     options: dict[str, Any] = field(default_factory=dict)
     template_id: str | None = None
@@ -285,6 +296,10 @@ class SourceCandidate:
         label: str,
         rationale: str,
         source_family: str,
+        competitor_id: str | None = None,
+        competitor_name: str | None = None,
+        market_id: str | None = None,
+        market_name: str | None = None,
         limit: int | None = None,
         options: dict[str, Any] | None = None,
         template_id: str | None = None,
@@ -323,6 +338,10 @@ class SourceCandidate:
             label=normalized_label,
             rationale=normalized_rationale,
             source_family=normalized_source_family,
+            competitor_id=_clean_optional(competitor_id),
+            competitor_name=_clean_optional(competitor_name),
+            market_id=_clean_optional(market_id),
+            market_name=_clean_optional(market_name),
             limit=source_input.limit,
             options=source_input.options,
             template_id=_clean_optional(template_id),

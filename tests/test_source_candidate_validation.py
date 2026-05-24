@@ -12,12 +12,20 @@ class SourceCandidateValidationTests(unittest.TestCase):
             label="Reviews",
             rationale="Find reviews.",
             source_family="reviews",
+            competitor_id="notion",
+            competitor_name="Notion",
+            market_id="workspace-tools",
+            market_name="Workspace tools",
         )
 
         validated = validate_source_candidate(candidate)
 
         self.assertEqual(validated.validation_status, "valid")
         self.assertIsNone(validated.validation_error)
+        self.assertEqual(validated.competitor_id, "notion")
+        self.assertEqual(validated.competitor_name, "Notion")
+        self.assertEqual(validated.market_id, "workspace-tools")
+        self.assertEqual(validated.market_name, "Workspace tools")
 
     def test_marks_non_http_candidate_invalid(self):
         candidate = SourceCandidate.create(

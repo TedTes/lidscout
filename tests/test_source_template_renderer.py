@@ -42,6 +42,8 @@ class SourceTemplateRendererTests(unittest.TestCase):
         self.assertEqual(candidate.options, {"query": "Notion+AI", "page_size": 25})
         self.assertEqual(candidate.template_id, "reddit-search")
         self.assertEqual(candidate.rank_score, 0.8)
+        self.assertEqual(candidate.competitor_id, "notion-ai")
+        self.assertEqual(candidate.competitor_name, "Notion AI")
 
     def test_renders_domain_and_slug_variables(self):
         template = SourceTemplate.create(
@@ -90,6 +92,8 @@ class SourceTemplateRendererTests(unittest.TestCase):
             "https://hn.algolia.com/api/v1/search?query=AI+Devtools",
         )
         self.assertEqual(candidate.options, {"market_slug": "ai-devtools"})
+        self.assertEqual(candidate.market_id, "ai-devtools")
+        self.assertEqual(candidate.market_name, "AI Devtools")
 
     def test_skips_template_when_required_variable_is_missing(self):
         template = SourceTemplate.create(

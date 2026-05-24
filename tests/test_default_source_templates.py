@@ -28,6 +28,16 @@ class DefaultSourceTemplateTests(unittest.TestCase):
         self.assertNotIn("company-website", template_ids)
         self.assertIn("reddit-market-search", template_ids)
 
+    def test_market_templates_are_explicitly_scoped(self):
+        templates = {
+            template.id: template
+            for template in get_default_source_templates()
+        }
+
+        self.assertEqual(templates["reddit-company-search"].scope, "company")
+        self.assertEqual(templates["reddit-market-search"].scope, "market")
+        self.assertEqual(templates["hackernews-market-search"].scope, "market")
+
     def test_default_templates_can_render_for_company_or_market(self):
         templates = get_default_source_templates()
         competitor = Competitor.create(

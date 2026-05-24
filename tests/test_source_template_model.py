@@ -12,6 +12,7 @@ class SourceTemplateModelTests(unittest.TestCase):
             url_template=" https://www.reddit.com/search.json?q={company_query} ",
             source_family=" Social ",
             rationale=" Finds recent public discussions. ",
+            scope=" market ",
             default_limit=25,
             applicable_categories=[
                 "B2B_SaaS",
@@ -32,6 +33,7 @@ class SourceTemplateModelTests(unittest.TestCase):
         )
         self.assertEqual(template.source_family, "social")
         self.assertEqual(template.rationale, "Finds recent public discussions.")
+        self.assertEqual(template.scope, "market")
         self.assertEqual(template.default_limit, 25)
         self.assertEqual(template.applicable_categories, ["b2b_saas", "devtools"])
         self.assertEqual(template.rank_score, 0.8)
@@ -96,6 +98,17 @@ class SourceTemplateModelTests(unittest.TestCase):
                 rationale=" ",
             )
 
+        with self.assertRaises(ValueError):
+            SourceTemplate.create(
+                id="template-1",
+                label="Reddit",
+                source_type="reddit_search",
+                url_template="https://example.com",
+                source_family="social",
+                rationale="Find discussions.",
+                scope="global",  # type: ignore[arg-type]
+            )
+
     def test_creates_source_candidate(self):
         candidate = SourceCandidate.create(
             locator=" https://www.reddit.com/search.json?q=notion ",
@@ -103,6 +116,10 @@ class SourceTemplateModelTests(unittest.TestCase):
             label=" Reddit search ",
             rationale=" Finds recent public discussions. ",
             source_family=" Social ",
+            competitor_id=" notion ",
+            competitor_name=" Notion ",
+            market_id=" workspace-tools ",
+            market_name=" Workspace tools ",
             limit=25,
             options={"adapter": "json"},
             template_id=" reddit-search ",
@@ -119,6 +136,10 @@ class SourceTemplateModelTests(unittest.TestCase):
         self.assertEqual(candidate.label, "Reddit search")
         self.assertEqual(candidate.rationale, "Finds recent public discussions.")
         self.assertEqual(candidate.source_family, "social")
+        self.assertEqual(candidate.competitor_id, "notion")
+        self.assertEqual(candidate.competitor_name, "Notion")
+        self.assertEqual(candidate.market_id, "workspace-tools")
+        self.assertEqual(candidate.market_name, "Workspace tools")
         self.assertEqual(candidate.limit, 25)
         self.assertEqual(candidate.options, {"adapter": "json"})
         self.assertEqual(candidate.template_id, "reddit-search")

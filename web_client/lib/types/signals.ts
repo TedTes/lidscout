@@ -109,6 +109,10 @@ export type SourceSuggestion = {
   label: string;
   rationale: string;
   source_family: string;
+  competitor_id: string | null;
+  competitor_name: string | null;
+  market_id: string | null;
+  market_name: string | null;
   limit: number | null;
   options: Record<string, unknown>;
   template_id: string | null;

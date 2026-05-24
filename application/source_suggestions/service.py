@@ -31,7 +31,11 @@ class SourceSuggestionService:
             for source in existing_sources or []
         }
         candidates = render_source_candidates(
-            self._applicable_templates(competitor=competitor, market=market),
+            self._applicable_templates(
+                competitor=competitor,
+                market=market,
+                scope="company",
+            ),
             competitor=competitor,
             market=market,
             existing_locators=existing_locators,
@@ -42,33 +46,72 @@ class SourceSuggestionService:
         self,
         market: Market,
         existing_sources: list[MonitoredSource] | None = None,
+        competitors: list[Competitor] | None = None,
     ) -> list[SourceSuggestion]:
         """Return rendered source suggestions for a market-level watchlist."""
         existing_locators = {
             source.locator
             for source in existing_sources or []
         }
-        candidates = render_source_candidates(
-            self._applicable_templates(competitor=None, market=market),
+        candidates: list[SourceCandidate] = render_source_candidates(
+            self._applicable_templates(
+                competitor=None,
+                market=market,
+                scope="market",
+            ),
             market=market,
             existing_locators=existing_locators,
         )
-        return rank_source_candidates(validate_source_candidates(candidates))
+        for competitor in competitors or []:
+            candidates.extend(
+                render_source_candidates(
+                    self._applicable_templates(
+                        competitor=competitor,
+                        market=market,
+                        scope="company",
+                    ),
+                    competitor=competitor,
+                    market=market,
+                    existing_locators=existing_locators,
+                )
+            )
+        return rank_source_candidates(
+            validate_source_candidates(_dedupe_candidates(candidates))
+        )
 
     def _applicable_templates(
         self,
         *,
         competitor: Competitor | None,
         market: Market | None,
+        scope: str,
     ) -> list[SourceTemplate]:
         categories = _template_categories(competitor=competitor, market=market)
         if not categories:
-            return [template for template in self.templates if template.enabled]
+            return [
+                template
+                for template in self.templates
+                if template.enabled and template.scope == scope
+            ]
         return [
             template
             for template in self.templates
-            if template.enabled and template.applies_to_any_category(categories)
+            if template.enabled
+            and template.scope == scope
+            and template.applies_to_any_category(categories)
         ]
+
+
+def _dedupe_candidates(candidates: list[SourceCandidate]) -> list[SourceCandidate]:
+    deduped: list[SourceCandidate] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        locator_key = candidate.locator.strip().rstrip("/")
+        if locator_key in seen:
+            continue
+        seen.add(locator_key)
+        deduped.append(candidate)
+    return deduped
 
 
 def _template_categories(
