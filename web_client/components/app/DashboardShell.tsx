@@ -13,7 +13,7 @@ export default function DashboardShell({ title, subtitle, actions, children }: P
           <h1 className="text-xl font-semibold tracking-tight text-slate-100">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
         </div>
-        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
       {children}
     </div>
