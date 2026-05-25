@@ -142,7 +142,30 @@ export type MonitoredSource = {
   scan_frequency: string | null;
   last_scanned_at: string | null;
   last_error: string | null;
+  health: SourceHealth | null;
   options: Record<string, unknown>;
+};
+
+export type SourceHealth = {
+  total_runs: number;
+  success_count: number;
+  failure_count: number;
+  consecutive_failures: number;
+  posts_fetched_count: number;
+  relevant_posts_count: number;
+  extracted_signals_count: number;
+  opportunity_count: number;
+  last_status: 'unknown' | 'healthy' | 'failing';
+  last_error: string | null;
+  last_fetched_count: number;
+  last_relevant_count: number;
+  last_extracted_count: number;
+  last_opportunity_count: number;
+  fetch_success_rate: number;
+  relevance_yield_rate: number;
+  signal_yield_rate: number;
+  last_scanned_at: string | null;
+  updated_at: string | null;
 };
 
 export type SourceFamilySummary = {

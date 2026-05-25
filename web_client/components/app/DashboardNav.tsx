@@ -253,7 +253,7 @@ export default function DashboardNav() {
             </p>
             <button
               onClick={() => setShowAddNiche(true)}
-              className="rounded p-1 text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400"
+              className="rounded p-1 text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200"
               aria-label="Add niche"
             >
               <IconPlus />

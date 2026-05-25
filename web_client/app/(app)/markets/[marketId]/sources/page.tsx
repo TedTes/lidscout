@@ -5,7 +5,7 @@ import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { Competitor, Market, MonitoredSource, SourceSuggestion } from '@/lib/types/signals';
+import { Competitor, Market, MonitoredSource, SourceCoverageSummary, SourceSuggestion } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
@@ -35,7 +35,7 @@ function relativeTime(iso: string | null): string | null {
 
 function sourceHealth(source: MonitoredSource): 'active' | 'failing' | 'paused' {
   if (!source.enabled) return 'paused';
-  if (source.last_error) return 'failing';
+  if (source.health?.last_status === 'failing' || source.last_error) return 'failing';
   return 'active';
 }
 
@@ -60,6 +60,7 @@ export default function NicheSourcesPage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
   const [niche, setNiche] = useState<Market | null>(null);
   const [sources, setSources] = useState<MonitoredSource[]>([]);
+  const [summary, setSummary] = useState<SourceCoverageSummary | null>(null);
   const [companies, setCompanies] = useState<Competitor[]>([]);
   const [suggestions, setSuggestions] = useState<SourceSuggestion[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -82,6 +83,7 @@ export default function NicheSourcesPage({ params }: Props) {
       const loadedSources = sourcesRes.sources;
       setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
       setSources(loadedSources);
+      setSummary(sourcesRes.summary ?? null);
       setCompanies(companiesRes.competitors);
       setSuggestions(suggestionsRes.suggestions);
       setStatus('ready');
@@ -100,8 +102,8 @@ export default function NicheSourcesPage({ params }: Props) {
   }, [marketId]);
 
   const newSuggestions = suggestions.filter(s => !s.already_monitored);
-  const activeCount = sources.filter(s => s.enabled && !s.last_error).length;
-  const errorCount = sources.filter(s => s.last_error).length;
+  const activeCount = summary?.active_count ?? sources.filter(s => s.enabled).length;
+  const errorCount = summary?.error_count ?? sources.filter(s => s.last_error || s.health?.last_status === 'failing').length;
 
   const groupedSources = useMemo(() => {
     const groups = new Map<string, MonitoredSource[]>();
@@ -114,11 +116,13 @@ export default function NicheSourcesPage({ params }: Props) {
 
   const removeSource = (id: string) => {
     setSources(prev => prev.filter(s => s.id !== id));
+    setSummary(null);
   };
 
   const toggleSource = async (source: MonitoredSource) => {
     const updated = await signalApi.updateSource(source.id, { enabled: !source.enabled });
     setSources(prev => prev.map(s => s.id === updated.id ? updated : s));
+    setSummary(null);
   };
 
   const addSuggestion = async (suggestion: SourceSuggestion) => {
@@ -171,7 +175,7 @@ export default function NicheSourcesPage({ params }: Props) {
         <div className="space-y-5 animate-fade-in">
           {/* Stats */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label="Monitored" value={sources.length} />
+            <StatCard label="Monitored" value={summary?.source_count ?? sources.length} />
             <StatCard label="Active" value={activeCount} accent={activeCount > 0} />
             <StatCard label="Failing" value={errorCount} danger={errorCount > 0} />
           </div>
@@ -183,6 +187,7 @@ export default function NicheSourcesPage({ params }: Props) {
               marketId={marketId}
               onAdd={async source => {
                 setSources(prev => [source, ...prev]);
+                setSummary(null);
                 setShowAddSource(false);
               }}
               onCancel={() => setShowAddSource(false)}
@@ -209,7 +214,11 @@ export default function NicheSourcesPage({ params }: Props) {
                   <div key={family} className="p-5">
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">{familyLabel(family)}</h3>
-                      <span className="text-xs text-slate-700">{familySources.length}</span>
+                      <span className="text-xs text-slate-700">
+                        {summary?.by_family.find(item => item.source_family === family)?.active_count ?? familySources.filter(source => source.enabled).length}
+                        {' active · '}
+                        {familySources.length} total
+                      </span>
                     </div>
                     <div className="space-y-2">
                       {familySources.map(source => (
@@ -287,7 +296,8 @@ function SourceRow({
   const [toggling, setToggling] = useState(false);
 
   const health = sourceHealth(source);
-  const scannedAt = relativeTime(source.last_scanned_at);
+  const scannedAt = relativeTime(source.health?.last_scanned_at ?? source.last_scanned_at);
+  const lastError = source.health?.last_error ?? source.last_error;
 
   const handleRemove = async () => {
     setRemoving(true);
@@ -322,8 +332,13 @@ function SourceRow({
             <Chip label={familyLabel(source.source_family)} />
           </div>
           <p className="mt-2 truncate font-mono text-xs text-slate-500">{source.locator}</p>
-          {source.last_error && (
-            <p className="mt-1 text-xs text-rose-400">{source.last_error}</p>
+          {lastError && (
+            <p className="mt-1 text-xs text-rose-400">{lastError}</p>
+          )}
+          {source.health && (
+            <p className="mt-1 text-[11px] text-slate-700">
+              Last run: {source.health.last_fetched_count} fetched · {source.health.last_relevant_count} relevant · {source.health.last_extracted_count} extracted
+            </p>
           )}
         </div>
 
