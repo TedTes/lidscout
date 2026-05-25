@@ -8,10 +8,12 @@ from pydantic import BaseModel, Field
 from application.agent import (
     AgentColdStartPlan,
     AgentColdStartService,
+    build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
 from application.ingestion import SourceAdapter
 from application.ports import (
+    AgentActivityRepository,
     AgentFeedbackRepository,
     AgentPreferencesRepository,
     ClusterRepository,
@@ -29,7 +31,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_suggestions import SourceSuggestion, SourceSuggestionService
 from domain.cluster import SignalCluster
-from domain.agent import AgentFeedback, AgentPreferences
+from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.opportunity import Opportunity
@@ -37,6 +39,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
+    InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
@@ -170,6 +173,9 @@ class SignalApiDependencies:
     )
     agent_feedback_repository: AgentFeedbackRepository = field(
         default_factory=InMemoryAgentFeedbackRepository
+    )
+    agent_activity_repository: AgentActivityRepository = field(
+        default_factory=InMemoryAgentActivityRepository
     )
     competitor_repository: CompetitorRepository = field(
         default_factory=InMemoryCompetitorRepository
@@ -732,6 +738,19 @@ async def update_market_agent_preferences(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     dependencies.agent_preferences_repository.save_agent_preferences(preferences)
+    _record_agent_activity(
+        dependencies,
+        market_id=market_id,
+        event_type="preferences_updated",
+        title="Agent preferences updated",
+        detail="Research preferences were updated for this niche.",
+        metadata={
+            "preferred_source_families": preferences.preferred_source_families,
+            "ignored_themes": preferences.ignored_themes,
+            "ignored_categories": preferences.ignored_categories,
+            "muted_source_count": len(preferences.muted_source_ids),
+        },
+    )
     return _serialize_agent_preferences(preferences)
 
 
@@ -770,7 +789,72 @@ async def create_opportunity_feedback(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     dependencies.agent_feedback_repository.save_agent_feedback(feedback)
+    _record_agent_activity(
+        dependencies,
+        market_id=request.market_id,
+        event_type="feedback_recorded",
+        title="Gap feedback recorded",
+        detail=f"Feedback marked this gap as {feedback.action}.",
+        metadata={
+            "opportunity_id": opportunity_id,
+            "action": feedback.action,
+            "reason": feedback.reason,
+        },
+    )
     return _serialize_agent_feedback(feedback)
+
+
+@router.get("/markets/{market_id}/agent/activity")
+async def list_market_agent_activity(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    limit: int = 25,
+    event_type: str | None = None,
+) -> dict[str, Any]:
+    """Return recent user-visible activity for one niche research agent."""
+    _ensure_market_exists(market_id, dependencies)
+    bounded_limit = min(max(limit, 1), 100)
+    activity = dependencies.agent_activity_repository.list_agent_activity(
+        market_id=market_id,
+        event_type=event_type,
+        limit=bounded_limit,
+    )
+    return {"activity": [_serialize_agent_activity(item) for item in activity]}
+
+
+@router.get("/markets/{market_id}/agent/memory")
+async def get_market_agent_memory(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return a compact summary of persisted agent memory for one niche."""
+    market = dependencies.market_repository.get_market(market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    ) or AgentPreferences.create(market_id=market_id)
+    feedback = dependencies.agent_feedback_repository.list_agent_feedback(
+        market_id=market_id,
+    )
+    sources = dependencies.monitored_source_repository.list_monitored_sources(
+        market_id=market_id,
+    )
+    source_health = dependencies.source_health_repository.list_source_health()
+    summary = build_agent_memory_summary(
+        market=market,
+        preferences=preferences,
+        feedback=feedback,
+        sources=sources,
+        source_health=source_health,
+    )
+    return {
+        "market_id": summary.market_id,
+        "headline": summary.headline,
+        "learned_preferences": summary.learned_preferences,
+        "source_notes": summary.source_notes,
+        "feedback_notes": summary.feedback_notes,
+    }
 
 
 @router.get("/sources")
@@ -864,6 +948,7 @@ async def run_pipeline(
                 dependencies.pipeline_run_metrics_repository
             ),
             agent_preferences_repository=dependencies.agent_preferences_repository,
+            agent_activity_repository=dependencies.agent_activity_repository,
             competitor_repository=dependencies.competitor_repository,
             market_repository=dependencies.market_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
@@ -1302,6 +1387,40 @@ def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
         "reason": feedback.reason,
         "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
     }
+
+
+def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
+    return {
+        "id": activity.id,
+        "market_id": activity.market_id,
+        "event_type": activity.event_type,
+        "title": activity.title,
+        "detail": activity.detail,
+        "metadata": activity.metadata,
+        "created_at": (
+            activity.created_at.isoformat() if activity.created_at else None
+        ),
+    }
+
+
+def _record_agent_activity(
+    dependencies: SignalApiDependencies,
+    *,
+    market_id: str,
+    event_type: str,
+    title: str,
+    detail: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    dependencies.agent_activity_repository.save_agent_activity(
+        AgentActivity.create(
+            market_id=market_id,
+            event_type=event_type,
+            title=title,
+            detail=detail,
+            metadata=metadata,
+        )
+    )
 
 
 def _serialize_cluster(

@@ -2,6 +2,7 @@
 from adapters.web import JsonUrlAdapter, StaticUrlAdapter
 from api.routes.signals import SignalApiDependencies
 from infrastructure.db import (
+    PostgresAgentActivityRepository,
     PostgresAgentFeedbackRepository,
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
@@ -45,6 +46,9 @@ def build_signal_api_dependencies(
             connection=connection,
         ),
         agent_feedback_repository=PostgresAgentFeedbackRepository(
+            connection=connection,
+        ),
+        agent_activity_repository=PostgresAgentActivityRepository(
             connection=connection,
         ),
         competitor_repository=PostgresCompetitorRepository(connection=connection),
