@@ -1,7 +1,7 @@
 """Persistence contracts for domain entities."""
 from typing import Protocol
 
-from domain.agent import AgentFeedback, AgentPreferences
+from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -156,6 +156,24 @@ class AgentFeedbackRepository(Protocol):
         action: str | None = None,
     ) -> list[AgentFeedback]:
         """Load feedback events, optionally filtered by scope."""
+        ...
+
+
+class AgentActivityRepository(Protocol):
+    """Persistence boundary for user-visible agent activity events."""
+
+    def save_agent_activity(self, activity: AgentActivity) -> bool:
+        """Persist one agent activity event."""
+        ...
+
+    def list_agent_activity(
+        self,
+        *,
+        market_id: str | None = None,
+        event_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentActivity]:
+        """Load activity events, optionally filtered by scope."""
         ...
 
 

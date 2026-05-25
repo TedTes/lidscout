@@ -1,5 +1,6 @@
 """Database infrastructure."""
 from infrastructure.db.repository import (
+    InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
@@ -13,6 +14,7 @@ from infrastructure.db.repository import (
     InMemorySignalRepository,
     InMemorySourceHealthRepository,
     InMemorySourceLocatorRepository,
+    PostgresAgentActivityRepository,
     PostgresAgentFeedbackRepository,
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
@@ -26,6 +28,7 @@ from infrastructure.db.repository import (
     PostgresSignalRepository,
     PostgresSourceHealthRepository,
     PostgresSourceLocatorRepository,
+    SQLiteAgentActivityRepository,
     SQLiteAgentFeedbackRepository,
     SQLiteAgentPreferencesRepository,
     SQLiteClusterRepository,
@@ -44,6 +47,7 @@ from infrastructure.db.repository import (
 
 __all__ = [
     "InMemoryClusterRepository",
+    "InMemoryAgentActivityRepository",
     "InMemoryAgentFeedbackRepository",
     "InMemoryAgentPreferencesRepository",
     "InMemoryCompetitorRepository",
@@ -57,6 +61,7 @@ __all__ = [
     "InMemorySourceHealthRepository",
     "InMemorySourceLocatorRepository",
     "PostgresClusterRepository",
+    "PostgresAgentActivityRepository",
     "PostgresAgentFeedbackRepository",
     "PostgresAgentPreferencesRepository",
     "PostgresCompetitorRepository",
@@ -70,6 +75,7 @@ __all__ = [
     "PostgresSourceHealthRepository",
     "PostgresSourceLocatorRepository",
     "SQLiteClusterRepository",
+    "SQLiteAgentActivityRepository",
     "SQLiteAgentFeedbackRepository",
     "SQLiteAgentPreferencesRepository",
     "SQLiteCompetitorRepository",

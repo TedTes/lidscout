@@ -1,4 +1,16 @@
 """Agent domain entities."""
-from domain.agent.models import AgentFeedback, AgentFeedbackAction, AgentPreferences
+from domain.agent.models import (
+    AgentActivity,
+    AgentActivityType,
+    AgentFeedback,
+    AgentFeedbackAction,
+    AgentPreferences,
+)
 
-__all__ = ["AgentFeedback", "AgentFeedbackAction", "AgentPreferences"]
+__all__ = [
+    "AgentActivity",
+    "AgentActivityType",
+    "AgentFeedback",
+    "AgentFeedbackAction",
+    "AgentPreferences",
+]

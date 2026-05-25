@@ -1,9 +1,18 @@
 """Domain models for agent memory and preferences."""
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 from typing import Literal
 from uuid import uuid4
 
+
+AgentActivityType = Literal[
+    "run_started",
+    "run_completed",
+    "source_failed",
+    "feedback_recorded",
+    "preferences_updated",
+]
 
 AgentFeedbackAction = Literal[
     "save",
@@ -105,6 +114,62 @@ class AgentFeedback:
             opportunity_id=normalized_opportunity_id,
             action=normalized_action,  # type: ignore[arg-type]
             reason=_clean_optional(reason),
+            created_at=created_at or datetime.now(tz=UTC),
+        )
+
+
+@dataclass(frozen=True)
+class AgentActivity:
+    """One user-visible event from a niche research agent."""
+
+    id: str
+    market_id: str
+    event_type: AgentActivityType
+    title: str
+    detail: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        market_id: str,
+        event_type: str,
+        title: str,
+        id: str | None = None,
+        detail: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+    ) -> "AgentActivity":
+        """Create a validated agent activity event."""
+        activity_id = (id or f"agent-activity-{uuid4().hex}").strip()
+        normalized_market_id = market_id.strip()
+        normalized_event_type = event_type.strip().lower()
+        normalized_title = title.strip()
+
+        if not activity_id:
+            raise ValueError("id is required")
+        if not normalized_market_id:
+            raise ValueError("market_id is required")
+        if normalized_event_type not in {
+            "run_started",
+            "run_completed",
+            "source_failed",
+            "feedback_recorded",
+            "preferences_updated",
+        }:
+            raise ValueError("unsupported activity event type")
+        if not normalized_title:
+            raise ValueError("title is required")
+
+        return cls(
+            id=activity_id,
+            market_id=normalized_market_id,
+            event_type=normalized_event_type,  # type: ignore[arg-type]
+            title=normalized_title,
+            detail=_clean_optional(detail),
+            metadata=metadata or {},
             created_at=created_at or datetime.now(tz=UTC),
         )
 

@@ -9,6 +9,7 @@ import sqlite3
 from typing import Any
 
 from application.ports import (
+    AgentActivityRepository,
     AgentFeedbackRepository,
     AgentPreferencesRepository,
     ClusterRepository,
@@ -23,7 +24,7 @@ from application.ports import (
     SourceHealthRepository,
     SourceLocatorRepository,
 )
-from domain.agent import AgentFeedback, AgentPreferences
+from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -230,6 +231,38 @@ class InMemoryAgentFeedbackRepository(AgentFeedbackRepository):
         if action is not None:
             feedback = [item for item in feedback if item.action == action]
         return sorted(feedback, key=lambda item: item.created_at or datetime.min)
+
+
+@dataclass
+class InMemoryAgentActivityRepository(AgentActivityRepository):
+    """In-memory agent activity repository."""
+
+    activity_by_id: dict[str, AgentActivity] = field(default_factory=dict)
+
+    def save_agent_activity(self, activity: AgentActivity) -> bool:
+        if activity.id in self.activity_by_id:
+            return False
+        self.activity_by_id[activity.id] = activity
+        return True
+
+    def list_agent_activity(
+        self,
+        *,
+        market_id: str | None = None,
+        event_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentActivity]:
+        activity = list(self.activity_by_id.values())
+        if market_id is not None:
+            activity = [item for item in activity if item.market_id == market_id]
+        if event_type is not None:
+            activity = [item for item in activity if item.event_type == event_type]
+        activity = sorted(
+            activity,
+            key=lambda item: item.created_at or datetime.min,
+            reverse=True,
+        )
+        return activity[:limit] if limit is not None else activity
 
 
 @dataclass
@@ -929,6 +962,63 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
         query += " ORDER BY created_at"
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_feedback_from_row(row) for row in rows]
+
+
+class SQLiteAgentActivityRepository(_SQLiteRepository, AgentActivityRepository):
+    """SQLite-backed agent activity repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_activity (
+                id TEXT PRIMARY KEY,
+                market_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                detail TEXT,
+                metadata TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_agent_activity(self, activity: AgentActivity) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT OR IGNORE INTO agent_activity (
+                id, market_id, event_type, title, detail, metadata, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            _agent_activity_values(activity, sqlite=True),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def list_agent_activity(
+        self,
+        *,
+        market_id: str | None = None,
+        event_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentActivity]:
+        query = "SELECT * FROM agent_activity"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if market_id is not None:
+            clauses.append("market_id = ?")
+            params.append(market_id)
+        if event_type is not None:
+            clauses.append("event_type = ?")
+            params.append(event_type)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_activity_from_row(row) for row in rows]
 
 
 class SQLitePipelineRunMetricsRepository(
@@ -1813,6 +1903,48 @@ class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackReposito
         return [_agent_feedback_from_row(row) for row in rows]
 
 
+class PostgresAgentActivityRepository(_PostgresRepository, AgentActivityRepository):
+    """Postgres-backed agent activity repository."""
+
+    def save_agent_activity(self, activity: AgentActivity) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO agent_activity (
+                id, market_id, event_type, title, detail, metadata, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            _agent_activity_values(activity, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def list_agent_activity(
+        self,
+        *,
+        market_id: str | None = None,
+        event_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentActivity]:
+        query = "SELECT * FROM agent_activity"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if market_id is not None:
+            clauses.append("market_id = %s")
+            params.append(market_id)
+        if event_type is not None:
+            clauses.append("event_type = %s")
+            params.append(event_type)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_activity_from_row(row) for row in rows]
+
+
 class PostgresPipelineRunMetricsRepository(
     _PostgresRepository,
     PipelineRunMetricsRepository,
@@ -2289,6 +2421,30 @@ def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
         opportunity_id=row["opportunity_id"],
         action=row["action"],
         reason=row["reason"],
+        created_at=_datetime_from_text(row["created_at"]),
+    )
+
+
+def _agent_activity_values(activity: AgentActivity, *, sqlite: bool) -> tuple:
+    return (
+        activity.id,
+        activity.market_id,
+        activity.event_type,
+        activity.title,
+        activity.detail,
+        _to_json(activity.metadata),
+        _datetime_to_text(activity.created_at) if sqlite else activity.created_at,
+    )
+
+
+def _agent_activity_from_row(row: sqlite3.Row) -> AgentActivity:
+    return AgentActivity.create(
+        id=row["id"],
+        market_id=row["market_id"],
+        event_type=row["event_type"],
+        title=row["title"],
+        detail=row["detail"],
+        metadata=_from_json(row["metadata"]),
         created_at=_datetime_from_text(row["created_at"]),
     )
 

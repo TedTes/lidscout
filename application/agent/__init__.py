@@ -4,11 +4,14 @@ from application.agent.cold_start import (
     AgentColdStartService,
     AgentResearchBrief,
 )
+from application.agent.memory import AgentMemorySummary, build_agent_memory_summary
 from application.agent.ranking import rank_opportunities_with_feedback
 
 __all__ = [
     "AgentColdStartPlan",
     "AgentColdStartService",
+    "AgentMemorySummary",
     "AgentResearchBrief",
+    "build_agent_memory_summary",
     "rank_opportunities_with_feedback",
 ]
