@@ -1,4 +1,5 @@
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 
 from api.dependencies import build_signal_api_dependencies
@@ -21,28 +22,68 @@ class ApiDependencyTests(unittest.TestCase):
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 
-        with (
-            patch("api.dependencies.PostgresPostRepository") as post_repository,
-            patch("api.dependencies.PostgresSignalRepository") as signal_repository,
-            patch("api.dependencies.PostgresScoreRepository") as score_repository,
-            patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
-            patch("api.dependencies.PostgresOpportunityRepository") as opportunity_repository,
-            patch("api.dependencies.PostgresPipelineRunMetricsRepository") as metrics_repository,
-            patch("api.dependencies.PostgresAgentPreferencesRepository") as agent_preferences_repository,
-            patch("api.dependencies.PostgresAgentFeedbackRepository") as agent_feedback_repository,
-            patch("api.dependencies.PostgresCompetitorRepository") as competitor_repository,
-            patch("api.dependencies.PostgresMarketRepository") as market_repository,
-            patch("api.dependencies.PostgresMonitoredSourceRepository") as monitored_source_repository,
-            patch("api.dependencies.PostgresSourceHealthRepository") as source_health_repository,
-            patch("api.dependencies.PostgresSourceLocatorRepository") as source_locator_repository,
-            patch("api.dependencies.JsonUrlAdapter") as json_adapter,
-            patch("api.dependencies.StaticUrlAdapter") as static_adapter,
-            patch("api.dependencies.OpenAIResponsesClient") as llm_client,
-            patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
-            patch("api.dependencies.ResendEmailNotifier") as email_notifier,
-            patch("api.dependencies.EmailClient") as email_client,
-            patch("api.dependencies.connect_postgres") as connect_postgres,
-        ):
+        with ExitStack() as stack:
+            post_repository = stack.enter_context(
+                patch("api.dependencies.PostgresPostRepository")
+            )
+            signal_repository = stack.enter_context(
+                patch("api.dependencies.PostgresSignalRepository")
+            )
+            score_repository = stack.enter_context(
+                patch("api.dependencies.PostgresScoreRepository")
+            )
+            cluster_repository = stack.enter_context(
+                patch("api.dependencies.PostgresClusterRepository")
+            )
+            opportunity_repository = stack.enter_context(
+                patch("api.dependencies.PostgresOpportunityRepository")
+            )
+            metrics_repository = stack.enter_context(
+                patch("api.dependencies.PostgresPipelineRunMetricsRepository")
+            )
+            agent_preferences_repository = stack.enter_context(
+                patch("api.dependencies.PostgresAgentPreferencesRepository")
+            )
+            agent_feedback_repository = stack.enter_context(
+                patch("api.dependencies.PostgresAgentFeedbackRepository")
+            )
+            agent_activity_repository = stack.enter_context(
+                patch("api.dependencies.PostgresAgentActivityRepository")
+            )
+            competitor_repository = stack.enter_context(
+                patch("api.dependencies.PostgresCompetitorRepository")
+            )
+            market_repository = stack.enter_context(
+                patch("api.dependencies.PostgresMarketRepository")
+            )
+            monitored_source_repository = stack.enter_context(
+                patch("api.dependencies.PostgresMonitoredSourceRepository")
+            )
+            source_health_repository = stack.enter_context(
+                patch("api.dependencies.PostgresSourceHealthRepository")
+            )
+            source_locator_repository = stack.enter_context(
+                patch("api.dependencies.PostgresSourceLocatorRepository")
+            )
+            json_adapter = stack.enter_context(
+                patch("api.dependencies.JsonUrlAdapter")
+            )
+            static_adapter = stack.enter_context(
+                patch("api.dependencies.StaticUrlAdapter")
+            )
+            llm_client = stack.enter_context(
+                patch("api.dependencies.OpenAIResponsesClient")
+            )
+            embedding_client = stack.enter_context(
+                patch("api.dependencies.OpenAIEmbeddingClient")
+            )
+            email_notifier = stack.enter_context(
+                patch("api.dependencies.ResendEmailNotifier")
+            )
+            email_client = stack.enter_context(patch("api.dependencies.EmailClient"))
+            connect_postgres = stack.enter_context(
+                patch("api.dependencies.connect_postgres")
+            )
             dependencies = build_signal_api_dependencies(config)
 
         connect_postgres.assert_called_once_with(database_url)
@@ -55,6 +96,7 @@ class ApiDependencyTests(unittest.TestCase):
         metrics_repository.assert_called_once_with(connection=connection)
         agent_preferences_repository.assert_called_once_with(connection=connection)
         agent_feedback_repository.assert_called_once_with(connection=connection)
+        agent_activity_repository.assert_called_once_with(connection=connection)
         competitor_repository.assert_called_once_with(connection=connection)
         market_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
@@ -100,6 +142,10 @@ class ApiDependencyTests(unittest.TestCase):
             dependencies.agent_feedback_repository,
             agent_feedback_repository.return_value,
         )
+        self.assertIs(
+            dependencies.agent_activity_repository,
+            agent_activity_repository.return_value,
+        )
         self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
         self.assertIs(dependencies.market_repository, market_repository.return_value)
         self.assertIs(
@@ -134,28 +180,37 @@ class ApiDependencyTests(unittest.TestCase):
             PIPELINE_SCHEDULE="0 8 * * *",
         )
 
-        with (
-            patch("api.dependencies.PostgresPostRepository"),
-            patch("api.dependencies.PostgresSignalRepository"),
-            patch("api.dependencies.PostgresScoreRepository"),
-            patch("api.dependencies.PostgresClusterRepository"),
-            patch("api.dependencies.PostgresOpportunityRepository"),
-            patch("api.dependencies.PostgresPipelineRunMetricsRepository"),
-            patch("api.dependencies.PostgresAgentPreferencesRepository"),
-            patch("api.dependencies.PostgresAgentFeedbackRepository"),
-            patch("api.dependencies.PostgresCompetitorRepository"),
-            patch("api.dependencies.PostgresMarketRepository"),
-            patch("api.dependencies.PostgresMonitoredSourceRepository"),
-            patch("api.dependencies.PostgresSourceHealthRepository"),
-            patch("api.dependencies.PostgresSourceLocatorRepository"),
-            patch("api.dependencies.JsonUrlAdapter"),
-            patch("api.dependencies.StaticUrlAdapter"),
-            patch("api.dependencies.OpenAIResponsesClient") as llm_client,
-            patch("api.dependencies.OpenAIEmbeddingClient") as embedding_client,
-            patch("api.dependencies.ResendEmailNotifier") as email_notifier,
-            patch("api.dependencies.EmailClient") as email_client,
-            patch("api.dependencies.connect_postgres"),
-        ):
+        with ExitStack() as stack:
+            for target in [
+                "api.dependencies.PostgresPostRepository",
+                "api.dependencies.PostgresSignalRepository",
+                "api.dependencies.PostgresScoreRepository",
+                "api.dependencies.PostgresClusterRepository",
+                "api.dependencies.PostgresOpportunityRepository",
+                "api.dependencies.PostgresPipelineRunMetricsRepository",
+                "api.dependencies.PostgresAgentPreferencesRepository",
+                "api.dependencies.PostgresAgentFeedbackRepository",
+                "api.dependencies.PostgresAgentActivityRepository",
+                "api.dependencies.PostgresCompetitorRepository",
+                "api.dependencies.PostgresMarketRepository",
+                "api.dependencies.PostgresMonitoredSourceRepository",
+                "api.dependencies.PostgresSourceHealthRepository",
+                "api.dependencies.PostgresSourceLocatorRepository",
+                "api.dependencies.JsonUrlAdapter",
+                "api.dependencies.StaticUrlAdapter",
+                "api.dependencies.connect_postgres",
+            ]:
+                stack.enter_context(patch(target))
+            llm_client = stack.enter_context(
+                patch("api.dependencies.OpenAIResponsesClient")
+            )
+            embedding_client = stack.enter_context(
+                patch("api.dependencies.OpenAIEmbeddingClient")
+            )
+            email_notifier = stack.enter_context(
+                patch("api.dependencies.ResendEmailNotifier")
+            )
+            email_client = stack.enter_context(patch("api.dependencies.EmailClient"))
             dependencies = build_signal_api_dependencies(config)
 
         llm_client.assert_not_called()

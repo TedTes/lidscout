@@ -3,7 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from domain.agent import AgentFeedback, AgentPreferences
+from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -14,6 +14,7 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceHealth, SourceLocator
 from infrastructure.db import (
+    PostgresAgentActivityRepository,
     PostgresAgentFeedbackRepository,
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
@@ -502,6 +503,43 @@ class PostgresRepositoryTests(unittest.TestCase):
         )
         self.assertIn("INSERT INTO agent_feedback", connection.calls[0][0])
         self.assertIn("SELECT * FROM agent_feedback", connection.calls[1][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_agent_activity_repository_saves_and_loads_activity(self):
+        created_at = datetime(2026, 5, 25, 16, 20, tzinfo=UTC)
+        activity = AgentActivity.create(
+            id="activity-1",
+            market_id="workspace-tools",
+            event_type="run_completed",
+            title="Scan completed",
+            metadata={"fetched_count": 12},
+            created_at=created_at,
+        )
+        row = {
+            "id": "activity-1",
+            "market_id": "workspace-tools",
+            "event_type": "run_completed",
+            "title": "Scan completed",
+            "detail": None,
+            "metadata": {"fetched_count": 12},
+            "created_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresAgentActivityRepository(connection=connection)
+
+        self.assertTrue(repository.save_agent_activity(activity))
+        self.assertEqual(
+            repository.list_agent_activity(market_id="workspace-tools", limit=5),
+            [activity],
+        )
+        self.assertIn("INSERT INTO agent_activity", connection.calls[0][0])
+        self.assertIn("SELECT * FROM agent_activity", connection.calls[1][0])
+        self.assertEqual(connection.calls[1][1], ("workspace-tools", 5))
         self.assertEqual(connection.commit_count, 1)
 
     def test_monitored_source_repository_saves_and_loads_enabled_sources(self):

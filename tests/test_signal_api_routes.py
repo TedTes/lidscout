@@ -24,6 +24,7 @@ from api.routes.signals import (
     delete_market,
     delete_signal,
     get_market_agent_cold_start,
+    get_market_agent_memory,
     get_market_agent_preferences,
     get_market,
     get_latest_report,
@@ -32,6 +33,7 @@ from api.routes.signals import (
     list_competitors,
     list_clusters,
     list_market_competitors,
+    list_market_agent_activity,
     list_market_agent_feedback,
     list_market_sources,
     list_markets,
@@ -53,8 +55,9 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceHealth, SourceInput, SourceLocator
+from domain.source import MonitoredSource, SourceHealth, SourceInput, SourceLocator
 from infrastructure.db import (
+    InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
@@ -140,6 +143,8 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/markets/{market_id}/agent/cold-start", paths)
         self.assertIn("/markets/{market_id}/agent/preferences", paths)
         self.assertIn("/markets/{market_id}/agent/feedback", paths)
+        self.assertIn("/markets/{market_id}/agent/activity", paths)
+        self.assertIn("/markets/{market_id}/agent/memory", paths)
         self.assertIn("/opportunities/{opportunity_id}/feedback", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
@@ -610,6 +615,8 @@ class SignalApiRouteTests(unittest.TestCase):
             loaded["extra_instructions"],
             "Prioritize enterprise buyer pain.",
         )
+        activity = asyncio.run(list_market_agent_activity("devtools", dependencies))
+        self.assertEqual(activity["activity"][0]["event_type"], "preferences_updated")
 
     def test_creates_opportunity_feedback(self):
         market_repository = InMemoryMarketRepository()
@@ -639,6 +646,35 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(created["action"], "save")
         self.assertEqual(created["opportunity_id"], "opportunity-1")
         self.assertEqual(listed["feedback"][0]["reason"], "Relevant to current roadmap.")
+        activity = asyncio.run(list_market_agent_activity("devtools", dependencies))
+        self.assertEqual(activity["activity"][0]["event_type"], "feedback_recorded")
+
+    def test_gets_market_agent_memory(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="devtools", name="Developer tools")]
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    market_id="devtools",
+                )
+            ]
+        )
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            monitored_source_repository=monitored_source_repository,
+        )
+
+        memory = asyncio.run(get_market_agent_memory("devtools", dependencies))
+
+        self.assertEqual(memory["market_id"], "devtools")
+        self.assertIn("Developer tools", memory["headline"])
+        self.assertTrue(memory["learned_preferences"])
 
     def test_lists_market_competitors_and_sources(self):
         market_repository = InMemoryMarketRepository()

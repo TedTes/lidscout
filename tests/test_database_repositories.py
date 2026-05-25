@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from domain.agent import AgentFeedback, AgentPreferences
+from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -14,6 +14,7 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceHealth, SourceLocator
 from infrastructure.db import (
+    SQLiteAgentActivityRepository,
     SQLiteAgentFeedbackRepository,
     SQLiteAgentPreferencesRepository,
     SQLiteClusterRepository,
@@ -257,6 +258,34 @@ class DatabaseRepositoryTests(unittest.TestCase):
             )
             self.assertEqual(
                 repository.list_agent_feedback(action="dismiss"),
+                [],
+            )
+            repository.close()
+
+    def test_sqlite_agent_activity_repository_saves_and_loads_activity(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteAgentActivityRepository(database_path)
+            activity = AgentActivity.create(
+                id="activity-1",
+                market_id="workspace-tools",
+                event_type="run_completed",
+                title="Scan completed",
+                metadata={"fetched_count": 12},
+                created_at=datetime(2026, 5, 25, 16, 20, tzinfo=UTC),
+            )
+
+            self.assertTrue(repository.save_agent_activity(activity))
+            self.assertFalse(repository.save_agent_activity(activity))
+            repository.close()
+
+            repository = SQLiteAgentActivityRepository(database_path)
+            self.assertEqual(
+                repository.list_agent_activity(market_id="workspace-tools"),
+                [activity],
+            )
+            self.assertEqual(
+                repository.list_agent_activity(event_type="source_failed"),
                 [],
             )
             repository.close()

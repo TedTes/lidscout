@@ -1,6 +1,6 @@
 import unittest
 
-from domain.agent import AgentFeedback, AgentPreferences
+from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -10,6 +10,7 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceHealth, SourceLocator
 from infrastructure.db import (
+    InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
@@ -168,6 +169,27 @@ class RepositoryInterfaceTests(unittest.TestCase):
         )
         self.assertEqual(
             repository.list_agent_feedback(action="dismiss"),
+            [],
+        )
+
+    def test_agent_activity_repository_persists_activity(self):
+        repository = InMemoryAgentActivityRepository()
+        activity = AgentActivity.create(
+            id="activity-1",
+            market_id="workspace-tools",
+            event_type="run_completed",
+            title="Scan completed",
+            metadata={"fetched_count": 12},
+        )
+
+        self.assertTrue(repository.save_agent_activity(activity))
+        self.assertFalse(repository.save_agent_activity(activity))
+        self.assertEqual(
+            repository.list_agent_activity(market_id="workspace-tools"),
+            [activity],
+        )
+        self.assertEqual(
+            repository.list_agent_activity(event_type="source_failed"),
             [],
         )
 
