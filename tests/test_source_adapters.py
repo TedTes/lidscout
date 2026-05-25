@@ -66,6 +66,9 @@ class SourceAdapterTests(unittest.TestCase):
                         "competitor_id": "notion",
                         "competitor_name": "Notion",
                         "competitor_domain": "notion.so",
+                        "market_id": "workspace-tools",
+                        "market_name": "Workspace tools",
+                        "source_family": "social",
                     },
                 )
             )
@@ -79,6 +82,9 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(posts[1].metadata["competitor_id"], "notion")
         self.assertEqual(posts[1].metadata["competitor_name"], "Notion")
         self.assertEqual(posts[1].metadata["competitor_domain"], "notion.so")
+        self.assertEqual(posts[1].metadata["market_id"], "workspace-tools")
+        self.assertEqual(posts[1].metadata["market_name"], "Workspace tools")
+        self.assertEqual(posts[1].metadata["source_family"], "social")
 
     def test_json_adapter_can_handle_explicit_json_api_source(self):
         adapter = JsonUrlAdapter()

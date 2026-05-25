@@ -110,13 +110,15 @@ class InMemoryClusterRepository(ClusterRepository):
     clusters: dict[str, SignalCluster] = field(default_factory=dict)
 
     def save_clusters(self, clusters: list[SignalCluster]) -> int:
-        inserted_count = 0
+        saved_count = 0
+        seen_ids: set[str] = set()
         for cluster in clusters:
-            if cluster.id in self.clusters:
+            if cluster.id in seen_ids:
                 continue
+            seen_ids.add(cluster.id)
             self.clusters[cluster.id] = cluster
-            inserted_count += 1
-        return inserted_count
+            saved_count += 1
+        return saved_count
 
     def get_cluster(self, cluster_id: str) -> SignalCluster | None:
         return self.clusters.get(cluster_id)
@@ -132,13 +134,15 @@ class InMemoryOpportunityRepository(OpportunityRepository):
     opportunities: dict[str, Opportunity] = field(default_factory=dict)
 
     def save_opportunities(self, opportunities: list[Opportunity]) -> int:
-        inserted_count = 0
+        saved_count = 0
+        seen_ids: set[str] = set()
         for opportunity in opportunities:
-            if opportunity.id in self.opportunities:
+            if opportunity.id in seen_ids:
                 continue
+            seen_ids.add(opportunity.id)
             self.opportunities[opportunity.id] = opportunity
-            inserted_count += 1
-        return inserted_count
+            saved_count += 1
+        return saved_count
 
     def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
         return self.opportunities.get(opportunity_id)
@@ -517,14 +521,25 @@ class SQLiteClusterRepository(_SQLiteRepository, ClusterRepository):
         self.connection.commit()
 
     def save_clusters(self, clusters: list[SignalCluster]) -> int:
-        inserted_count = 0
+        saved_count = 0
+        seen_ids: set[str] = set()
         for cluster in clusters:
+            if cluster.id in seen_ids:
+                continue
+            seen_ids.add(cluster.id)
             cursor = self.connection.execute(
                 """
-                INSERT OR IGNORE INTO clusters (
+                INSERT INTO clusters (
                     id, theme, summary, signal_ids, frequency,
                     average_score, top_examples
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    theme = excluded.theme,
+                    summary = excluded.summary,
+                    signal_ids = excluded.signal_ids,
+                    frequency = excluded.frequency,
+                    average_score = excluded.average_score,
+                    top_examples = excluded.top_examples
                 """,
                 (
                     cluster.id,
@@ -536,9 +551,9 @@ class SQLiteClusterRepository(_SQLiteRepository, ClusterRepository):
                     _to_json(cluster.top_examples),
                 ),
             )
-            inserted_count += cursor.rowcount
+            saved_count += cursor.rowcount
         self.connection.commit()
-        return inserted_count
+        return saved_count
 
     def get_cluster(self, cluster_id: str) -> SignalCluster | None:
         row = self.connection.execute(
@@ -575,15 +590,29 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
         self.connection.commit()
 
     def save_opportunities(self, opportunities: list[Opportunity]) -> int:
-        inserted_count = 0
+        saved_count = 0
+        seen_ids: set[str] = set()
         for opportunity in opportunities:
+            if opportunity.id in seen_ids:
+                continue
+            seen_ids.add(opportunity.id)
             cursor = self.connection.execute(
                 """
-                INSERT OR IGNORE INTO opportunities (
+                INSERT INTO opportunities (
                     id, cluster_id, title, target_user, pain_summary,
                     why_it_matters, suggested_wedge, evidence_count,
                     confidence, evidence_signal_ids
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    cluster_id = excluded.cluster_id,
+                    title = excluded.title,
+                    target_user = excluded.target_user,
+                    pain_summary = excluded.pain_summary,
+                    why_it_matters = excluded.why_it_matters,
+                    suggested_wedge = excluded.suggested_wedge,
+                    evidence_count = excluded.evidence_count,
+                    confidence = excluded.confidence,
+                    evidence_signal_ids = excluded.evidence_signal_ids
                 """,
                 (
                     opportunity.id,
@@ -598,9 +627,9 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                     _to_json(opportunity.evidence_signal_ids),
                 ),
             )
-            inserted_count += cursor.rowcount
+            saved_count += cursor.rowcount
         self.connection.commit()
-        return inserted_count
+        return saved_count
 
     def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
         row = self.connection.execute(
@@ -1199,15 +1228,26 @@ class PostgresClusterRepository(_PostgresRepository, ClusterRepository):
     """Postgres-backed signal cluster repository."""
 
     def save_clusters(self, clusters: list[SignalCluster]) -> int:
-        inserted_count = 0
+        saved_count = 0
+        seen_ids: set[str] = set()
         for cluster in clusters:
+            if cluster.id in seen_ids:
+                continue
+            seen_ids.add(cluster.id)
             cursor = self.connection.execute(
                 """
                 INSERT INTO clusters (
                     id, theme, summary, signal_ids, frequency,
                     average_score, top_examples
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
+                ON CONFLICT (id) DO UPDATE SET
+                    theme = EXCLUDED.theme,
+                    summary = EXCLUDED.summary,
+                    signal_ids = EXCLUDED.signal_ids,
+                    frequency = EXCLUDED.frequency,
+                    average_score = EXCLUDED.average_score,
+                    top_examples = EXCLUDED.top_examples,
+                    updated_at = now()
                 """,
                 (
                     cluster.id,
@@ -1219,9 +1259,9 @@ class PostgresClusterRepository(_PostgresRepository, ClusterRepository):
                     cluster.top_examples,
                 ),
             )
-            inserted_count += _rowcount(cursor)
+            saved_count += _rowcount(cursor)
         self.connection.commit()
-        return inserted_count
+        return saved_count
 
     def get_cluster(self, cluster_id: str) -> SignalCluster | None:
         row = self.connection.execute(
@@ -1239,8 +1279,12 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
     """Postgres-backed synthesized opportunity repository."""
 
     def save_opportunities(self, opportunities: list[Opportunity]) -> int:
-        inserted_count = 0
+        saved_count = 0
+        seen_ids: set[str] = set()
         for opportunity in opportunities:
+            if opportunity.id in seen_ids:
+                continue
+            seen_ids.add(opportunity.id)
             cursor = self.connection.execute(
                 """
                 INSERT INTO opportunities (
@@ -1248,7 +1292,17 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                     why_it_matters, suggested_wedge, evidence_count,
                     confidence, evidence_signal_ids
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                ON CONFLICT (id) DO NOTHING
+                ON CONFLICT (id) DO UPDATE SET
+                    cluster_id = EXCLUDED.cluster_id,
+                    title = EXCLUDED.title,
+                    target_user = EXCLUDED.target_user,
+                    pain_summary = EXCLUDED.pain_summary,
+                    why_it_matters = EXCLUDED.why_it_matters,
+                    suggested_wedge = EXCLUDED.suggested_wedge,
+                    evidence_count = EXCLUDED.evidence_count,
+                    confidence = EXCLUDED.confidence,
+                    evidence_signal_ids = EXCLUDED.evidence_signal_ids,
+                    updated_at = now()
                 """,
                 (
                     opportunity.id,
@@ -1263,9 +1317,9 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                     _to_json(opportunity.evidence_signal_ids),
                 ),
             )
-            inserted_count += _rowcount(cursor)
+            saved_count += _rowcount(cursor)
         self.connection.commit()
-        return inserted_count
+        return saved_count
 
     def get_opportunity(self, opportunity_id: str) -> Opportunity | None:
         row = self.connection.execute(

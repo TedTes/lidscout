@@ -213,7 +213,7 @@ class PostgresRepositoryTests(unittest.TestCase):
 
         self.assertEqual(repository.save_clusters([cluster]), 1)
         self.assertEqual(repository.get_cluster("cluster-1"), cluster)
-        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertIn("ON CONFLICT (id) DO UPDATE", connection.calls[0][0])
         self.assertEqual(connection.commit_count, 1)
 
     def test_opportunity_repository_saves_and_loads_opportunities(self):
@@ -253,7 +253,7 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.save_opportunities([opportunity]), 1)
         self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
         self.assertEqual(repository.list_opportunities(), [opportunity])
-        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
+        self.assertIn("ON CONFLICT (id) DO UPDATE", connection.calls[0][0])
         self.assertEqual(json.loads(connection.calls[0][1][-1]), ["signal-1", "signal-2"])
         self.assertEqual(connection.commit_count, 1)
 
