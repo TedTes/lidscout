@@ -217,7 +217,7 @@ export default function DashboardNav() {
     signalApi.getMarkets()
       .then(response => setMarkets(response.markets))
       .catch(() => setMarkets([]));
-  }, [pathname]);
+  }, []); // mount-only — state kept in sync by handleNicheCreated / handleDeleteNiche
 
   const handleNicheCreated = (market: Market) => {
     setMarkets(prev => [...prev, market]);
@@ -264,14 +264,6 @@ export default function DashboardNav() {
           </div>
         </nav>
 
-        <div className="px-3 pb-5 pt-4">
-          <div className="rounded-lg border border-white/[0.05] bg-slate-900/60 px-3 py-2.5">
-            <div className="flex items-center gap-2.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_7px_rgba(52,211,153,0.8)]" />
-              <span className="text-xs font-medium text-slate-600">API online</span>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/[0.06] bg-[#07091a]/95 px-4 backdrop-blur-md lg:hidden">

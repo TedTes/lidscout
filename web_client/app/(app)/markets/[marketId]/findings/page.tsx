@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
+import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, Signal, SignalCluster } from '@/lib/types/signals';
 
@@ -20,6 +20,14 @@ export default function NicheFindingsPage({ params }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [urgency, setUrgency] = useState<UrgencyFilter>('all');
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(value), 150);
+  };
 
   const load = async () => {
     setStatus('loading');
@@ -53,7 +61,7 @@ export default function NicheFindingsPage({ params }: Props) {
 
   const filtered = signals.filter(signal => {
     if (urgency !== 'all' && signal.urgency !== urgency) return false;
-    if (!query.trim()) return true;
+    if (!debouncedQuery.trim()) return true;
     const haystack = [
       signal.pain,
       signal.job_to_be_done,
@@ -62,7 +70,7 @@ export default function NicheFindingsPage({ params }: Props) {
       signal.competitor_name,
       signal.user_type,
     ].filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(query.trim().toLowerCase());
+    return haystack.includes(debouncedQuery.trim().toLowerCase());
   });
 
   const highUrgency = signals.filter(signal => signal.urgency === 'high').length;
@@ -79,13 +87,13 @@ export default function NicheFindingsPage({ params }: Props) {
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="Findings" value={signals.length} />
-            <Summary label="High urgency" value={highUrgency} accent={highUrgency > 0} />
-            <Summary label="Themes linked" value={clusters.length} />
+            <Metric label="Findings" value={signals.length} />
+            <Metric label="High urgency" value={highUrgency} accent={highUrgency > 0} />
+            <Metric label="Themes linked" value={clusters.length} />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/80 bg-slate-900/40 p-3">
-            <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-950/30 p-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
               {(['all', 'high', 'medium', 'low'] as const).map(filter => (
                 <button
                   key={filter}
@@ -96,12 +104,17 @@ export default function NicheFindingsPage({ params }: Props) {
                 </button>
               ))}
             </div>
-            <input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder="Filter findings..."
-              className="min-w-[220px] rounded-lg border border-slate-700/70 bg-slate-900 px-3 py-2 text-sm text-slate-300 outline-none placeholder:text-slate-700 focus:border-violet-500/40"
-            />
+            <div className="relative">
+              <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                value={query}
+                onChange={event => handleQueryChange(event.target.value)}
+                placeholder="Search findings…"
+                className="min-w-[200px] rounded-lg border border-slate-700/70 bg-slate-900/60 py-2 pl-8 pr-3 text-sm text-slate-300 outline-none placeholder:text-slate-600 focus:border-violet-500/40"
+              />
+            </div>
           </div>
 
           {filtered.length === 0 ? (
@@ -156,11 +169,3 @@ export default function NicheFindingsPage({ params }: Props) {
   );
 }
 
-function Summary({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border px-5 py-4 ${accent ? 'border-violet-500/20 bg-violet-600/[0.08]' : 'border-slate-800/80 bg-slate-900/50'}`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${accent ? 'text-violet-300' : 'text-slate-100'}`}>{value}</p>
-    </div>
-  );
-}

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
+import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, Metric } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Competitor, Market, MonitoredSource, SourceCoverageSummary, SourceSuggestion } from '@/lib/types/signals';
 
@@ -175,9 +175,9 @@ export default function NicheSourcesPage({ params }: Props) {
         <div className="space-y-5 animate-fade-in">
           {/* Stats */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard label="Monitored" value={summary?.source_count ?? sources.length} />
-            <StatCard label="Active" value={activeCount} accent={activeCount > 0} />
-            <StatCard label="Failing" value={errorCount} danger={errorCount > 0} />
+            <Metric label="Monitored" value={summary?.source_count ?? sources.length} />
+            <Metric label="Active" value={activeCount} accent={activeCount > 0} />
+            <Metric label="Failing" value={errorCount} danger={errorCount > 0} />
           </div>
 
           {/* Add source form */}
@@ -562,21 +562,3 @@ function Field({
   );
 }
 
-function StatCard({
-  label,
-  value,
-  accent,
-  danger,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <div className={`rounded-xl border px-5 py-4 ${danger ? 'border-rose-500/20 bg-rose-500/[0.06]' : accent ? 'border-violet-500/20 bg-violet-600/[0.08]' : 'border-slate-800/80 bg-slate-900/50'}`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${danger ? 'text-rose-300' : accent ? 'text-violet-300' : 'text-slate-100'}`}>{value}</p>
-    </div>
-  );
-}

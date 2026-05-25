@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, MarketSignalReport } from '@/lib/types/signals';
 
@@ -55,16 +55,16 @@ export default function NicheReportPage({ params }: Props) {
       {status === 'ready' && report && (
         <div className="space-y-5 animate-fade-in">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="Top themes" value={report.top_clusters.length} />
-            <Summary label="Emerging pains" value={report.emerging_pains.length} />
-            <Summary label="Gaps" value={report.recommended_opportunities.length} accent={report.recommended_opportunities.length > 0} />
+            <Metric label="Top themes" value={report.top_clusters.length} />
+            <Metric label="Emerging pains" value={report.emerging_pains.length} />
+            <Metric label="Gaps" value={report.recommended_opportunities.length} accent={report.recommended_opportunities.length > 0} />
           </div>
 
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-sm font-semibold text-slate-300">{report.title}</h2>
               <span className="text-xs text-slate-700">
-                {new Date(report.generated_at).toLocaleString()}
+                {relativeTime(report.generated_at) ?? new Date(report.generated_at).toLocaleDateString()}
               </span>
             </div>
           </section>
@@ -142,11 +142,3 @@ export default function NicheReportPage({ params }: Props) {
   );
 }
 
-function Summary({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border px-5 py-4 ${accent ? 'border-violet-500/20 bg-violet-600/[0.08]' : 'border-slate-800/80 bg-slate-900/50'}`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${accent ? 'text-violet-300' : 'text-slate-100'}`}>{value}</p>
-    </div>
-  );
-}

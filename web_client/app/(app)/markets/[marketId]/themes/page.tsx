@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge } from '@/components/ui/DashboardPrimitives';
+import { EmptyPanel, ErrorPanel, LoadingPanel, Metric, ScoreBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, SignalCluster } from '@/lib/types/signals';
 
@@ -55,9 +55,9 @@ export default function NicheThemesPage({ params }: Props) {
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="Themes" value={themes.length} />
-            <Summary label="Findings grouped" value={findingCount} />
-            <Summary label="Multi-company themes" value={broadThemes} accent={broadThemes > 0} />
+            <Metric label="Themes" value={themes.length} />
+            <Metric label="Findings grouped" value={findingCount} />
+            <Metric label="Multi-company themes" value={broadThemes} accent={broadThemes > 0} />
           </div>
 
           {themes.length === 0 ? (
@@ -118,11 +118,3 @@ export default function NicheThemesPage({ params }: Props) {
   );
 }
 
-function Summary({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border px-5 py-4 ${accent ? 'border-violet-500/20 bg-violet-600/[0.08]' : 'border-slate-800/80 bg-slate-900/50'}`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${accent ? 'text-violet-300' : 'text-slate-100'}`}>{value}</p>
-    </div>
-  );
-}

@@ -118,29 +118,46 @@ export function Metric({
   label,
   value,
   accent,
+  danger,
 }: {
   label: string;
   value: string | number;
   accent?: boolean;
+  danger?: boolean;
 }) {
   return (
     <div
       className={`rounded-xl border px-5 py-4 transition-colors ${
-        accent
-          ? 'border-violet-500/20 bg-violet-600/[0.08]'
-          : 'border-slate-800/80 bg-slate-900/50'
+        danger
+          ? 'border-rose-500/20 bg-rose-500/[0.06]'
+          : accent
+            ? 'border-violet-500/20 bg-violet-600/[0.08]'
+            : 'border-slate-800/80 bg-slate-900/50'
       }`}
     >
       <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
       <p
         className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${
-          accent ? 'text-violet-300' : 'text-slate-100'
+          danger ? 'text-rose-300' : accent ? 'text-violet-300' : 'text-slate-100'
         }`}
       >
         {value}
       </p>
     </div>
   );
+}
+
+// ── Relative time helper ─────────────────────────────────────────────────────
+
+export function relativeTime(iso: string | null): string | null {
+  if (!iso) return null;
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 // ── Score badge ──────────────────────────────────────────────────────────────

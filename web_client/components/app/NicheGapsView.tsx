@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
   AgentColdStartPlan,
@@ -260,9 +260,9 @@ export default function NicheWorkspacePage({ params }: Props) {
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-3">
-                <Summary label="Gaps identified" value={opportunities.length} accent={opportunities.length > 0} />
-                <Summary label="Strong signals" value={strongCount} accent={strongCount > 0} />
-                <Summary label="Evidence items" value={evidenceCount} />
+                <Metric label="Gaps identified" value={opportunities.length} accent={opportunities.length > 0} />
+                <Metric label="Strong signals" value={strongCount} accent={strongCount > 0} />
+                <Metric label="Evidence items" value={evidenceCount} />
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -732,19 +732,17 @@ function GapCard({
               />
             </div>
             <div className="flex items-center gap-1.5">
-              <FeedbackButton
+              <IconFeedbackButton
                 active={trainingAction === 'more_like_this'}
                 onClick={() => onTrainingFeedback('more_like_this')}
                 icon={<IconThumbUp />}
-                label="More"
                 activeClass="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                 title="More like this"
               />
-              <FeedbackButton
+              <IconFeedbackButton
                 active={trainingAction === 'less_like_this'}
                 onClick={() => onTrainingFeedback('less_like_this')}
                 icon={<IconThumbDown />}
-                label="Less"
                 activeClass="border-rose-500/30 bg-rose-500/10 text-rose-400"
                 title="Less like this"
               />
@@ -783,13 +781,27 @@ function FeedbackButton({
   );
 }
 
-// ── Summary stat card ──────────────────────────────────────────────────────────
-
-function Summary({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+function IconFeedbackButton({
+  active,
+  onClick,
+  icon,
+  activeClass,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+  activeClass: string;
+  title: string;
+}) {
   return (
-    <div className={`rounded-xl border px-5 py-4 ${accent ? 'border-violet-500/20 bg-violet-600/[0.08]' : 'border-slate-800/80 bg-slate-900/50'}`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${accent ? 'text-violet-300' : 'text-slate-100'}`}>{value}</p>
-    </div>
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={`inline-flex items-center justify-center rounded-md border p-1.5 transition ${active ? activeClass : 'border-slate-700/50 text-slate-600 hover:border-slate-600 hover:text-slate-400'}`}
+    >
+      {icon}
+    </button>
   );
 }

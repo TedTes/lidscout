@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
+import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, Metric, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, Signal, SignalCluster } from '@/lib/types/signals';
 
@@ -65,13 +66,17 @@ export default function NicheThemeDetailPage({ params }: Props) {
 
       {status === 'ready' && theme && (
         <div className="space-y-5 animate-fade-in">
+          <Link
+            href={`/markets/${encodeURIComponent(marketId)}/themes`}
+            className="inline-flex items-center gap-1.5 text-xs text-slate-600 transition hover:text-slate-400"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            Themes
+          </Link>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Summary label="Findings" value={theme.frequency} />
-            <Summary label="Companies" value={theme.company_count} accent={theme.company_count > 1} />
-            <div className="rounded-xl border border-slate-800/80 bg-slate-900/50 px-5 py-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">Average score</p>
-              <div className="mt-2"><ScoreBadge value={theme.average_score} /></div>
-            </div>
+            <Metric label="Findings" value={theme.frequency} />
+            <Metric label="Companies" value={theme.company_count} accent={theme.company_count > 1} />
+            <Metric label="Avg score" value={theme.average_score.toFixed(1)} />
           </div>
 
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
@@ -144,11 +149,3 @@ export default function NicheThemeDetailPage({ params }: Props) {
   );
 }
 
-function Summary({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border px-5 py-4 ${accent ? 'border-violet-500/20 bg-violet-600/[0.08]' : 'border-slate-800/80 bg-slate-900/50'}`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-600">{label}</p>
-      <p className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${accent ? 'text-violet-300' : 'text-slate-100'}`}>{value}</p>
-    </div>
-  );
-}
