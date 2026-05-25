@@ -126,6 +126,13 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.get_market("workspace-tools"), market)
         self.assertEqual(repository.list_markets(), [market])
 
+        updated = Market.create(id="workspace-tools", name="Workspace intelligence")
+        self.assertTrue(repository.update_market(updated))
+        self.assertEqual(repository.get_market("workspace-tools"), updated)
+        self.assertFalse(repository.update_market(Market.create(id="missing", name="Missing")))
+        self.assertTrue(repository.delete_market("workspace-tools"))
+        self.assertFalse(repository.delete_market("workspace-tools"))
+
     def test_source_locator_repository_persists_unique_locators(self):
         repository = InMemorySourceLocatorRepository()
         locator = SourceLocator.create(

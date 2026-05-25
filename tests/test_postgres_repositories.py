@@ -403,6 +403,8 @@ class PostgresRepositoryTests(unittest.TestCase):
                 FakeCursor(rowcount=1),
                 FakeCursor(row=row),
                 FakeCursor(rows=[row]),
+                FakeCursor(rowcount=1),
+                FakeCursor(rowcount=1),
             ]
         )
         repository = PostgresMarketRepository(connection=connection)
@@ -410,9 +412,21 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.save_markets([market]), 1)
         self.assertEqual(repository.get_market("workspace-tools"), market)
         self.assertEqual(repository.list_markets(), [market])
+        self.assertTrue(
+            repository.update_market(
+                Market.create(
+                    id="workspace-tools",
+                    name="Workspace intelligence",
+                    created_at=created_at,
+                )
+            )
+        )
+        self.assertTrue(repository.delete_market("workspace-tools"))
         self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
         self.assertEqual(connection.calls[0][1][0], "workspace-tools")
-        self.assertEqual(connection.commit_count, 1)
+        self.assertIn("UPDATE markets", connection.calls[3][0])
+        self.assertIn("DELETE FROM markets", connection.calls[4][0])
+        self.assertEqual(connection.commit_count, 3)
 
     def test_monitored_source_repository_saves_and_loads_enabled_sources(self):
         source = MonitoredSource.create(

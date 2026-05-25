@@ -115,6 +115,14 @@ class MarketRepository(Protocol):
         """Load all persisted markets."""
         ...
 
+    def update_market(self, market: Market) -> bool:
+        """Update an existing market and return whether it changed."""
+        ...
+
+    def delete_market(self, market_id: str) -> bool:
+        """Delete one market and return whether it existed."""
+        ...
+
 
 class PipelineRunMetricsRepository(Protocol):
     """Persistence boundary for pipeline run funnel metrics."""

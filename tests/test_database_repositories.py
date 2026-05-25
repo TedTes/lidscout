@@ -176,6 +176,25 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_market("workspace-tools"), market)
             self.assertEqual(repository.list_markets(), [market])
+
+            updated = Market.create(
+                id="workspace-tools",
+                name="Workspace intelligence",
+                description=None,
+                target_user="founders",
+                idea_prompt="Find repeated product gaps.",
+                created_at=market.created_at,
+            )
+            self.assertTrue(repository.update_market(updated))
+            self.assertEqual(repository.get_market("workspace-tools"), updated)
+            self.assertFalse(
+                repository.update_market(
+                    Market.create(id="missing", name="Missing")
+                )
+            )
+            self.assertTrue(repository.delete_market("workspace-tools"))
+            self.assertIsNone(repository.get_market("workspace-tools"))
+            self.assertFalse(repository.delete_market("workspace-tools"))
             repository.close()
 
     def test_sqlite_pipeline_run_metrics_repository_saves_and_loads_metrics(self):

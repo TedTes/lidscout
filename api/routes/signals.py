@@ -89,6 +89,15 @@ class MarketRequest(BaseModel):
     idea_prompt: str | None = None
 
 
+class MarketUpdateRequest(BaseModel):
+    """HTTP request body for updating a watched market."""
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    target_user: str | None = None
+    idea_prompt: str | None = None
+
+
 class MonitoredSourceRequest(BaseModel):
     """HTTP request body for creating a monitored source."""
 
@@ -288,6 +297,63 @@ async def get_market(
     if market is None:
         raise HTTPException(status_code=404, detail="Market not found")
     return _serialize_market(market)
+
+
+@router.patch("/markets/{market_id}")
+async def update_market(
+    market_id: str,
+    request: MarketUpdateRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Update one watched market."""
+    existing = dependencies.market_repository.get_market(market_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    fields_set = _model_fields_set(request)
+    try:
+        market = Market.create(
+            id=existing.id,
+            name=request.name if "name" in fields_set else existing.name,
+            description=(
+                request.description
+                if "description" in fields_set
+                else existing.description
+            ),
+            target_user=(
+                request.target_user
+                if "target_user" in fields_set
+                else existing.target_user
+            ),
+            idea_prompt=(
+                request.idea_prompt
+                if "idea_prompt" in fields_set
+                else existing.idea_prompt
+            ),
+            created_at=existing.created_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not dependencies.market_repository.update_market(market):
+        raise HTTPException(status_code=404, detail="Market not found")
+    return _serialize_market(market)
+
+
+@router.delete("/markets/{market_id}")
+async def delete_market(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Delete one watched market."""
+    if dependencies.market_repository.get_market(market_id) is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    if not dependencies.market_repository.delete_market(market_id):
+        raise HTTPException(status_code=404, detail="Market not found")
+    return {
+        "id": market_id,
+        "deleted": True,
+    }
 
 
 @router.get("/markets/{market_id}/competitors")
@@ -1098,6 +1164,13 @@ def _serialize_pipeline_result(result: PipelineRunResult) -> dict[str, Any]:
         "report": _serialize_report(result.report),
         "email": _serialize_email_result(result.email_result),
     }
+
+
+def _model_fields_set(model: BaseModel) -> set[str]:
+    fields = getattr(model, "model_fields_set", None)
+    if fields is not None:
+        return set(fields)
+    return set(getattr(model, "__fields_set__", set()))
 
 
 def _serialize_pipeline_run_metrics(metrics: PipelineRunMetrics) -> dict[str, Any]:

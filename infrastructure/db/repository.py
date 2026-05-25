@@ -172,6 +172,15 @@ class InMemoryMarketRepository(MarketRepository):
     def list_markets(self) -> list[Market]:
         return list(self.markets.values())
 
+    def update_market(self, market: Market) -> bool:
+        if market.id not in self.markets:
+            return False
+        self.markets[market.id] = market
+        return True
+
+    def delete_market(self, market_id: str) -> bool:
+        return self.markets.pop(market_id, None) is not None
+
 
 @dataclass
 class InMemoryPipelineRunMetricsRepository(PipelineRunMetricsRepository):
@@ -695,6 +704,35 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
     def list_markets(self) -> list[Market]:
         rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
         return [_market_from_row(row) for row in rows]
+
+    def update_market(self, market: Market) -> bool:
+        cursor = self.connection.execute(
+            """
+            UPDATE markets
+            SET name = ?,
+                description = ?,
+                target_user = ?,
+                idea_prompt = ?
+            WHERE id = ?
+            """,
+            (
+                market.name,
+                market.description,
+                market.target_user,
+                market.idea_prompt,
+                market.id,
+            ),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def delete_market(self, market_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM markets WHERE id = ?",
+            (market_id,),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
 
 
 class SQLitePipelineRunMetricsRepository(
@@ -1371,6 +1409,35 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
     def list_markets(self) -> list[Market]:
         rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
         return [_market_from_row(row) for row in rows]
+
+    def update_market(self, market: Market) -> bool:
+        cursor = self.connection.execute(
+            """
+            UPDATE markets
+            SET name = %s,
+                description = %s,
+                target_user = %s,
+                idea_prompt = %s
+            WHERE id = %s
+            """,
+            (
+                market.name,
+                market.description,
+                market.target_user,
+                market.idea_prompt,
+                market.id,
+            ),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def delete_market(self, market_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM markets WHERE id = %s",
+            (market_id,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
 
 
 class PostgresPipelineRunMetricsRepository(

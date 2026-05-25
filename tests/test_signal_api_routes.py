@@ -8,6 +8,7 @@ from api.main import app, health_check
 from api.routes.signals import (
     CompetitorRequest,
     MarketRequest,
+    MarketUpdateRequest,
     MonitoredSourceRequest,
     MonitoredSourceUpdateRequest,
     PipelineRunRequest,
@@ -17,6 +18,7 @@ from api.routes.signals import (
     create_market,
     create_market_competitor,
     create_market_source,
+    delete_market,
     delete_signal,
     get_market,
     get_latest_report,
@@ -34,6 +36,7 @@ from api.routes.signals import (
     list_signals,
     run_pipeline,
     update_source,
+    update_market,
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
@@ -438,6 +441,44 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(created["id"], "workspace-tools")
         self.assertEqual(listed["markets"][0]["name"], "Workspace tools")
         self.assertEqual(loaded["target_user"], "product teams")
+
+    def test_updates_market(self):
+        dependencies = self._dependencies()
+        dependencies.market_repository.save_markets(
+            [
+                Market.create(
+                    id="workspace-tools",
+                    name="Workspace tools",
+                    description="Old description",
+                    target_user="product teams",
+                )
+            ]
+        )
+
+        updated = asyncio.run(
+            update_market(
+                "workspace-tools",
+                MarketUpdateRequest(name="Workspace intelligence"),
+                dependencies,
+            )
+        )
+        loaded = dependencies.market_repository.get_market("workspace-tools")
+
+        self.assertEqual(updated["name"], "Workspace intelligence")
+        self.assertEqual(updated["description"], "Old description")
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded.name, "Workspace intelligence")
+
+    def test_deletes_market(self):
+        dependencies = self._dependencies()
+        dependencies.market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+
+        deleted = asyncio.run(delete_market("workspace-tools", dependencies))
+
+        self.assertEqual(deleted, {"id": "workspace-tools", "deleted": True})
+        self.assertIsNone(dependencies.market_repository.get_market("workspace-tools"))
 
     def test_lists_market_competitors_and_sources(self):
         market_repository = InMemoryMarketRepository()
