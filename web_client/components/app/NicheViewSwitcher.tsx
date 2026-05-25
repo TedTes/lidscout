@@ -48,8 +48,8 @@ export function NicheViewSwitcher({
   trailingAction?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap justify-end gap-2">
-      <div className="flex max-w-full gap-1 overflow-x-auto rounded-full border border-slate-800/80 bg-slate-900/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex items-center justify-end gap-2">
+      <div className="min-w-0 flex gap-1 overflow-x-auto rounded-full border border-slate-800/80 bg-slate-900/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {VIEWS.map(view => {
           const selected = view.id === active;
           return (
@@ -73,7 +73,7 @@ export function NicheViewSwitcher({
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-800/80 bg-slate-900/50 text-slate-500 transition hover:bg-slate-800/80 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-800/80 bg-slate-900/50 text-slate-500 transition hover:bg-slate-800/80 hover:text-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
           aria-label="Refresh"
           title="Refresh"
         >
