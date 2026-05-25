@@ -12,7 +12,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceLocator
+from domain.source import MonitoredSource, SourceHealth, SourceLocator
 from infrastructure.db import (
     PostgresAgentFeedbackRepository,
     PostgresAgentPreferencesRepository,
@@ -25,6 +25,7 @@ from infrastructure.db import (
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresSourceHealthRepository,
     PostgresSourceLocatorRepository,
     connect_postgres,
 )
@@ -570,6 +571,64 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(json.loads(connection.calls[3][1][-2]), {"section": "support"})
         self.assertEqual(connection.calls[3][1][-1], "source-1")
         self.assertEqual(connection.commit_count, 2)
+
+    def test_source_health_repository_saves_and_loads_health(self):
+        scanned_at = datetime(2026, 5, 25, 16, 20, tzinfo=UTC)
+        health = SourceHealth.create(
+            monitored_source_id="source-1",
+            total_runs=1,
+            success_count=1,
+            posts_fetched_count=5,
+            relevant_posts_count=2,
+            extracted_signals_count=1,
+            opportunity_count=1,
+            last_status="healthy",
+            last_fetched_count=5,
+            last_relevant_count=2,
+            last_extracted_count=1,
+            last_opportunity_count=1,
+            last_scanned_at=scanned_at,
+            updated_at=scanned_at,
+        )
+        row = {
+            "monitored_source_id": "source-1",
+            "total_runs": 1,
+            "success_count": 1,
+            "failure_count": 0,
+            "consecutive_failures": 0,
+            "posts_fetched_count": 5,
+            "relevant_posts_count": 2,
+            "extracted_signals_count": 1,
+            "opportunity_count": 1,
+            "last_status": "healthy",
+            "last_error": None,
+            "last_fetched_count": 5,
+            "last_relevant_count": 2,
+            "last_extracted_count": 1,
+            "last_opportunity_count": 1,
+            "last_scanned_at": scanned_at,
+            "updated_at": scanned_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresSourceHealthRepository(connection=connection)
+
+        self.assertTrue(repository.save_source_health(health))
+        self.assertEqual(repository.get_source_health("source-1"), health)
+        self.assertEqual(
+            repository.list_source_health(status="healthy"),
+            [health],
+        )
+        self.assertIn("INSERT INTO source_health", connection.calls[0][0])
+        self.assertIn("ON CONFLICT (monitored_source_id)", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "source-1")
+        self.assertEqual(connection.calls[2][1], ("healthy",))
+        self.assertEqual(connection.commit_count, 1)
 
 
 if __name__ == "__main__":

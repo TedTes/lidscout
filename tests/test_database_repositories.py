@@ -12,7 +12,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceLocator
+from domain.source import MonitoredSource, SourceHealth, SourceLocator
 from infrastructure.db import (
     SQLiteAgentFeedbackRepository,
     SQLiteAgentPreferencesRepository,
@@ -25,6 +25,7 @@ from infrastructure.db import (
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
+    SQLiteSourceHealthRepository,
     SQLiteSourceLocatorRepository,
 )
 
@@ -380,6 +381,53 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(
                 repository.get_monitored_source("source-1"),
                 updated_source,
+            )
+            repository.close()
+
+    def test_sqlite_source_health_repository_saves_and_loads_health(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteSourceHealthRepository(database_path)
+            scanned_at = datetime(2026, 5, 25, 16, 20, tzinfo=UTC)
+            health = SourceHealth.create(
+                monitored_source_id="source-1",
+                total_runs=1,
+                success_count=1,
+                posts_fetched_count=5,
+                relevant_posts_count=2,
+                extracted_signals_count=1,
+                opportunity_count=1,
+                last_status="healthy",
+                last_fetched_count=5,
+                last_relevant_count=2,
+                last_extracted_count=1,
+                last_opportunity_count=1,
+                last_scanned_at=scanned_at,
+                updated_at=scanned_at,
+            )
+
+            self.assertTrue(repository.save_source_health(health))
+            repository.close()
+
+            repository = SQLiteSourceHealthRepository(database_path)
+            self.assertEqual(repository.get_source_health("source-1"), health)
+            self.assertEqual(
+                repository.list_source_health(status="healthy"),
+                [health],
+            )
+            updated = health.record_run(
+                fetched_count=0,
+                relevant_count=0,
+                extracted_count=0,
+                opportunity_count=0,
+                error="Blocked",
+                scanned_at=scanned_at,
+            )
+            self.assertTrue(repository.save_source_health(updated))
+            self.assertEqual(repository.get_source_health("source-1"), updated)
+            self.assertEqual(
+                repository.list_source_health(status="failing"),
+                [updated],
             )
             repository.close()
 

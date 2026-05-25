@@ -33,6 +33,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresCompetitorRepository") as competitor_repository,
             patch("api.dependencies.PostgresMarketRepository") as market_repository,
             patch("api.dependencies.PostgresMonitoredSourceRepository") as monitored_source_repository,
+            patch("api.dependencies.PostgresSourceHealthRepository") as source_health_repository,
             patch("api.dependencies.PostgresSourceLocatorRepository") as source_locator_repository,
             patch("api.dependencies.JsonUrlAdapter") as json_adapter,
             patch("api.dependencies.StaticUrlAdapter") as static_adapter,
@@ -57,6 +58,7 @@ class ApiDependencyTests(unittest.TestCase):
         competitor_repository.assert_called_once_with(connection=connection)
         market_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
+        source_health_repository.assert_called_once_with(connection=connection)
         source_locator_repository.assert_called_once_with(connection=connection)
         self.assertEqual(llm_client.call_count, 2)
         llm_client.assert_any_call(api_key="llm-key", model="response-model")
@@ -105,6 +107,10 @@ class ApiDependencyTests(unittest.TestCase):
             monitored_source_repository.return_value,
         )
         self.assertIs(
+            dependencies.source_health_repository,
+            source_health_repository.return_value,
+        )
+        self.assertIs(
             dependencies.source_locator_repository,
             source_locator_repository.return_value,
         )
@@ -140,6 +146,7 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresCompetitorRepository"),
             patch("api.dependencies.PostgresMarketRepository"),
             patch("api.dependencies.PostgresMonitoredSourceRepository"),
+            patch("api.dependencies.PostgresSourceHealthRepository"),
             patch("api.dependencies.PostgresSourceLocatorRepository"),
             patch("api.dependencies.JsonUrlAdapter"),
             patch("api.dependencies.StaticUrlAdapter"),

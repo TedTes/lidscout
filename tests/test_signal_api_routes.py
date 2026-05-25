@@ -53,7 +53,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceInput, SourceLocator
+from domain.source import SourceHealth, SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryAgentFeedbackRepository,
     InMemoryClusterRepository,
@@ -65,6 +65,7 @@ from infrastructure.db import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceHealthRepository,
     InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
@@ -901,6 +902,50 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(len(enabled_sources["sources"]), 1)
         self.assertEqual(enabled_sources["sources"][0]["competitor_id"], "competitor-1")
 
+    def test_lists_sources_with_health_snapshot(self):
+        competitor_repository = InMemoryCompetitorRepository()
+        competitor_repository.save_competitors(
+            [Competitor.create(id="competitor-1", name="Acme CRM")]
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        source_health_repository = InMemorySourceHealthRepository()
+        dependencies = self._dependencies(
+            competitor_repository=competitor_repository,
+            monitored_source_repository=monitored_source_repository,
+            source_health_repository=source_health_repository,
+        )
+        created = asyncio.run(
+            create_competitor_source(
+                "competitor-1",
+                MonitoredSourceRequest(
+                    locator="https://acme.example/reviews",
+                    source_type="reviews",
+                ),
+                dependencies,
+            )
+        )
+        source_health_repository.save_source_health(
+            SourceHealth.create(
+                monitored_source_id=created["id"],
+                total_runs=2,
+                success_count=1,
+                failure_count=1,
+                posts_fetched_count=10,
+                relevant_posts_count=4,
+                extracted_signals_count=2,
+                last_status="failing",
+                last_error="Blocked",
+            )
+        )
+
+        response = asyncio.run(list_sources(dependencies=dependencies))
+
+        health = response["sources"][0]["health"]
+        self.assertEqual(health["last_status"], "failing")
+        self.assertEqual(health["failure_count"], 1)
+        self.assertEqual(health["fetch_success_rate"], 0.5)
+        self.assertEqual(health["relevance_yield_rate"], 0.4)
+
     def test_updates_monitored_source(self):
         competitor_repository = InMemoryCompetitorRepository()
         competitor_repository.save_competitors(
@@ -1098,6 +1143,7 @@ class SignalApiRouteTests(unittest.TestCase):
         competitor_repository=None,
         market_repository=None,
         monitored_source_repository=None,
+        source_health_repository=None,
         source_locator_repository=None,
         source_adapters=None,
         llm_client=None,
@@ -1123,6 +1169,9 @@ class SignalApiRouteTests(unittest.TestCase):
             market_repository=market_repository or InMemoryMarketRepository(),
             monitored_source_repository=(
                 monitored_source_repository or InMemoryMonitoredSourceRepository()
+            ),
+            source_health_repository=(
+                source_health_repository or InMemorySourceHealthRepository()
             ),
             source_locator_repository=(
                 source_locator_repository or InMemorySourceLocatorRepository()

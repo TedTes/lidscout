@@ -8,7 +8,7 @@ from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceLocator
+from domain.source import MonitoredSource, SourceHealth, SourceLocator
 from infrastructure.db import (
     InMemoryAgentFeedbackRepository,
     InMemoryAgentPreferencesRepository,
@@ -20,6 +20,7 @@ from infrastructure.db import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceHealthRepository,
     InMemorySourceLocatorRepository,
 )
 
@@ -237,6 +238,23 @@ class RepositoryInterfaceTests(unittest.TestCase):
         )
         self.assertTrue(repository.update_monitored_source(updated_source))
         self.assertEqual(repository.get_monitored_source("source-1"), updated_source)
+
+    def test_source_health_repository_persists_snapshots(self):
+        repository = InMemorySourceHealthRepository()
+        health = SourceHealth.create(
+            monitored_source_id="source-1",
+            total_runs=1,
+            success_count=1,
+            posts_fetched_count=5,
+            last_status="healthy",
+        )
+
+        self.assertTrue(repository.save_source_health(health))
+
+        self.assertEqual(repository.get_source_health("source-1"), health)
+        self.assertEqual(repository.list_source_health(), [health])
+        self.assertEqual(repository.list_source_health(status="healthy"), [health])
+        self.assertEqual(repository.list_source_health(status="failing"), [])
 
 
 if __name__ == "__main__":

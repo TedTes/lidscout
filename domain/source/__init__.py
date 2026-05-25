@@ -2,6 +2,7 @@
 from domain.source.models import (
     MonitoredSource,
     SourceCandidate,
+    SourceHealth,
     SourceInput,
     SourceLocator,
     SourceTemplate,
@@ -10,6 +11,7 @@ from domain.source.models import (
 __all__ = [
     "MonitoredSource",
     "SourceCandidate",
+    "SourceHealth",
     "SourceInput",
     "SourceLocator",
     "SourceTemplate",

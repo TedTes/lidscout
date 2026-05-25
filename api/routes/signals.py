@@ -23,6 +23,7 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceHealthRepository,
     SourceLocatorRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -47,6 +48,7 @@ from infrastructure.db import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceHealthRepository,
     InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailSendResult
@@ -175,6 +177,9 @@ class SignalApiDependencies:
     market_repository: MarketRepository = field(default_factory=InMemoryMarketRepository)
     monitored_source_repository: MonitoredSourceRepository = field(
         default_factory=InMemoryMonitoredSourceRepository
+    )
+    source_health_repository: SourceHealthRepository = field(
+        default_factory=InMemorySourceHealthRepository
     )
     source_locator_repository: SourceLocatorRepository = field(
         default_factory=InMemorySourceLocatorRepository
@@ -858,9 +863,11 @@ async def run_pipeline(
             pipeline_run_metrics_repository=(
                 dependencies.pipeline_run_metrics_repository
             ),
+            agent_preferences_repository=dependencies.agent_preferences_repository,
             competitor_repository=dependencies.competitor_repository,
             market_repository=dependencies.market_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
+            source_health_repository=dependencies.source_health_repository,
             source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
             relevance_llm_client=dependencies.relevance_llm_client,
@@ -1123,6 +1130,11 @@ def _serialize_monitored_source(
         if dependencies is not None and source.market_id is not None
         else None
     )
+    health = (
+        dependencies.source_health_repository.get_source_health(source.id)
+        if dependencies is not None
+        else None
+    )
     return {
         "id": source.id,
         "competitor_id": source.competitor_id,
@@ -1139,7 +1151,34 @@ def _serialize_monitored_source(
             source.last_scanned_at.isoformat() if source.last_scanned_at else None
         ),
         "last_error": source.last_error,
+        "health": _serialize_source_health(health) if health else None,
         "options": source.options,
+    }
+
+
+def _serialize_source_health(health: Any) -> dict[str, Any]:
+    return {
+        "total_runs": health.total_runs,
+        "success_count": health.success_count,
+        "failure_count": health.failure_count,
+        "consecutive_failures": health.consecutive_failures,
+        "posts_fetched_count": health.posts_fetched_count,
+        "relevant_posts_count": health.relevant_posts_count,
+        "extracted_signals_count": health.extracted_signals_count,
+        "opportunity_count": health.opportunity_count,
+        "last_status": health.last_status,
+        "last_error": health.last_error,
+        "last_fetched_count": health.last_fetched_count,
+        "last_relevant_count": health.last_relevant_count,
+        "last_extracted_count": health.last_extracted_count,
+        "last_opportunity_count": health.last_opportunity_count,
+        "fetch_success_rate": health.fetch_success_rate,
+        "relevance_yield_rate": health.relevance_yield_rate,
+        "signal_yield_rate": health.signal_yield_rate,
+        "last_scanned_at": (
+            health.last_scanned_at.isoformat() if health.last_scanned_at else None
+        ),
+        "updated_at": health.updated_at.isoformat() if health.updated_at else None,
     }
 
 

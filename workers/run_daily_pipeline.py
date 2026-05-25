@@ -20,6 +20,7 @@ from application.opportunity import (
     OpportunitySynthesisService,
 )
 from application.ports import (
+    AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
     MarketRepository,
@@ -29,6 +30,7 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceHealthRepository,
     SourceLocatorRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -37,7 +39,7 @@ from domain.cluster import SignalCluster
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceInput
+from domain.source import MonitoredSource, SourceHealth, SourceInput
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
 
@@ -57,8 +59,10 @@ class PipelineConfig:
     relevance_llm_client: LLMClient | None = None
     opportunity_repository: OpportunityRepository | None = None
     pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
+    agent_preferences_repository: AgentPreferencesRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
+    source_health_repository: SourceHealthRepository | None = None
     market_repository: MarketRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
@@ -92,9 +96,19 @@ class PipelineRunResult:
     email_result: EmailSendResult
 
 
+@dataclass(frozen=True)
+class PipelineFetchResult:
+    """Posts and per-source fetch outcomes from one pipeline fetch stage."""
+
+    posts: list[RawPost]
+    failed_count: int
+    details: list[SourceFetchDetail]
+
+
 def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     """Run the full daily signal detection workflow."""
-    posts, fetch_failed_count = _fetch_posts(config)
+    fetch_result = _fetch_posts(config)
+    posts = fetch_result.posts
 
     ingestion_service = IngestionService(config.post_repository)
     ingestion_result = ingestion_service.ingest(posts)
@@ -127,6 +141,14 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         clusters,
         signals,
     )
+    _record_source_health(
+        config.source_health_repository,
+        fetch_result.details,
+        posts,
+        relevance_result.posts,
+        signals,
+        opportunity_synthesis_result.opportunities,
+    )
 
     report = ReportingService().generate(
         clusters,
@@ -137,7 +159,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
 
     result = PipelineRunResult(
         fetched_count=len(posts),
-        fetch_failed_count=fetch_failed_count,
+        fetch_failed_count=fetch_result.failed_count,
         ingestion_result=ingestion_result,
         rule_filtered_count=relevance_result.rule_filtered_count,
         llm_filtered_count=relevance_result.llm_filtered_count,
@@ -227,14 +249,16 @@ def _save_pipeline_run_metrics(
     )
 
 
-def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
+def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     posts: list[RawPost] = []
     failed_count = 0
+    details: list[SourceFetchDetail] = []
     sources = config.sources or _configured_sources(
         config.monitored_source_repository,
         config.source_locator_repository,
         config.competitor_repository,
         config.market_repository,
+        config.agent_preferences_repository,
         config.market_id,
     )
 
@@ -245,12 +269,80 @@ def _fetch_posts(config: PipelineConfig) -> tuple[list[RawPost], int]:
         )
         posts.extend(source_result.posts)
         failed_count += source_result.failed_count
+        details.extend(source_result.details)
         _update_monitored_source_scan_statuses(
             config.monitored_source_repository,
             source_result.details,
         )
 
-    return posts, failed_count
+    return PipelineFetchResult(
+        posts=posts,
+        failed_count=failed_count,
+        details=details,
+    )
+
+
+def _record_source_health(
+    source_health_repository: SourceHealthRepository | None,
+    details: list[SourceFetchDetail],
+    posts: list[RawPost],
+    relevant_posts: list[RawPost],
+    signals: list[Signal],
+    opportunities: list[object],
+) -> None:
+    if source_health_repository is None:
+        return
+
+    post_source_ids = {
+        post.id: source_id
+        for post in posts
+        if isinstance((source_id := post.metadata.get("monitored_source_id")), str)
+    }
+    relevant_counts: dict[str, int] = {}
+    for post in relevant_posts:
+        source_id = post_source_ids.get(post.id)
+        if source_id is None:
+            continue
+        relevant_counts[source_id] = relevant_counts.get(source_id, 0) + 1
+
+    signal_source_ids = {
+        signal.id: source_id
+        for signal in signals
+        if (source_id := post_source_ids.get(signal.post_id)) is not None
+    }
+    extracted_counts: dict[str, int] = {}
+    for source_id in signal_source_ids.values():
+        extracted_counts[source_id] = extracted_counts.get(source_id, 0) + 1
+
+    opportunity_counts: dict[str, int] = {}
+    for opportunity in opportunities:
+        evidence_signal_ids = getattr(opportunity, "evidence_signal_ids", [])
+        source_ids = {
+            signal_source_ids[signal_id]
+            for signal_id in evidence_signal_ids
+            if signal_id in signal_source_ids
+        }
+        for source_id in source_ids:
+            opportunity_counts[source_id] = opportunity_counts.get(source_id, 0) + 1
+
+    scanned_at = datetime.now(tz=UTC)
+    for detail in details:
+        source_id = detail.source.options.get("monitored_source_id")
+        if not isinstance(source_id, str):
+            continue
+
+        existing = source_health_repository.get_source_health(source_id)
+        health = existing or SourceHealth.create(monitored_source_id=source_id)
+        source_health_repository.save_source_health(
+            health.record_run(
+                fetched_count=detail.fetched_count,
+                relevant_count=relevant_counts.get(source_id, 0),
+                extracted_count=extracted_counts.get(source_id, 0),
+                opportunity_count=opportunity_counts.get(source_id, 0),
+                error=detail.error,
+                scanned_at=scanned_at,
+            )
+        )
 
 
 def _update_monitored_source_scan_statuses(
@@ -337,18 +429,27 @@ def _configured_sources(
     source_locator_repository: SourceLocatorRepository | None,
     competitor_repository: CompetitorRepository | None,
     market_repository: MarketRepository | None,
+    agent_preferences_repository: AgentPreferencesRepository | None,
     market_id: str | None,
 ) -> list[SourceInput]:
     if monitored_source_repository is not None:
-        monitored_sources = [
-            _monitored_source_input(source, competitor_repository, market_repository)
-            for source in monitored_source_repository.list_monitored_sources(
+        configured_monitored_sources = (
+            monitored_source_repository.list_monitored_sources(
                 enabled=True,
                 market_id=market_id,
             )
+        )
+        monitored_sources = _apply_agent_source_preferences(
+            configured_monitored_sources,
+            agent_preferences_repository,
+            market_id,
+        )
+        monitored_source_inputs = [
+            _monitored_source_input(source, competitor_repository, market_repository)
+            for source in monitored_sources
         ]
-        if monitored_sources:
-            return monitored_sources
+        if configured_monitored_sources:
+            return monitored_source_inputs
     if source_locator_repository is None:
         return []
     return [
@@ -397,6 +498,38 @@ def _monitored_source_input(
         locator=source_input.locator,
         limit=source_input.limit,
         options=options,
+    )
+
+
+def _apply_agent_source_preferences(
+    sources: list[MonitoredSource],
+    agent_preferences_repository: AgentPreferencesRepository | None,
+    market_id: str | None,
+) -> list[MonitoredSource]:
+    if agent_preferences_repository is None or market_id is None:
+        return sources
+
+    preferences = agent_preferences_repository.get_agent_preferences(market_id)
+    if preferences is None:
+        return sources
+
+    muted_source_ids = set(preferences.muted_source_ids)
+    filtered_sources = [
+        source for source in sources if source.id not in muted_source_ids
+    ]
+    if not preferences.preferred_source_families:
+        return filtered_sources
+
+    priority = {
+        family: index
+        for index, family in enumerate(preferences.preferred_source_families)
+    }
+    return sorted(
+        filtered_sources,
+        key=lambda source: priority.get(
+            str(source.options.get("source_family") or "").strip(),
+            len(priority),
+        ),
     )
 
 

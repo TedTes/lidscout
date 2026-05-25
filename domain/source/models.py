@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 ValidationStatus = Literal["unknown", "valid", "invalid"]
 TemplateScope = Literal["company", "market"]
+SourceHealthStatus = Literal["unknown", "healthy", "failing"]
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,155 @@ class MonitoredSource:
             locator=self.locator,
             limit=self.limit,
             options=options,
+        )
+
+
+@dataclass(frozen=True)
+class SourceHealth:
+    """Cumulative health and yield memory for one monitored source."""
+
+    monitored_source_id: str
+    total_runs: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    consecutive_failures: int = 0
+    posts_fetched_count: int = 0
+    relevant_posts_count: int = 0
+    extracted_signals_count: int = 0
+    opportunity_count: int = 0
+    last_status: SourceHealthStatus = "unknown"
+    last_error: str | None = None
+    last_fetched_count: int = 0
+    last_relevant_count: int = 0
+    last_extracted_count: int = 0
+    last_opportunity_count: int = 0
+    last_scanned_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        monitored_source_id: str,
+        total_runs: int = 0,
+        success_count: int = 0,
+        failure_count: int = 0,
+        consecutive_failures: int = 0,
+        posts_fetched_count: int = 0,
+        relevant_posts_count: int = 0,
+        extracted_signals_count: int = 0,
+        opportunity_count: int = 0,
+        last_status: SourceHealthStatus = "unknown",
+        last_error: str | None = None,
+        last_fetched_count: int = 0,
+        last_relevant_count: int = 0,
+        last_extracted_count: int = 0,
+        last_opportunity_count: int = 0,
+        last_scanned_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "SourceHealth":
+        """Build a validated source health snapshot."""
+        source_id = monitored_source_id.strip()
+        if not source_id:
+            raise ValueError("monitored_source_id is required")
+        if last_status not in {"unknown", "healthy", "failing"}:
+            raise ValueError("last_status must be unknown, healthy, or failing")
+
+        counts = {
+            "total_runs": total_runs,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "consecutive_failures": consecutive_failures,
+            "posts_fetched_count": posts_fetched_count,
+            "relevant_posts_count": relevant_posts_count,
+            "extracted_signals_count": extracted_signals_count,
+            "opportunity_count": opportunity_count,
+            "last_fetched_count": last_fetched_count,
+            "last_relevant_count": last_relevant_count,
+            "last_extracted_count": last_extracted_count,
+            "last_opportunity_count": last_opportunity_count,
+        }
+        for name, value in counts.items():
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+
+        return cls(
+            monitored_source_id=source_id,
+            total_runs=total_runs,
+            success_count=success_count,
+            failure_count=failure_count,
+            consecutive_failures=consecutive_failures,
+            posts_fetched_count=posts_fetched_count,
+            relevant_posts_count=relevant_posts_count,
+            extracted_signals_count=extracted_signals_count,
+            opportunity_count=opportunity_count,
+            last_status=last_status,
+            last_error=_clean_optional(last_error),
+            last_fetched_count=last_fetched_count,
+            last_relevant_count=last_relevant_count,
+            last_extracted_count=last_extracted_count,
+            last_opportunity_count=last_opportunity_count,
+            last_scanned_at=last_scanned_at,
+            updated_at=updated_at,
+        )
+
+    def record_run(
+        self,
+        *,
+        fetched_count: int,
+        relevant_count: int,
+        extracted_count: int,
+        opportunity_count: int,
+        error: str | None,
+        scanned_at: datetime,
+    ) -> "SourceHealth":
+        """Return a new snapshot with one source run folded in."""
+        failed = error is not None
+        return SourceHealth.create(
+            monitored_source_id=self.monitored_source_id,
+            total_runs=self.total_runs + 1,
+            success_count=self.success_count + (0 if failed else 1),
+            failure_count=self.failure_count + (1 if failed else 0),
+            consecutive_failures=(
+                self.consecutive_failures + 1 if failed else 0
+            ),
+            posts_fetched_count=self.posts_fetched_count + fetched_count,
+            relevant_posts_count=self.relevant_posts_count + relevant_count,
+            extracted_signals_count=(
+                self.extracted_signals_count + extracted_count
+            ),
+            opportunity_count=self.opportunity_count + opportunity_count,
+            last_status="failing" if failed else "healthy",
+            last_error=error,
+            last_fetched_count=fetched_count,
+            last_relevant_count=relevant_count,
+            last_extracted_count=extracted_count,
+            last_opportunity_count=opportunity_count,
+            last_scanned_at=scanned_at,
+            updated_at=scanned_at,
+        )
+
+    @property
+    def fetch_success_rate(self) -> float:
+        """Return cumulative fetch success rate."""
+        return round(self.success_count / self.total_runs, 4) if self.total_runs else 0.0
+
+    @property
+    def relevance_yield_rate(self) -> float:
+        """Return cumulative relevant-post yield over fetched posts."""
+        return (
+            round(self.relevant_posts_count / self.posts_fetched_count, 4)
+            if self.posts_fetched_count
+            else 0.0
+        )
+
+    @property
+    def signal_yield_rate(self) -> float:
+        """Return cumulative extracted-signal yield over fetched posts."""
+        return (
+            round(self.extracted_signals_count / self.posts_fetched_count, 4)
+            if self.posts_fetched_count
+            else 0.0
         )
 
 

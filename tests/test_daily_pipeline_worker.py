@@ -1,12 +1,14 @@
 import unittest
 from typing import Any
 
+from domain.agent import AgentPreferences
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
+    InMemoryAgentPreferencesRepository,
     InMemoryCompetitorRepository,
     InMemoryMarketRepository,
     InMemoryPostRepository,
@@ -15,6 +17,7 @@ from infrastructure.db import (
     InMemoryScoreRepository,
     InMemorySignalRepository,
     InMemoryMonitoredSourceRepository,
+    InMemorySourceHealthRepository,
     InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
@@ -221,6 +224,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         signal_repository = InMemorySignalRepository()
+        source_health_repository = InMemorySourceHealthRepository()
         llm_client = SequentialLLMClient(
             [
                 """
@@ -248,8 +252,10 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             signal_repository=signal_repository,
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
+            opportunity_repository=InMemoryOpportunityRepository(),
             competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
+            source_health_repository=source_health_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(FakeEmailNotifier()),
@@ -272,6 +278,14 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         updated_source = monitored_source_repository.get_monitored_source("source-1")
         self.assertIsNotNone(updated_source.last_scanned_at)
         self.assertIsNone(updated_source.last_error)
+        health = source_health_repository.get_source_health("source-1")
+        self.assertEqual(health.total_runs, 1)
+        self.assertEqual(health.success_count, 1)
+        self.assertEqual(health.last_status, "healthy")
+        self.assertEqual(health.last_fetched_count, 1)
+        self.assertEqual(health.last_relevant_count, 1)
+        self.assertEqual(health.last_extracted_count, 1)
+        self.assertEqual(health.last_opportunity_count, 1)
 
     def test_records_failed_monitored_source_scan_status(self):
         monitored_source_repository = InMemoryMonitoredSourceRepository()
@@ -286,12 +300,14 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 )
             ]
         )
+        source_health_repository = InMemorySourceHealthRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
             signal_repository=InMemorySignalRepository(),
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
             monitored_source_repository=monitored_source_repository,
+            source_health_repository=source_health_repository,
             llm_client=SequentialLLMClient([]),
             embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(FakeEmailNotifier()),
@@ -308,6 +324,12 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             updated_source.last_error,
             "No source adapter can handle locator",
         )
+        health = source_health_repository.get_source_health("source-1")
+        self.assertEqual(health.total_runs, 1)
+        self.assertEqual(health.failure_count, 1)
+        self.assertEqual(health.consecutive_failures, 1)
+        self.assertEqual(health.last_status, "failing")
+        self.assertEqual(health.last_error, "No source adapter can handle locator")
 
     def test_runs_pipeline_from_one_market_source_scope(self):
         market_repository = InMemoryMarketRepository()
@@ -386,6 +408,130 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         signal = signal_repository.list_signals()[0]
         self.assertEqual(signal.market_id, "workspace-tools")
         self.assertEqual(result.report.title, "Workspace tools Market Gap Report")
+
+    def test_skips_muted_sources_from_agent_preferences(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+        agent_preferences_repository = InMemoryAgentPreferencesRepository()
+        agent_preferences_repository.save_agent_preferences(
+            AgentPreferences.create(
+                market_id="workspace-tools",
+                muted_source_ids=["source-2"],
+            )
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    market_id="workspace-tools",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    limit=1,
+                ),
+                MonitoredSource.create(
+                    id="source-2",
+                    market_id="workspace-tools",
+                    locator="https://example.com/unsupported",
+                    source_type="reviews",
+                    limit=1,
+                ),
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            agent_preferences_repository=agent_preferences_repository,
+            market_repository=market_repository,
+            monitored_source_repository=monitored_source_repository,
+            llm_client=SequentialLLMClient(
+                [
+                    """
+                    {
+                      "has_signal": false,
+                      "is_about_competitor": false,
+                      "competitor_match_reason": null,
+                      "signal": null
+                    }
+                    """
+                ]
+            ),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            market_id="workspace-tools",
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.fetch_failed_count, 0)
+        self.assertIsNotNone(
+            monitored_source_repository.get_monitored_source(
+                "source-1"
+            ).last_scanned_at
+        )
+        self.assertIsNone(
+            monitored_source_repository.get_monitored_source(
+                "source-2"
+            ).last_scanned_at
+        )
+
+    def test_does_not_fall_back_to_global_locators_when_market_sources_are_muted(self):
+        agent_preferences_repository = InMemoryAgentPreferencesRepository()
+        agent_preferences_repository.save_agent_preferences(
+            AgentPreferences.create(
+                market_id="workspace-tools",
+                muted_source_ids=["source-1"],
+            )
+        )
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    id="source-1",
+                    market_id="workspace-tools",
+                    locator="https://example.com/reviews",
+                    source_type="reviews",
+                    limit=1,
+                )
+            ]
+        )
+        source_locator_repository = InMemorySourceLocatorRepository()
+        source_locator_repository.save_source_locators(
+            [
+                SourceLocator.create(
+                    id="locator-1",
+                    locator="https://example.com/reviews",
+                    limit=1,
+                )
+            ]
+        )
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            agent_preferences_repository=agent_preferences_repository,
+            monitored_source_repository=monitored_source_repository,
+            source_locator_repository=source_locator_repository,
+            llm_client=SequentialLLMClient([]),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            market_id="workspace-tools",
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 0)
+        self.assertEqual(result.fetch_failed_count, 0)
 
     def test_rejects_unrelated_signal_from_monitored_source(self):
         competitor_repository = InMemoryCompetitorRepository()

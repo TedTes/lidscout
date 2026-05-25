@@ -12,6 +12,7 @@ from application.ports.repositories import (
     ScoreRepository,
     SignalRepository,
     SourceLocatorRepository,
+    SourceHealthRepository,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "ScoreRepository",
     "SignalRepository",
     "SourceLocatorRepository",
+    "SourceHealthRepository",
 ]

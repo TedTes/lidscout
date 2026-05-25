@@ -20,6 +20,7 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceHealthRepository,
     SourceLocatorRepository,
 )
 from domain.agent import AgentFeedback, AgentPreferences
@@ -31,7 +32,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceLocator
+from domain.source import MonitoredSource, SourceHealth, SourceLocator
 
 
 @dataclass
@@ -333,6 +334,39 @@ class InMemoryMonitoredSourceRepository(MonitoredSourceRepository):
         if enabled is not None:
             sources = [source for source in sources if source.enabled == enabled]
         return sources
+
+
+@dataclass
+class InMemorySourceHealthRepository(SourceHealthRepository):
+    """In-memory monitored source health repository."""
+
+    source_health: dict[str, SourceHealth] = field(default_factory=dict)
+
+    def save_source_health(self, health: SourceHealth) -> bool:
+        self.source_health[health.monitored_source_id] = health
+        return True
+
+    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
+        return self.source_health.get(monitored_source_id)
+
+    def list_source_health(
+        self,
+        *,
+        monitored_source_id: str | None = None,
+        status: str | None = None,
+    ) -> list[SourceHealth]:
+        snapshots = list(self.source_health.values())
+        if monitored_source_id is not None:
+            snapshots = [
+                health
+                for health in snapshots
+                if health.monitored_source_id == monitored_source_id
+            ]
+        if status is not None:
+            snapshots = [
+                health for health in snapshots if health.last_status == status
+            ]
+        return sorted(snapshots, key=lambda health: health.monitored_source_id)
 
 
 class _SQLiteRepository:
@@ -1189,6 +1223,98 @@ class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceReposito
         return [_monitored_source_from_row(row) for row in rows]
 
 
+class SQLiteSourceHealthRepository(_SQLiteRepository, SourceHealthRepository):
+    """SQLite-backed monitored source health repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS source_health (
+                monitored_source_id TEXT PRIMARY KEY,
+                total_runs INTEGER NOT NULL,
+                success_count INTEGER NOT NULL,
+                failure_count INTEGER NOT NULL,
+                consecutive_failures INTEGER NOT NULL,
+                posts_fetched_count INTEGER NOT NULL,
+                relevant_posts_count INTEGER NOT NULL,
+                extracted_signals_count INTEGER NOT NULL,
+                opportunity_count INTEGER NOT NULL,
+                last_status TEXT NOT NULL,
+                last_error TEXT,
+                last_fetched_count INTEGER NOT NULL,
+                last_relevant_count INTEGER NOT NULL,
+                last_extracted_count INTEGER NOT NULL,
+                last_opportunity_count INTEGER NOT NULL,
+                last_scanned_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_source_health(self, health: SourceHealth) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO source_health (
+                monitored_source_id, total_runs, success_count, failure_count,
+                consecutive_failures, posts_fetched_count, relevant_posts_count,
+                extracted_signals_count, opportunity_count, last_status,
+                last_error, last_fetched_count, last_relevant_count,
+                last_extracted_count, last_opportunity_count, last_scanned_at,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(monitored_source_id) DO UPDATE SET
+                total_runs = excluded.total_runs,
+                success_count = excluded.success_count,
+                failure_count = excluded.failure_count,
+                consecutive_failures = excluded.consecutive_failures,
+                posts_fetched_count = excluded.posts_fetched_count,
+                relevant_posts_count = excluded.relevant_posts_count,
+                extracted_signals_count = excluded.extracted_signals_count,
+                opportunity_count = excluded.opportunity_count,
+                last_status = excluded.last_status,
+                last_error = excluded.last_error,
+                last_fetched_count = excluded.last_fetched_count,
+                last_relevant_count = excluded.last_relevant_count,
+                last_extracted_count = excluded.last_extracted_count,
+                last_opportunity_count = excluded.last_opportunity_count,
+                last_scanned_at = excluded.last_scanned_at,
+                updated_at = excluded.updated_at
+            """,
+            _source_health_values(health, sqlite=True),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
+        row = self.connection.execute(
+            "SELECT * FROM source_health WHERE monitored_source_id = ?",
+            (monitored_source_id,),
+        ).fetchone()
+        return _source_health_from_row(row) if row else None
+
+    def list_source_health(
+        self,
+        *,
+        monitored_source_id: str | None = None,
+        status: str | None = None,
+    ) -> list[SourceHealth]:
+        query = "SELECT * FROM source_health"
+        clauses = []
+        params = []
+        if monitored_source_id is not None:
+            clauses.append("monitored_source_id = ?")
+            params.append(monitored_source_id)
+        if status is not None:
+            clauses.append("last_status = ?")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY monitored_source_id"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_source_health_from_row(row) for row in rows]
+
+
 class _PostgresRepository:
     """Shared Postgres connection handling."""
 
@@ -1905,6 +2031,72 @@ class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepo
         return [_monitored_source_from_row(row) for row in rows]
 
 
+class PostgresSourceHealthRepository(_PostgresRepository, SourceHealthRepository):
+    """Postgres-backed monitored source health repository."""
+
+    def save_source_health(self, health: SourceHealth) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO source_health (
+                monitored_source_id, total_runs, success_count, failure_count,
+                consecutive_failures, posts_fetched_count, relevant_posts_count,
+                extracted_signals_count, opportunity_count, last_status,
+                last_error, last_fetched_count, last_relevant_count,
+                last_extracted_count, last_opportunity_count, last_scanned_at,
+                updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (monitored_source_id) DO UPDATE SET
+                total_runs = EXCLUDED.total_runs,
+                success_count = EXCLUDED.success_count,
+                failure_count = EXCLUDED.failure_count,
+                consecutive_failures = EXCLUDED.consecutive_failures,
+                posts_fetched_count = EXCLUDED.posts_fetched_count,
+                relevant_posts_count = EXCLUDED.relevant_posts_count,
+                extracted_signals_count = EXCLUDED.extracted_signals_count,
+                opportunity_count = EXCLUDED.opportunity_count,
+                last_status = EXCLUDED.last_status,
+                last_error = EXCLUDED.last_error,
+                last_fetched_count = EXCLUDED.last_fetched_count,
+                last_relevant_count = EXCLUDED.last_relevant_count,
+                last_extracted_count = EXCLUDED.last_extracted_count,
+                last_opportunity_count = EXCLUDED.last_opportunity_count,
+                last_scanned_at = EXCLUDED.last_scanned_at,
+                updated_at = EXCLUDED.updated_at
+            """,
+            _source_health_values(health, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
+        row = self.connection.execute(
+            "SELECT * FROM source_health WHERE monitored_source_id = %s",
+            (monitored_source_id,),
+        ).fetchone()
+        return _source_health_from_row(row) if row else None
+
+    def list_source_health(
+        self,
+        *,
+        monitored_source_id: str | None = None,
+        status: str | None = None,
+    ) -> list[SourceHealth]:
+        query = "SELECT * FROM source_health"
+        clauses = []
+        params = []
+        if monitored_source_id is not None:
+            clauses.append("monitored_source_id = %s")
+            params.append(monitored_source_id)
+        if status is not None:
+            clauses.append("last_status = %s")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY monitored_source_id"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_source_health_from_row(row) for row in rows]
+
+
 def connect_postgres(database_url: str) -> Any:
     """Create a Postgres connection for repository wiring."""
     return _connect_postgres(database_url)
@@ -2098,6 +2290,50 @@ def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
         action=row["action"],
         reason=row["reason"],
         created_at=_datetime_from_text(row["created_at"]),
+    )
+
+
+def _source_health_values(health: SourceHealth, *, sqlite: bool) -> tuple:
+    return (
+        health.monitored_source_id,
+        health.total_runs,
+        health.success_count,
+        health.failure_count,
+        health.consecutive_failures,
+        health.posts_fetched_count,
+        health.relevant_posts_count,
+        health.extracted_signals_count,
+        health.opportunity_count,
+        health.last_status,
+        health.last_error,
+        health.last_fetched_count,
+        health.last_relevant_count,
+        health.last_extracted_count,
+        health.last_opportunity_count,
+        _datetime_to_text(health.last_scanned_at) if sqlite else health.last_scanned_at,
+        _datetime_to_text(health.updated_at) if sqlite else health.updated_at,
+    )
+
+
+def _source_health_from_row(row: sqlite3.Row) -> SourceHealth:
+    return SourceHealth.create(
+        monitored_source_id=row["monitored_source_id"],
+        total_runs=row["total_runs"],
+        success_count=row["success_count"],
+        failure_count=row["failure_count"],
+        consecutive_failures=row["consecutive_failures"],
+        posts_fetched_count=row["posts_fetched_count"],
+        relevant_posts_count=row["relevant_posts_count"],
+        extracted_signals_count=row["extracted_signals_count"],
+        opportunity_count=row["opportunity_count"],
+        last_status=row["last_status"],
+        last_error=row["last_error"],
+        last_fetched_count=row["last_fetched_count"],
+        last_relevant_count=row["last_relevant_count"],
+        last_extracted_count=row["last_extracted_count"],
+        last_opportunity_count=row["last_opportunity_count"],
+        last_scanned_at=_datetime_from_text(row["last_scanned_at"]),
+        updated_at=_datetime_from_text(row["updated_at"]),
     )
 
 

@@ -10,7 +10,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceLocator
+from domain.source import MonitoredSource, SourceHealth, SourceLocator
 
 
 class PostRepository(Protocol):
@@ -226,4 +226,25 @@ class MonitoredSourceRepository(Protocol):
         enabled: bool | None = None,
     ) -> list[MonitoredSource]:
         """Load monitored sources, optionally filtered by scope and enabled state."""
+        ...
+
+
+class SourceHealthRepository(Protocol):
+    """Persistence boundary for monitored source health snapshots."""
+
+    def save_source_health(self, health: SourceHealth) -> bool:
+        """Persist one source health snapshot."""
+        ...
+
+    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
+        """Load source health for one monitored source."""
+        ...
+
+    def list_source_health(
+        self,
+        *,
+        monitored_source_id: str | None = None,
+        status: str | None = None,
+    ) -> list[SourceHealth]:
+        """Load source health snapshots, optionally filtered."""
         ...

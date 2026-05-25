@@ -13,6 +13,7 @@ from infrastructure.db import (
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresSourceHealthRepository,
     PostgresSourceLocatorRepository,
     connect_postgres,
 )
@@ -49,6 +50,9 @@ def build_signal_api_dependencies(
         competitor_repository=PostgresCompetitorRepository(connection=connection),
         market_repository=PostgresMarketRepository(connection=connection),
         monitored_source_repository=PostgresMonitoredSourceRepository(
+            connection=connection,
+        ),
+        source_health_repository=PostgresSourceHealthRepository(
             connection=connection,
         ),
         source_locator_repository=PostgresSourceLocatorRepository(

@@ -44,9 +44,13 @@ def run_configured_daily_pipeline(
             pipeline_run_metrics_repository=(
                 runtime_dependencies.pipeline_run_metrics_repository
             ),
+            agent_preferences_repository=(
+                runtime_dependencies.agent_preferences_repository
+            ),
             competitor_repository=runtime_dependencies.competitor_repository,
             market_repository=runtime_dependencies.market_repository,
             monitored_source_repository=runtime_dependencies.monitored_source_repository,
+            source_health_repository=runtime_dependencies.source_health_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
             llm_client=runtime_dependencies.llm_client,
             relevance_llm_client=runtime_dependencies.relevance_llm_client,
