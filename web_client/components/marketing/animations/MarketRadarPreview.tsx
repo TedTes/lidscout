@@ -95,7 +95,7 @@ export default function MarketRadarPreview() {
       <div className="mb-4 flex items-start justify-between gap-4">
         <div style={fadeStyle}>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
-            Market radar
+            Niche radar
           </p>
           <h2 className="text-lg font-bold text-slate-100">{market.name}</h2>
         </div>

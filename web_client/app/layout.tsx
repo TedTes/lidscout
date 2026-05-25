@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'LidScout — Signal Intelligence',
-  description: 'Market signal detection from online activity',
+  description: 'Niche signal detection from online activity',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

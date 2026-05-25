@@ -25,7 +25,7 @@ export default function Hero() {
                 Find product gaps backed by real user evidence
               </h1>
               <p className="mb-7 max-w-lg text-base leading-relaxed text-slate-400">
-                LidScout monitors public sources across a market and turns recurring complaints
+                LidScout monitors public sources across a niche and turns recurring complaints
                 into ranked opportunities with the source quotes attached.
               </p>
               <div className="flex flex-wrap items-center gap-3">
@@ -37,7 +37,7 @@ export default function Hero() {
                   <IconArrow />
                 </Link>
                 <Link
-                  href="/gaps"
+                  href="/markets"
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-800/50 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
                 >
                   Open dashboard →

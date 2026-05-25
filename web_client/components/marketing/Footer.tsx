@@ -10,7 +10,7 @@ export default function Footer() {
           </div>
           <span className="text-xs font-semibold text-slate-500">LidScout</span>
         </div>
-        <p className="text-xs text-slate-700">Evidence-backed market intelligence</p>
+        <p className="text-xs text-slate-700">Evidence-backed niche intelligence</p>
       </div>
     </footer>
   );

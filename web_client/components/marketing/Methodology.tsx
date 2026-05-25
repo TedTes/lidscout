@@ -7,11 +7,11 @@ export default function Methodology() {
             Under the hood
           </p>
           <h2 className="text-2xl font-bold text-slate-100">
-            How we turn market noise into ranked gaps
+            How we turn niche noise into ranked gaps
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-500">
             Signal quality is everything. LidScout runs a multi-stage pipeline for every watched
-            market before anything reaches your report — so what you see is evidence, not noise.
+            niche before anything reaches your report — so what you see is evidence, not noise.
           </p>
         </div>
 
@@ -24,9 +24,9 @@ export default function Methodology() {
               {
                 step: '01',
                 label: 'Fetch',
-                heading: 'Daily crawl of every market source',
-                body: 'LidScout pulls the latest posts from Reddit communities, review pages, Hacker News threads, forums, feeds, and product changelogs across every company in the market.',
-                detail: 'Sources are polled every 24 hours. New sources can be added per market or per company.',
+                heading: 'Daily crawl of every niche source',
+                body: 'LidScout pulls the latest posts from Reddit communities, review pages, Hacker News threads, forums, feeds, and product changelogs across every company in the niche.',
+                detail: 'Sources are polled every 24 hours. New sources can be added per niche or per company.',
               },
               {
                 step: '02',
@@ -39,14 +39,14 @@ export default function Methodology() {
                 step: '03',
                 label: 'LLM classifier',
                 heading: 'Confirm genuine product pain',
-                body: 'Each remaining post is sent to an LLM with a structured prompt: is this about the watched market or company, and does it express a real pain, request, workaround, or switching signal? Off-topic discussions are discarded.',
+                body: 'Each remaining post is sent to an LLM with a structured prompt: is this about the watched niche or company, and does it express a real pain, request, workaround, or switching signal? Off-topic discussions are discarded.',
                 detail: '~20% of posts survive to this stage; ~half of those are confirmed pain signals.',
               },
               {
                 step: '04',
                 label: 'Cluster',
                 heading: 'Group signals by theme',
-                body: 'Surviving findings are embedded and clustered by semantic similarity inside the market. Posts about calendar sync issues, event conflicts, and timezone bugs resolve to the same theme regardless of wording.',
+                body: 'Surviving findings are embedded and clustered by semantic similarity inside the niche. Posts about calendar sync issues, event conflicts, and timezone bugs resolve to the same theme regardless of wording.',
                 detail: 'Clusters are re-evaluated weekly so trends are always relative to prior state.',
               },
               {

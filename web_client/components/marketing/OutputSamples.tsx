@@ -12,10 +12,10 @@ export default function OutputSamples() {
               Real output
             </p>
             <h2 className="text-2xl font-bold text-slate-100">
-              What a market gap report looks like
+              What a niche gap report looks like
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-500">
-              Six gaps surfaced across the workspace tools market this week. Each one is
+              Six gaps surfaced across the workspace tools niche this week. Each one is
               clustered from real user posts and tied back to the company and source evidence.
             </p>
           </div>
@@ -30,7 +30,7 @@ export default function OutputSamples() {
         <GapCardPulse gaps={sampleGaps} />
 
         <p className="mt-6 text-center text-xs text-slate-700">
-          A full report typically surfaces 10–20 gaps per market, ranked by evidence count,
+          A full report typically surfaces 10–20 gaps per niche, ranked by evidence count,
           source diversity, and recency.
         </p>
       </div>

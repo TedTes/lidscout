@@ -1,14 +1,14 @@
 const CASES = [
   {
     audience: 'Product teams',
-    statement: 'See where the market is weakest before your roadmap is locked.',
-    body: 'Track named companies in your market. Recurring complaints become ranked gaps with source quotes attached — ready to bring into planning without a research detour.',
+    statement: 'See where the niche is weakest before your roadmap is locked.',
+    body: 'Track named companies in your niche. Recurring complaints become ranked gaps with source quotes attached — ready to bring into planning without a research detour.',
     signals: ['Competitor-scoped findings', 'Weekly cadence', 'Evidence links on every claim'],
   },
   {
     audience: 'Founders',
     statement: 'Validate a space by reading what users already say in public.',
-    body: 'Monitor a niche across companies and surface patterns that keep appearing. Skip the assumptions — the market is already documenting its own pain.',
+    body: 'Monitor a niche across companies and surface patterns that keep appearing. Skip the assumptions — the niche is already documenting its own pain.',
     signals: ['Niche-level themes', 'Cross-company signals', 'Suggested wedge per gap'],
   },
 ];

@@ -16,7 +16,7 @@ export default function BeforeAfter() {
           The alternative
         </p>
         <h2 className="mb-14 max-w-xl text-3xl font-bold leading-snug text-slate-100">
-          The market is already talking.{' '}
+          The niche is already talking.{' '}
           <br className="hidden sm:block" />
           You&apos;re just not watching.
         </h2>

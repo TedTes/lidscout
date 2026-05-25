@@ -2,7 +2,7 @@ import ScanPanelLive from './animations/ScanPanelLive';
 
 const STEPS = [
   {
-    title: 'Watch a market',
+    title: 'Watch a niche',
     body: 'Define a niche, add the companies you care about, and attach their public sources — Reddit threads, review pages, HN, changelogs.',
     aside: 'Workspace tools · AI devtools · vertical SaaS',
   },
@@ -26,7 +26,7 @@ export default function HowItWorks() {
           How it works
         </p>
         <h2 className="mb-16 text-2xl font-bold text-slate-100">
-          From market noise to ranked gaps
+          From niche noise to ranked gaps
         </h2>
 
         <div className="grid items-start gap-14 lg:grid-cols-[1fr_320px]">
