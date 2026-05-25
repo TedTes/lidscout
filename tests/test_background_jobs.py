@@ -3,9 +3,10 @@ from typing import Any
 
 from api.routes.signals import SignalApiDependencies
 from domain.post import RawPost
-from domain.source import SourceInput, SourceLocator
+from domain.source import MonitoredSource, SourceInput, SourceLocator
 from infrastructure.db import (
     InMemoryClusterRepository,
+    InMemoryMonitoredSourceRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -13,7 +14,7 @@ from infrastructure.db import (
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
-from workers.jobs import run_configured_daily_pipeline
+from workers.jobs import check_worker_readiness, run_configured_daily_pipeline
 
 
 class FakeSourceAdapter:
@@ -69,6 +70,35 @@ class FakeEmailNotifier(EmailNotifier):
 
 
 class BackgroundJobTests(unittest.TestCase):
+    def test_checks_worker_readiness_from_monitored_sources(self):
+        monitored_source_repository = InMemoryMonitoredSourceRepository()
+        monitored_source_repository.save_monitored_sources(
+            [
+                MonitoredSource.create(
+                    locator="https://example.com/reviews",
+                    market_id="workspace-tools",
+                )
+            ]
+        )
+        dependencies = SignalApiDependencies(
+            monitored_source_repository=monitored_source_repository,
+            source_adapters=[FakeSourceAdapter()],
+            llm_client=FakeLLMClient(),
+            relevance_llm_client=FakeLLMClient(),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+        )
+
+        result = check_worker_readiness(
+            market_id="workspace-tools",
+            dependencies=dependencies,
+        )
+
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["enabled_monitored_source_count"], 1)
+        self.assertEqual(result["enabled_source_locator_count"], 0)
+        self.assertEqual(result["source_adapter_count"], 1)
+
     def test_runs_configured_daily_pipeline_from_source_locators(self):
         source_locator_repository = InMemorySourceLocatorRepository()
         source_locator_repository.save_source_locators(

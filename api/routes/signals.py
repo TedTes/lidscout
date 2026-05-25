@@ -24,6 +24,7 @@ from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.opportunity import Opportunity
+from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
@@ -642,6 +643,21 @@ async def run_pipeline(
     return _serialize_pipeline_result(result)
 
 
+@router.get("/pipeline/runs")
+async def list_pipeline_runs(
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Return recent persisted pipeline worker run metrics."""
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="limit must be at least 1")
+    metrics = dependencies.pipeline_run_metrics_repository.list_pipeline_run_metrics()
+    recent_metrics = sorted(metrics, key=lambda item: item.ran_at, reverse=True)[:limit]
+    return {
+        "runs": [_serialize_pipeline_run_metrics(run) for run in recent_metrics]
+    }
+
+
 def _ensure_pipeline_dependencies(
     dependencies: SignalApiDependencies,
     request: PipelineRunRequest,
@@ -1081,4 +1097,32 @@ def _serialize_pipeline_result(result: PipelineRunResult) -> dict[str, Any]:
         },
         "report": _serialize_report(result.report),
         "email": _serialize_email_result(result.email_result),
+    }
+
+
+def _serialize_pipeline_run_metrics(metrics: PipelineRunMetrics) -> dict[str, Any]:
+    return {
+        "id": metrics.id,
+        "ran_at": metrics.ran_at.isoformat(),
+        "fetched_count": metrics.fetched_count,
+        "fetch_failed_count": metrics.fetch_failed_count,
+        "rule_filtered_count": metrics.rule_filtered_count,
+        "llm_filtered_count": metrics.llm_filtered_count,
+        "relevance_failed_count": metrics.relevance_failed_count,
+        "extraction_attempted_count": metrics.extraction_attempted_count,
+        "extracted_count": metrics.extracted_count,
+        "no_signal_count": metrics.no_signal_count,
+        "extraction_failed_count": metrics.extraction_failed_count,
+        "signal_inserted_count": metrics.signal_inserted_count,
+        "scored_count": metrics.scored_count,
+        "scoring_failed_count": metrics.scoring_failed_count,
+        "average_score": metrics.average_score,
+        "embedding_failed_count": metrics.embedding_failed_count,
+        "clustered_count": metrics.clustered_count,
+        "cluster_inserted_count": metrics.cluster_inserted_count,
+        "opportunity_synthesized_count": metrics.opportunity_synthesized_count,
+        "opportunity_inserted_count": metrics.opportunity_inserted_count,
+        "opportunity_failed_count": metrics.opportunity_failed_count,
+        "email_sent": metrics.email_sent,
+        "email_error": metrics.email_error,
     }

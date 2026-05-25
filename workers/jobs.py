@@ -59,12 +59,57 @@ def run_configured_daily_pipeline(
     )
 
 
+def check_worker_readiness(
+    market_id: str | None = None,
+    dependencies: SignalApiDependencies | None = None,
+) -> dict[str, object]:
+    """Return deploy-time readiness details for the scheduled worker."""
+    app_config = get_app_config()
+    runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
+    _ensure_background_pipeline_dependencies(runtime_dependencies)
+
+    monitored_sources = (
+        runtime_dependencies.monitored_source_repository.list_monitored_sources(
+            enabled=True,
+            market_id=market_id,
+        )
+    )
+    source_locators = []
+    if not monitored_sources:
+        source_locators = (
+            runtime_dependencies.source_locator_repository.list_source_locators(
+                enabled=True,
+            )
+        )
+
+    source_count = len(monitored_sources) or len(source_locators)
+    return {
+        "ready": source_count > 0,
+        "market_id": market_id,
+        "enabled_monitored_source_count": len(monitored_sources),
+        "enabled_source_locator_count": len(source_locators),
+        "source_adapter_count": len(runtime_dependencies.source_adapters),
+        "has_llm_client": runtime_dependencies.llm_client is not None,
+        "has_relevance_llm_client": (
+            runtime_dependencies.relevance_llm_client is not None
+        ),
+        "has_embedding_client": runtime_dependencies.embedding_client is not None,
+        "has_email_client": runtime_dependencies.email_client is not None,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run worker jobs from the command line."""
     args = argv if argv is not None else sys.argv[1:]
     command = args[0] if args else "run-daily-pipeline"
-    if command != "run-daily-pipeline":
+    if command not in {"run-daily-pipeline", "check"}:
         raise ValueError(f"Unknown worker job: {command}")
+
+    if command == "check":
+        market_id = args[1] if len(args) > 1 else None
+        result = check_worker_readiness(market_id=market_id)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["ready"] else 1
 
     recipient = args[1] if len(args) > 1 else None
     market_id = args[2] if len(args) > 2 else None

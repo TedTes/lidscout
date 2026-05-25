@@ -29,6 +29,7 @@ from api.routes.signals import (
     list_markets,
     list_market_source_suggestions,
     list_opportunities,
+    list_pipeline_runs,
     list_sources,
     list_signals,
     run_pipeline,
@@ -38,6 +39,7 @@ from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.opportunity import Opportunity
+from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
@@ -48,6 +50,7 @@ from infrastructure.db import (
     InMemoryMarketRepository,
     InMemoryMonitoredSourceRepository,
     InMemoryOpportunityRepository,
+    InMemoryPipelineRunMetricsRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
@@ -124,6 +127,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/markets/{market_id}/source-suggestions", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
+        self.assertIn("/pipeline/runs", paths)
         self.assertIn("/competitors", paths)
         self.assertIn("/competitors/{competitor_id}/sources", paths)
         self.assertIn("/competitors/{competitor_id}/source-suggestions", paths)
@@ -817,6 +821,70 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(response["fetched_count"], 1)
         self.assertEqual(response["extracted_count"], 1)
 
+    def test_lists_recent_pipeline_runs(self):
+        metrics_repository = InMemoryPipelineRunMetricsRepository()
+        metrics_repository.save_pipeline_run_metrics(
+            PipelineRunMetrics.create(
+                id="run-old",
+                fetched_count=1,
+                fetch_failed_count=0,
+                rule_filtered_count=0,
+                llm_filtered_count=0,
+                relevance_failed_count=0,
+                extraction_attempted_count=1,
+                extracted_count=1,
+                no_signal_count=0,
+                extraction_failed_count=0,
+                signal_inserted_count=1,
+                scored_count=1,
+                scoring_failed_count=0,
+                average_score=6.5,
+                embedding_failed_count=0,
+                clustered_count=1,
+                cluster_inserted_count=1,
+                opportunity_synthesized_count=1,
+                opportunity_inserted_count=1,
+                opportunity_failed_count=0,
+                email_sent=True,
+            )
+        )
+        metrics_repository.save_pipeline_run_metrics(
+            PipelineRunMetrics.create(
+                id="run-new",
+                fetched_count=2,
+                fetch_failed_count=0,
+                rule_filtered_count=1,
+                llm_filtered_count=0,
+                relevance_failed_count=0,
+                extraction_attempted_count=1,
+                extracted_count=1,
+                no_signal_count=0,
+                extraction_failed_count=0,
+                signal_inserted_count=1,
+                scored_count=1,
+                scoring_failed_count=0,
+                average_score=7.5,
+                embedding_failed_count=0,
+                clustered_count=1,
+                cluster_inserted_count=1,
+                opportunity_synthesized_count=1,
+                opportunity_inserted_count=1,
+                opportunity_failed_count=0,
+                email_sent=False,
+                email_error="Forbidden",
+            )
+        )
+        dependencies = self._dependencies(
+            pipeline_run_metrics_repository=metrics_repository,
+        )
+
+        response = asyncio.run(list_pipeline_runs(dependencies, limit=1))
+
+        self.assertEqual(len(response["runs"]), 1)
+        self.assertEqual(response["runs"][0]["id"], "run-new")
+        self.assertEqual(response["runs"][0]["fetched_count"], 2)
+        self.assertEqual(response["runs"][0]["email_error"], "Forbidden")
+
     def _dependencies(
         self,
         *,
@@ -825,6 +893,7 @@ class SignalApiRouteTests(unittest.TestCase):
         score_repository=None,
         cluster_repository=None,
         opportunity_repository=None,
+        pipeline_run_metrics_repository=None,
         competitor_repository=None,
         market_repository=None,
         monitored_source_repository=None,
@@ -841,6 +910,10 @@ class SignalApiRouteTests(unittest.TestCase):
             cluster_repository=cluster_repository or InMemoryClusterRepository(),
             opportunity_repository=(
                 opportunity_repository or InMemoryOpportunityRepository()
+            ),
+            pipeline_run_metrics_repository=(
+                pipeline_run_metrics_repository
+                or InMemoryPipelineRunMetricsRepository()
             ),
             competitor_repository=competitor_repository or InMemoryCompetitorRepository(),
             market_repository=market_repository or InMemoryMarketRepository(),
