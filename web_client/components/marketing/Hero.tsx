@@ -16,17 +16,17 @@ export default function Hero() {
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/[0.06] px-3 py-1">
               <span className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.9)]" />
               <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-300">
-                Continuous opportunity research
+                AI research agent for your market
               </span>
             </div>
 
             <div className="mb-8 max-w-xl">
               <h1 className="mb-5 text-4xl font-extrabold leading-tight tracking-tight text-slate-50 lg:text-5xl">
-                Find product gaps backed by real user evidence
+                Your continuous competitive research agent
               </h1>
               <p className="mb-7 max-w-lg text-base leading-relaxed text-slate-400">
-                LidScout monitors public sources across a niche and turns recurring complaints
-                into ranked opportunities with the source quotes attached.
+                LidScout watches public sources across your market, learns what matters to you,
+                and delivers ranked gaps with source evidence — without you having to ask.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Link

@@ -2,19 +2,24 @@ import ScanPanelLive from './animations/ScanPanelLive';
 
 const STEPS = [
   {
-    title: 'Watch a niche',
-    body: 'Define a niche, add the companies you care about, and attach their public sources — Reddit threads, review pages, HN, changelogs.',
-    aside: 'Workspace tools · AI devtools · vertical SaaS',
+    title: 'Define your market once',
+    body: 'Set your scope: the niche, the companies you care about, and the public sources to watch. The agent takes it from there.',
+    aside: 'Reddit · HN · G2 · forums · GitHub · review sites',
   },
   {
-    title: 'Filter real pain',
-    body: 'Every post passes a two-stage filter. Rules strip noise instantly. An LLM confirms only posts that express genuine product frustration.',
-    aside: 'Roughly 80% of incoming posts are discarded before clustering.',
+    title: 'The agent loop runs continuously',
+    body: 'Every day, the agent fetches sources, strips noise with rules then LLM relevance, extracts structured pain signals, and clusters them into themes. No prompting required.',
+    aside: '~80% of posts are discarded before a finding is extracted.',
   },
   {
-    title: 'Read the ranked gaps',
-    body: 'Surviving signals cluster into themes. Themes become gaps with a title, evidence count, source links, and a suggested wedge. Delivered Friday.',
-    aside: 'Ranked by evidence count, recency, source diversity, and specificity.',
+    title: 'Delivered three ways',
+    body: 'Gaps land in your dashboard when you want to look, in a weekly digest pushed to your inbox, and as threshold alerts when a theme crosses a significance spike.',
+    aside: 'Daily fetch · weekly synthesis · event-driven alerts',
+  },
+  {
+    title: 'Feedback trains future runs',
+    body: 'Save a gap, dismiss noise — every action is stored. The next run adjusts its ranking, source weights, and priorities based on what you\'ve already signaled matters.',
+    aside: 'The agent learns which sources are reliable, which themes to dig deeper on, and what you\'ve already acted on.',
   },
 ];
 
@@ -26,7 +31,7 @@ export default function HowItWorks() {
           How it works
         </p>
         <h2 className="mb-16 text-2xl font-bold text-slate-100">
-          From niche noise to ranked gaps
+          An agent loop, not a one-shot search
         </h2>
 
         <div className="grid items-start gap-14 lg:grid-cols-[1fr_320px]">

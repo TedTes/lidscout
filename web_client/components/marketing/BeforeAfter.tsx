@@ -16,9 +16,9 @@ export default function BeforeAfter() {
           The alternative
         </p>
         <h2 className="mb-14 max-w-xl text-3xl font-bold leading-snug text-slate-100">
-          The niche is already talking.{' '}
+          The market is already talking.{' '}
           <br className="hidden sm:block" />
-          You&apos;re just not watching.
+          You need an agent that never stops listening.
         </h2>
 
         <div className="grid items-start gap-14 lg:grid-cols-2">
@@ -53,7 +53,7 @@ export default function BeforeAfter() {
           {/* Right — product output */}
           <div>
             <p className="mb-5 text-[11px] font-semibold uppercase tracking-widest text-slate-700">
-              LidScout — this Friday
+              LidScout agent — this Friday
             </p>
 
             <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-emerald-600">

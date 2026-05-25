@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { IconArrow } from './icons';
 
 const FEATURES = [
-  '3 niches',
+  '3 markets',
   'company watchlists',
-  'weekly gap report',
+  'continuous agent loop',
+  'feedback-trained ranking',
+  'weekly digest + threshold alerts',
   'source links on every finding',
-  'email + in-app',
 ];
 
 export default function Pricing() {
@@ -45,7 +46,7 @@ export default function Pricing() {
             href="/markets"
             className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/50 transition hover:bg-violet-500"
           >
-            Get your niche report
+            Start your research agent
             <IconArrow />
           </Link>
         </div>
