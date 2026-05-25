@@ -31,6 +31,18 @@ class OpportunitySynthesisResult:
     opportunities: list[Opportunity]
 
 
+@dataclass(frozen=True)
+class OpportunitySynthesisContext:
+    """Research brief and preferences that steer opportunity synthesis."""
+
+    niche_name: str | None = None
+    target_user: str | None = None
+    objective: str | None = None
+    extra_instructions: str | None = None
+    ignored_themes: list[str] | None = None
+    ignored_categories: list[str] | None = None
+
+
 class OpportunitySynthesisService:
     """Synthesizes actionable product opportunities from pain clusters."""
 
@@ -51,6 +63,8 @@ class OpportunitySynthesisService:
         self,
         clusters: list[SignalCluster],
         signals: list[Signal],
+        *,
+        context: OpportunitySynthesisContext | None = None,
     ) -> OpportunitySynthesisResult:
         signal_index = {signal.id: signal for signal in signals}
         opportunities: list[Opportunity] = []
@@ -68,9 +82,13 @@ class OpportunitySynthesisService:
             if not cluster_signals:
                 failed_count += 1
                 continue
+            if _context_ignores_cluster(context, cluster, cluster_signals):
+                continue
 
             try:
-                opportunities.append(self._build_opportunity(cluster, cluster_signals))
+                opportunities.append(
+                    self._build_opportunity(cluster, cluster_signals, context)
+                )
             except ValueError:
                 failed_count += 1
 
@@ -96,10 +114,11 @@ class OpportunitySynthesisService:
         self,
         cluster: SignalCluster,
         signals: list[Signal],
+        context: OpportunitySynthesisContext | None,
     ) -> Opportunity:
         if self.llm_client is not None:
             try:
-                return self._build_opportunity_with_llm(cluster, signals)
+                return self._build_opportunity_with_llm(cluster, signals, context)
             except Exception as exc:
                 log_event(
                     logger,
@@ -109,16 +128,17 @@ class OpportunitySynthesisService:
                     error=str(exc),
                     error_type=type(exc).__name__,
                 )
-        return self._build_opportunity_from_templates(cluster, signals)
+        return self._build_opportunity_from_templates(cluster, signals, context)
 
     def _build_opportunity_with_llm(
         self,
         cluster: SignalCluster,
         signals: list[Signal],
+        context: OpportunitySynthesisContext | None,
     ) -> Opportunity:
         raw_json = self.llm_client.generate_structured_response(
             OPPORTUNITY_SYNTHESIS_PROMPT,
-            _cluster_content(cluster, signals),
+            _cluster_content(cluster, signals, context),
             OPPORTUNITY_SYNTHESIS_RESPONSE_SCHEMA,
         )
         try:
@@ -144,10 +164,11 @@ class OpportunitySynthesisService:
         self,
         cluster: SignalCluster,
         signals: list[Signal],
+        context: OpportunitySynthesisContext | None,
     ) -> Opportunity:
         target_user = _most_common(
             [signal.user_type for signal in signals if signal.user_type],
-            fallback="affected users",
+            fallback=context.target_user if context and context.target_user else "affected users",
         )
         workaround = _most_common(
             [
@@ -168,7 +189,7 @@ class OpportunitySynthesisService:
             title=f"Reduce {cluster.theme.lower()} friction for {target_user}",
             target_user=target_user,
             pain_summary=_pain_summary(cluster, signals),
-            why_it_matters=_why_it_matters(cluster, signals),
+            why_it_matters=_why_it_matters(cluster, signals, context),
             suggested_wedge=_suggested_wedge(category, workaround),
             evidence_count=cluster.frequency,
             confidence=_confidence_for(cluster, signals),
@@ -188,15 +209,22 @@ def _pain_summary(cluster: SignalCluster, signals: list[Signal]) -> str:
     return signals[0].pain
 
 
-def _why_it_matters(cluster: SignalCluster, signals: list[Signal]) -> str:
+def _why_it_matters(
+    cluster: SignalCluster,
+    signals: list[Signal],
+    context: OpportunitySynthesisContext | None,
+) -> str:
     willing_count = sum(
         1 for signal in signals if signal.willingness_to_pay is True
     )
-    return (
+    base = (
         f"{cluster.frequency} evidence item(s) cluster around {cluster.theme} "
         f"with an average opportunity score of {cluster.average_score:.1f}. "
         f"{willing_count} signal(s) include willingness-to-pay evidence."
     )
+    if context and context.objective:
+        return f"{base} This maps to the current research objective: {context.objective}."
+    return base
 
 
 def _suggested_wedge(category: str | None, workaround: str | None) -> str:
@@ -230,7 +258,11 @@ def _confidence_for(cluster: SignalCluster, signals: list[Signal]) -> float:
     )
 
 
-def _cluster_content(cluster: SignalCluster, signals: list[Signal]) -> str:
+def _cluster_content(
+    cluster: SignalCluster,
+    signals: list[Signal],
+    context: OpportunitySynthesisContext | None,
+) -> str:
     user_types = list({s.user_type for s in signals if s.user_type})
     categories = list({s.category for s in signals if s.category})
     workarounds = list({s.current_workaround for s in signals if s.current_workaround})
@@ -239,6 +271,15 @@ def _cluster_content(cluster: SignalCluster, signals: list[Signal]) -> str:
     market_ids = list({s.market_id for s in signals if s.market_id})
 
     lines = [
+        "research_context:",
+        f"niche_name: {context.niche_name if context and context.niche_name else 'unknown'}",
+        f"target_user: {context.target_user if context and context.target_user else 'unknown'}",
+        f"objective: {context.objective if context and context.objective else 'unknown'}",
+        (
+            "extra_instructions: "
+            f"{context.extra_instructions if context and context.extra_instructions else 'none'}"
+        ),
+        "cluster:",
         f"theme: {cluster.theme}",
         f"summary: {cluster.summary}",
         f"frequency: {cluster.frequency}",
@@ -255,6 +296,34 @@ def _cluster_content(cluster: SignalCluster, signals: list[Signal]) -> str:
     for signal in signals:
         lines.extend(_signal_evidence_lines(signal))
     return "\n".join(lines)
+
+
+def _context_ignores_cluster(
+    context: OpportunitySynthesisContext | None,
+    cluster: SignalCluster,
+    signals: list[Signal],
+) -> bool:
+    if context is None:
+        return False
+    ignored_themes = {
+        item.strip().lower()
+        for item in context.ignored_themes or []
+        if item.strip()
+    }
+    ignored_categories = {
+        item.strip().lower()
+        for item in context.ignored_categories or []
+        if item.strip()
+    }
+    theme = cluster.theme.strip().lower()
+    if theme in ignored_themes:
+        return True
+    signal_categories = {
+        signal.category.strip().lower()
+        for signal in signals
+        if signal.category and signal.category.strip()
+    }
+    return bool(signal_categories.intersection(ignored_categories))
 
 
 def _signal_evidence_lines(signal: Signal) -> list[str]:

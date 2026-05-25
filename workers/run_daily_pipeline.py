@@ -16,10 +16,12 @@ from application.ingestion import (
     SourceResolver,
 )
 from application.opportunity import (
+    OpportunitySynthesisContext,
     OpportunitySynthesisResult,
     OpportunitySynthesisService,
 )
 from application.ports import (
+    AgentActivityRepository,
     AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
@@ -36,6 +38,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
 from domain.cluster import SignalCluster
+from domain.agent import AgentActivity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
@@ -60,6 +63,7 @@ class PipelineConfig:
     opportunity_repository: OpportunityRepository | None = None
     pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
     agent_preferences_repository: AgentPreferencesRepository | None = None
+    agent_activity_repository: AgentActivityRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
     source_health_repository: SourceHealthRepository | None = None
@@ -107,6 +111,13 @@ class PipelineFetchResult:
 
 def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     """Run the full daily signal detection workflow."""
+    _record_agent_activity(
+        config.agent_activity_repository,
+        market_id=config.market_id,
+        event_type="run_started",
+        title="Agent scan started",
+        detail="The research agent started a scheduled scan.",
+    )
     fetch_result = _fetch_posts(config)
     posts = fetch_result.posts
 
@@ -140,6 +151,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         config.llm_client,
         clusters,
         signals,
+        _synthesis_context(config),
     )
     _record_source_health(
         config.source_health_repository,
@@ -178,6 +190,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         email_result=email_result,
     )
     _save_pipeline_run_metrics(config.pipeline_run_metrics_repository, result)
+    _record_pipeline_activity(config, result)
     return result
 
 
@@ -196,6 +209,7 @@ def _synthesize_opportunities(
     llm_client: LLMClient,
     clusters: list[SignalCluster],
     signals: list[Signal],
+    context: OpportunitySynthesisContext | None = None,
 ) -> OpportunitySynthesisResult:
     if opportunity_repository is None:
         return OpportunitySynthesisResult(
@@ -207,7 +221,30 @@ def _synthesize_opportunities(
     return OpportunitySynthesisService(
         opportunity_repository,
         llm_client=llm_client,
-    ).synthesize(clusters, signals)
+    ).synthesize(clusters, signals, context=context)
+
+
+def _synthesis_context(
+    config: PipelineConfig,
+) -> OpportunitySynthesisContext | None:
+    if config.market_id is None or config.market_repository is None:
+        return None
+    market = config.market_repository.get_market(config.market_id)
+    if market is None:
+        return None
+    preferences = (
+        config.agent_preferences_repository.get_agent_preferences(config.market_id)
+        if config.agent_preferences_repository is not None
+        else None
+    )
+    return OpportunitySynthesisContext(
+        niche_name=market.name,
+        target_user=market.target_user,
+        objective=market.idea_prompt,
+        extra_instructions=preferences.extra_instructions if preferences else None,
+        ignored_themes=preferences.ignored_themes if preferences else [],
+        ignored_categories=preferences.ignored_categories if preferences else [],
+    )
 
 
 def _save_pipeline_run_metrics(
@@ -249,6 +286,58 @@ def _save_pipeline_run_metrics(
     )
 
 
+def _record_agent_activity(
+    activity_repository: AgentActivityRepository | None,
+    *,
+    market_id: str | None,
+    event_type: str,
+    title: str,
+    detail: str | None = None,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    if activity_repository is None or market_id is None:
+        return
+    activity_repository.save_agent_activity(
+        AgentActivity.create(
+            market_id=market_id,
+            event_type=event_type,
+            title=title,
+            detail=detail,
+            metadata=metadata,
+        )
+    )
+
+
+def _record_pipeline_activity(
+    config: PipelineConfig,
+    result: PipelineRunResult,
+) -> None:
+    _record_agent_activity(
+        config.agent_activity_repository,
+        market_id=config.market_id,
+        event_type="run_completed",
+        title="Agent scan completed",
+        detail=(
+            f"Fetched {result.fetched_count} post(s), extracted "
+            f"{result.extracted_count} finding(s), and synthesized "
+            f"{result.opportunity_synthesis_result.synthesized_count} gap(s)."
+        ),
+        metadata={
+            "fetched_count": result.fetched_count,
+            "fetch_failed_count": result.fetch_failed_count,
+            "rule_filtered_count": result.rule_filtered_count,
+            "llm_filtered_count": result.llm_filtered_count,
+            "extracted_count": result.extracted_count,
+            "clustered_count": result.clustered_count,
+            "opportunity_synthesized_count": (
+                result.opportunity_synthesis_result.synthesized_count
+            ),
+            "email_sent": result.email_result.sent,
+            "email_error": result.email_result.error,
+        },
+    )
+
+
 def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     posts: list[RawPost] = []
     failed_count = 0
@@ -274,6 +363,24 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
             config.monitored_source_repository,
             source_result.details,
         )
+        for detail in source_result.details:
+            if detail.error is None:
+                continue
+            _record_agent_activity(
+                config.agent_activity_repository,
+                market_id=config.market_id,
+                event_type="source_failed",
+                title="Source fetch failed",
+                detail=detail.error,
+                metadata={
+                    "locator": detail.source.locator,
+                    "source_type": detail.source.options.get("source_type"),
+                    "monitored_source_id": detail.source.options.get(
+                        "monitored_source_id"
+                    ),
+                    "fetched_count": detail.fetched_count,
+                },
+            )
 
     return PipelineFetchResult(
         posts=posts,
@@ -445,7 +552,12 @@ def _configured_sources(
             market_id,
         )
         monitored_source_inputs = [
-            _monitored_source_input(source, competitor_repository, market_repository)
+            _monitored_source_input(
+                source,
+                competitor_repository,
+                market_repository,
+                agent_preferences_repository,
+            )
             for source in monitored_sources
         ]
         if configured_monitored_sources:
@@ -462,6 +574,7 @@ def _monitored_source_input(
     source: MonitoredSource,
     competitor_repository: CompetitorRepository | None,
     market_repository: MarketRepository | None,
+    agent_preferences_repository: AgentPreferencesRepository | None,
 ) -> SourceInput:
     source_input = source.to_source_input()
     options = dict(source_input.options)
@@ -493,6 +606,23 @@ def _monitored_source_input(
                 options["market_target_user"] = market.target_user
             if market.idea_prompt:
                 options["market_idea_prompt"] = market.idea_prompt
+            if agent_preferences_repository is not None:
+                preferences = agent_preferences_repository.get_agent_preferences(
+                    market.id,
+                )
+                if preferences is not None:
+                    if preferences.extra_instructions:
+                        options["agent_extra_instructions"] = (
+                            preferences.extra_instructions
+                        )
+                    if preferences.ignored_themes:
+                        options["agent_ignored_themes"] = ", ".join(
+                            preferences.ignored_themes
+                        )
+                    if preferences.ignored_categories:
+                        options["agent_ignored_categories"] = ", ".join(
+                            preferences.ignored_categories
+                        )
 
     return SourceInput.create(
         locator=source_input.locator,
