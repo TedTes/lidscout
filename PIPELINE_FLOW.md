@@ -38,3 +38,24 @@ API reads repositories
 
 UI renders gaps/findings/themes/reports/sources
 → web_client/app/(app), web_client/lib/api.ts
+
+
+
+
+
+
+So I’d revise the implementation plan:
+
+Add SourceTemplate.
+Add SourceCandidate.
+Add renderer with required-variable skipping.
+Add code-defined default templates.
+Support both market-level and competitor-level templates.
+Use applicable_categories: list[str].
+Add deterministic ranking/precedence.
+Refactor SourceSuggestionService.
+Update API route.
+Update tests.
+
+Later: validation worker.
+Later: DB-backed editable templates.
