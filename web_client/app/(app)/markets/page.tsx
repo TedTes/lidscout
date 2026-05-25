@@ -26,7 +26,7 @@ export default function NichesPage() {
     signalApi.getMarkets()
       .then(response => {
         if (response.markets[0]) {
-          router.replace(`/markets/${encodeURIComponent(response.markets[0].id)}`);
+          router.replace(`/markets/${encodeURIComponent(response.markets[0].id)}/gaps`);
           return;
         }
         setLoading(false);
@@ -35,7 +35,7 @@ export default function NichesPage() {
   }, [router]);
 
   const handleAdd = (market: Market) => {
-    router.replace(`/markets/${encodeURIComponent(market.id)}`);
+    router.replace(`/markets/${encodeURIComponent(market.id)}/gaps`);
   };
 
   if (loading) {

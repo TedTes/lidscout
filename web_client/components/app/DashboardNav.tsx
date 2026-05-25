@@ -38,7 +38,11 @@ function activeNicheFromPath(pathname: string): string | null {
 }
 
 function nicheHref(nicheId: string) {
-  return `/markets/${encodeURIComponent(nicheId)}`;
+  return `/markets/${encodeURIComponent(nicheId)}/gaps`;
+}
+
+function addNicheHref() {
+  return '/markets/new';
 }
 
 function NicheList({ markets, activeId }: { markets: Market[]; activeId: string | null }) {
@@ -106,7 +110,7 @@ function MobileNicheMenu({ markets, activeId }: { markets: Market[]; activeId: s
         <div className="absolute left-3 right-3 top-full z-50 mt-1 overflow-hidden rounded-lg border border-slate-700/60 bg-[#0b0e24] py-1 shadow-xl shadow-black/50">
           {markets.length === 0 ? (
             <Link
-              href="/markets"
+              href={addNicheHref()}
               onClick={() => setOpen(false)}
               className="flex items-center gap-2 px-3 py-2 text-xs text-violet-400"
             >
@@ -140,7 +144,7 @@ export default function DashboardNav() {
     signalApi.getMarkets()
       .then(response => setMarkets(response.markets))
       .catch(() => setMarkets([]));
-  }, []);
+  }, [pathname]);
 
   return (
     <>
@@ -162,7 +166,7 @@ export default function DashboardNav() {
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-700">
               Niches
             </p>
-            <Link href="/markets" className="rounded p-1 text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400" aria-label="Add niche">
+            <Link href={addNicheHref()} className="rounded p-1 text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400" aria-label="Add niche">
               <IconPlus />
             </Link>
           </div>
@@ -190,7 +194,7 @@ export default function DashboardNav() {
         </Link>
         <MobileNicheMenu markets={markets} activeId={activeId} />
         <Link
-          href="/markets"
+          href={addNicheHref()}
           className="rounded-md border border-slate-800/70 bg-slate-900/50 p-2 text-slate-500 transition hover:text-slate-300"
           aria-label="Add niche"
         >

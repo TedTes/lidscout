@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation';
+import NicheGapsView from '@/components/app/NicheGapsView';
 
-export default function MarketGapsRedirect({ params }: { params: { marketId: string } }) {
-  redirect(`/markets/${encodeURIComponent(params.marketId)}`);
-}
+export default NicheGapsView;

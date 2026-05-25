@@ -3,7 +3,7 @@ import Link from 'next/link';
 type NicheView = 'gaps' | 'themes' | 'findings' | 'reports' | 'sources';
 
 const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => string }> = [
-  { id: 'gaps', label: 'Gaps', href: marketId => `/markets/${encodeURIComponent(marketId)}` },
+  { id: 'gaps', label: 'Gaps', href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
   { id: 'themes', label: 'Themes', href: marketId => `/markets/${encodeURIComponent(marketId)}/themes` },
   { id: 'findings', label: 'Findings', href: marketId => `/markets/${encodeURIComponent(marketId)}/findings` },
   { id: 'reports', label: 'Report', href: marketId => `/markets/${encodeURIComponent(marketId)}/reports` },
