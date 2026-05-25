@@ -6,6 +6,12 @@ import axios from 'axios';
 import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
+  AgentColdStartPlan,
+  AgentFeedback,
+  AgentFeedbackRequest,
+  AgentFeedbackResponse,
+  AgentPreferences,
+  AgentPreferencesUpdateRequest,
   Competitor,
   CompetitorsResponse,
   ClustersResponse,
@@ -93,6 +99,84 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load niches');
+      }
+      throw error;
+    }
+  }
+
+  async getMarketAgentColdStart(marketId: string): Promise<AgentColdStartPlan> {
+    try {
+      const response = await api.get<AgentColdStartPlan>(
+        `/markets/${marketId}/agent/cold-start`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load agent setup');
+      }
+      throw error;
+    }
+  }
+
+  async getMarketAgentPreferences(marketId: string): Promise<AgentPreferences> {
+    try {
+      const response = await api.get<AgentPreferences>(
+        `/markets/${marketId}/agent/preferences`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load agent preferences');
+      }
+      throw error;
+    }
+  }
+
+  async updateMarketAgentPreferences(
+    marketId: string,
+    request: AgentPreferencesUpdateRequest
+  ): Promise<AgentPreferences> {
+    try {
+      const response = await api.patch<AgentPreferences>(
+        `/markets/${marketId}/agent/preferences`,
+        request
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to update agent preferences');
+      }
+      throw error;
+    }
+  }
+
+  async getMarketAgentFeedback(marketId: string): Promise<AgentFeedbackResponse> {
+    try {
+      const response = await api.get<AgentFeedbackResponse>(
+        `/markets/${marketId}/agent/feedback`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load agent feedback');
+      }
+      throw error;
+    }
+  }
+
+  async createOpportunityFeedback(
+    opportunityId: string,
+    request: AgentFeedbackRequest
+  ): Promise<AgentFeedback> {
+    try {
+      const response = await api.post<AgentFeedback>(
+        `/opportunities/${opportunityId}/feedback`,
+        request
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to record feedback');
       }
       throw error;
     }

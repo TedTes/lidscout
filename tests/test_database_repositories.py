@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
+from domain.agent import AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -13,6 +14,8 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
+    SQLiteAgentFeedbackRepository,
+    SQLiteAgentPreferencesRepository,
     SQLiteClusterRepository,
     SQLiteCompetitorRepository,
     SQLiteMarketRepository,
@@ -195,6 +198,66 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertTrue(repository.delete_market("workspace-tools"))
             self.assertIsNone(repository.get_market("workspace-tools"))
             self.assertFalse(repository.delete_market("workspace-tools"))
+            repository.close()
+
+    def test_sqlite_agent_preferences_repository_saves_and_loads_preferences(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteAgentPreferencesRepository(database_path)
+            preferences = AgentPreferences.create(
+                market_id="workspace-tools",
+                preferred_source_families=["reviews", "social"],
+                ignored_themes=["pricing"],
+                created_at=datetime(2026, 5, 25, 16, 0, tzinfo=UTC),
+            )
+
+            self.assertTrue(repository.save_agent_preferences(preferences))
+            repository.close()
+
+            repository = SQLiteAgentPreferencesRepository(database_path)
+            self.assertEqual(
+                repository.get_agent_preferences("workspace-tools"),
+                preferences,
+            )
+            updated = AgentPreferences.create(
+                market_id="workspace-tools",
+                muted_source_ids=["source-1"],
+                created_at=preferences.created_at,
+            )
+            self.assertTrue(repository.save_agent_preferences(updated))
+            self.assertEqual(
+                repository.get_agent_preferences("workspace-tools"),
+                updated,
+            )
+            self.assertTrue(repository.delete_agent_preferences("workspace-tools"))
+            self.assertIsNone(repository.get_agent_preferences("workspace-tools"))
+            repository.close()
+
+    def test_sqlite_agent_feedback_repository_saves_and_loads_feedback(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteAgentFeedbackRepository(database_path)
+            feedback = AgentFeedback.create(
+                id="feedback-1",
+                market_id="workspace-tools",
+                opportunity_id="opportunity-1",
+                action="save",
+                created_at=datetime(2026, 5, 25, 16, 10, tzinfo=UTC),
+            )
+
+            self.assertTrue(repository.save_agent_feedback(feedback))
+            self.assertFalse(repository.save_agent_feedback(feedback))
+            repository.close()
+
+            repository = SQLiteAgentFeedbackRepository(database_path)
+            self.assertEqual(
+                repository.list_agent_feedback(market_id="workspace-tools"),
+                [feedback],
+            )
+            self.assertEqual(
+                repository.list_agent_feedback(action="dismiss"),
+                [],
+            )
             repository.close()
 
     def test_sqlite_pipeline_run_metrics_repository_saves_and_loads_metrics(self):

@@ -1,5 +1,6 @@
 import unittest
 
+from domain.agent import AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -9,6 +10,8 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
+    InMemoryAgentFeedbackRepository,
+    InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMarketRepository,
@@ -132,6 +135,40 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertFalse(repository.update_market(Market.create(id="missing", name="Missing")))
         self.assertTrue(repository.delete_market("workspace-tools"))
         self.assertFalse(repository.delete_market("workspace-tools"))
+
+    def test_agent_preferences_repository_persists_preferences(self):
+        repository = InMemoryAgentPreferencesRepository()
+        preferences = AgentPreferences.create(
+            market_id="workspace-tools",
+            preferred_source_families=["reviews"],
+        )
+
+        self.assertTrue(repository.save_agent_preferences(preferences))
+        self.assertEqual(
+            repository.get_agent_preferences("workspace-tools"),
+            preferences,
+        )
+        self.assertTrue(repository.delete_agent_preferences("workspace-tools"))
+        self.assertIsNone(repository.get_agent_preferences("workspace-tools"))
+
+    def test_agent_feedback_repository_persists_feedback(self):
+        repository = InMemoryAgentFeedbackRepository()
+        feedback = AgentFeedback.create(
+            id="feedback-1",
+            market_id="workspace-tools",
+            opportunity_id="opportunity-1",
+            action="save",
+        )
+
+        self.assertTrue(repository.save_agent_feedback(feedback))
+        self.assertEqual(
+            repository.list_agent_feedback(market_id="workspace-tools"),
+            [feedback],
+        )
+        self.assertEqual(
+            repository.list_agent_feedback(action="dismiss"),
+            [],
+        )
 
     def test_source_locator_repository_persists_unique_locators(self):
         repository = InMemorySourceLocatorRepository()

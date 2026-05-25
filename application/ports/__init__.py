@@ -1,5 +1,7 @@
 """Application persistence ports."""
 from application.ports.repositories import (
+    AgentFeedbackRepository,
+    AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
     MarketRepository,
@@ -14,6 +16,8 @@ from application.ports.repositories import (
 
 __all__ = [
     "ClusterRepository",
+    "AgentFeedbackRepository",
+    "AgentPreferencesRepository",
     "CompetitorRepository",
     "MarketRepository",
     "MonitoredSourceRepository",

@@ -1,0 +1,79 @@
+[
+  {
+    "id": "saved-gap-should-rank-first",
+    "expected_top_opportunity_id": "opportunity-calendar",
+    "opportunities": [
+      {
+        "id": "opportunity-calendar",
+        "cluster_id": "cluster-calendar",
+        "title": "Make calendar sync reliable for workspace admins",
+        "target_user": "workspace admins",
+        "pain_summary": "Teams lose trust when calendar sync breaks repeatedly.",
+        "why_it_matters": "Repeated evidence points to high operational pain.",
+        "suggested_wedge": "Build a reliability-focused calendar sync workflow.",
+        "evidence_count": 2,
+        "confidence": 0.62,
+        "evidence_signal_ids": ["signal-1", "signal-2"]
+      },
+      {
+        "id": "opportunity-templates",
+        "cluster_id": "cluster-templates",
+        "title": "Improve template browsing",
+        "target_user": "workspace admins",
+        "pain_summary": "Users want easier template discovery.",
+        "why_it_matters": "The signal is useful but less urgent.",
+        "suggested_wedge": "Build better template categorization.",
+        "evidence_count": 5,
+        "confidence": 0.72,
+        "evidence_signal_ids": ["signal-3"]
+      }
+    ],
+    "feedback": [
+      {
+        "id": "feedback-1",
+        "market_id": "workspace-tools",
+        "opportunity_id": "opportunity-calendar",
+        "action": "save"
+      }
+    ]
+  },
+  {
+    "id": "dismissed-gap-should-drop",
+    "expected_top_opportunity_id": "opportunity-reliability",
+    "opportunities": [
+      {
+        "id": "opportunity-pricing",
+        "cluster_id": "cluster-pricing",
+        "title": "Repackage pricing for small teams",
+        "target_user": "startup teams",
+        "pain_summary": "Some small teams complain about pricing.",
+        "why_it_matters": "Price sensitivity appears in public evidence.",
+        "suggested_wedge": "Build a focused starter plan.",
+        "evidence_count": 7,
+        "confidence": 0.8,
+        "evidence_signal_ids": ["signal-4"]
+      },
+      {
+        "id": "opportunity-reliability",
+        "cluster_id": "cluster-reliability",
+        "title": "Reduce failed imports for operators",
+        "target_user": "operators",
+        "pain_summary": "Failed imports interrupt onboarding workflows.",
+        "why_it_matters": "Reliability issues block activation.",
+        "suggested_wedge": "Build safer import recovery.",
+        "evidence_count": 3,
+        "confidence": 0.68,
+        "evidence_signal_ids": ["signal-5"]
+      }
+    ],
+    "feedback": [
+      {
+        "id": "feedback-2",
+        "market_id": "workspace-tools",
+        "opportunity_id": "opportunity-pricing",
+        "action": "dismiss",
+        "reason": "Not pursuing pricing changes."
+      }
+    ]
+  }
+]

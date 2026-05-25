@@ -9,6 +9,8 @@ import sqlite3
 from typing import Any
 
 from application.ports import (
+    AgentFeedbackRepository,
+    AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
     MarketRepository,
@@ -20,6 +22,7 @@ from application.ports import (
     SignalRepository,
     SourceLocatorRepository,
 )
+from domain.agent import AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -180,6 +183,52 @@ class InMemoryMarketRepository(MarketRepository):
 
     def delete_market(self, market_id: str) -> bool:
         return self.markets.pop(market_id, None) is not None
+
+
+@dataclass
+class InMemoryAgentPreferencesRepository(AgentPreferencesRepository):
+    """In-memory agent preferences repository."""
+
+    preferences_by_market: dict[str, AgentPreferences] = field(default_factory=dict)
+
+    def save_agent_preferences(self, preferences: AgentPreferences) -> bool:
+        self.preferences_by_market[preferences.market_id] = preferences
+        return True
+
+    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
+        return self.preferences_by_market.get(market_id)
+
+    def delete_agent_preferences(self, market_id: str) -> bool:
+        return self.preferences_by_market.pop(market_id, None) is not None
+
+
+@dataclass
+class InMemoryAgentFeedbackRepository(AgentFeedbackRepository):
+    """In-memory agent feedback repository."""
+
+    feedback_by_id: dict[str, AgentFeedback] = field(default_factory=dict)
+
+    def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        self.feedback_by_id[feedback.id] = feedback
+        return True
+
+    def list_agent_feedback(
+        self,
+        *,
+        market_id: str | None = None,
+        opportunity_id: str | None = None,
+        action: str | None = None,
+    ) -> list[AgentFeedback]:
+        feedback = list(self.feedback_by_id.values())
+        if market_id is not None:
+            feedback = [item for item in feedback if item.market_id == market_id]
+        if opportunity_id is not None:
+            feedback = [
+                item for item in feedback if item.opportunity_id == opportunity_id
+            ]
+        if action is not None:
+            feedback = [item for item in feedback if item.action == action]
+        return sorted(feedback, key=lambda item: item.created_at or datetime.min)
 
 
 @dataclass
@@ -733,6 +782,119 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
         )
         self.connection.commit()
         return cursor.rowcount > 0
+
+
+class SQLiteAgentPreferencesRepository(_SQLiteRepository, AgentPreferencesRepository):
+    """SQLite-backed agent preferences repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_preferences (
+                market_id TEXT PRIMARY KEY,
+                preferred_source_families TEXT NOT NULL,
+                ignored_themes TEXT NOT NULL,
+                ignored_categories TEXT NOT NULL,
+                muted_source_ids TEXT NOT NULL,
+                extra_instructions TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_agent_preferences(self, preferences: AgentPreferences) -> bool:
+        self.connection.execute(
+            """
+            INSERT INTO agent_preferences (
+                market_id, preferred_source_families, ignored_themes,
+                ignored_categories, muted_source_ids, extra_instructions,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(market_id) DO UPDATE SET
+                preferred_source_families = excluded.preferred_source_families,
+                ignored_themes = excluded.ignored_themes,
+                ignored_categories = excluded.ignored_categories,
+                muted_source_ids = excluded.muted_source_ids,
+                extra_instructions = excluded.extra_instructions,
+                updated_at = excluded.updated_at
+            """,
+            _agent_preferences_values(preferences, sqlite=True),
+        )
+        self.connection.commit()
+        return True
+
+    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
+        row = self.connection.execute(
+            "SELECT * FROM agent_preferences WHERE market_id = ?",
+            (market_id,),
+        ).fetchone()
+        return _agent_preferences_from_row(row) if row else None
+
+    def delete_agent_preferences(self, market_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM agent_preferences WHERE market_id = ?",
+            (market_id,),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+
+class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
+    """SQLite-backed agent feedback repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_feedback (
+                id TEXT PRIMARY KEY,
+                market_id TEXT NOT NULL,
+                opportunity_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                reason TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT OR IGNORE INTO agent_feedback (
+                id, market_id, opportunity_id, action, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            _agent_feedback_values(feedback, sqlite=True),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def list_agent_feedback(
+        self,
+        *,
+        market_id: str | None = None,
+        opportunity_id: str | None = None,
+        action: str | None = None,
+    ) -> list[AgentFeedback]:
+        query = "SELECT * FROM agent_feedback"
+        clauses: list[str] = []
+        params: list[str] = []
+        if market_id is not None:
+            clauses.append("market_id = ?")
+            params.append(market_id)
+        if opportunity_id is not None:
+            clauses.append("opportunity_id = ?")
+            params.append(opportunity_id)
+        if action is not None:
+            clauses.append("action = ?")
+            params.append(action)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_feedback_from_row(row) for row in rows]
 
 
 class SQLitePipelineRunMetricsRepository(
@@ -1440,6 +1602,91 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
         return _rowcount(cursor) > 0
 
 
+class PostgresAgentPreferencesRepository(
+    _PostgresRepository,
+    AgentPreferencesRepository,
+):
+    """Postgres-backed agent preferences repository."""
+
+    def save_agent_preferences(self, preferences: AgentPreferences) -> bool:
+        self.connection.execute(
+            """
+            INSERT INTO agent_preferences (
+                market_id, preferred_source_families, ignored_themes,
+                ignored_categories, muted_source_ids, extra_instructions,
+                created_at, updated_at
+            ) VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+            ON CONFLICT (market_id) DO UPDATE SET
+                preferred_source_families = EXCLUDED.preferred_source_families,
+                ignored_themes = EXCLUDED.ignored_themes,
+                ignored_categories = EXCLUDED.ignored_categories,
+                muted_source_ids = EXCLUDED.muted_source_ids,
+                extra_instructions = EXCLUDED.extra_instructions,
+                updated_at = EXCLUDED.updated_at
+            """,
+            _agent_preferences_values(preferences, sqlite=False),
+        )
+        self.connection.commit()
+        return True
+
+    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
+        row = self.connection.execute(
+            "SELECT * FROM agent_preferences WHERE market_id = %s",
+            (market_id,),
+        ).fetchone()
+        return _agent_preferences_from_row(row) if row else None
+
+    def delete_agent_preferences(self, market_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM agent_preferences WHERE market_id = %s",
+            (market_id,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+
+class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackRepository):
+    """Postgres-backed agent feedback repository."""
+
+    def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO agent_feedback (
+                id, market_id, opportunity_id, action, reason, created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            _agent_feedback_values(feedback, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def list_agent_feedback(
+        self,
+        *,
+        market_id: str | None = None,
+        opportunity_id: str | None = None,
+        action: str | None = None,
+    ) -> list[AgentFeedback]:
+        query = "SELECT * FROM agent_feedback"
+        clauses: list[str] = []
+        params: list[str] = []
+        if market_id is not None:
+            clauses.append("market_id = %s")
+            params.append(market_id)
+        if opportunity_id is not None:
+            clauses.append("opportunity_id = %s")
+            params.append(opportunity_id)
+        if action is not None:
+            clauses.append("action = %s")
+            params.append(action)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_feedback_from_row(row) for row in rows]
+
+
 class PostgresPipelineRunMetricsRepository(
     _PostgresRepository,
     PipelineRunMetricsRepository,
@@ -1798,6 +2045,58 @@ def _market_from_row(row: sqlite3.Row) -> Market:
         description=row["description"],
         target_user=row["target_user"],
         idea_prompt=row["idea_prompt"],
+        created_at=_datetime_from_text(row["created_at"]),
+    )
+
+
+def _agent_preferences_values(
+    preferences: AgentPreferences,
+    *,
+    sqlite: bool,
+) -> tuple:
+    return (
+        preferences.market_id,
+        _to_json(preferences.preferred_source_families),
+        _to_json(preferences.ignored_themes),
+        _to_json(preferences.ignored_categories),
+        _to_json(preferences.muted_source_ids),
+        preferences.extra_instructions,
+        _datetime_to_text(preferences.created_at) if sqlite else preferences.created_at,
+        _datetime_to_text(preferences.updated_at) if sqlite else preferences.updated_at,
+    )
+
+
+def _agent_preferences_from_row(row: sqlite3.Row) -> AgentPreferences:
+    return AgentPreferences.create(
+        market_id=row["market_id"],
+        preferred_source_families=_from_json(row["preferred_source_families"]),
+        ignored_themes=_from_json(row["ignored_themes"]),
+        ignored_categories=_from_json(row["ignored_categories"]),
+        muted_source_ids=_from_json(row["muted_source_ids"]),
+        extra_instructions=row["extra_instructions"],
+        created_at=_datetime_from_text(row["created_at"]),
+        updated_at=_datetime_from_text(row["updated_at"]),
+    )
+
+
+def _agent_feedback_values(feedback: AgentFeedback, *, sqlite: bool) -> tuple:
+    return (
+        feedback.id,
+        feedback.market_id,
+        feedback.opportunity_id,
+        feedback.action,
+        feedback.reason,
+        _datetime_to_text(feedback.created_at) if sqlite else feedback.created_at,
+    )
+
+
+def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
+    return AgentFeedback.create(
+        id=row["id"],
+        market_id=row["market_id"],
+        opportunity_id=row["opportunity_id"],
+        action=row["action"],
+        reason=row["reason"],
         created_at=_datetime_from_text(row["created_at"]),
     )
 

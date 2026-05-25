@@ -28,6 +28,8 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresClusterRepository") as cluster_repository,
             patch("api.dependencies.PostgresOpportunityRepository") as opportunity_repository,
             patch("api.dependencies.PostgresPipelineRunMetricsRepository") as metrics_repository,
+            patch("api.dependencies.PostgresAgentPreferencesRepository") as agent_preferences_repository,
+            patch("api.dependencies.PostgresAgentFeedbackRepository") as agent_feedback_repository,
             patch("api.dependencies.PostgresCompetitorRepository") as competitor_repository,
             patch("api.dependencies.PostgresMarketRepository") as market_repository,
             patch("api.dependencies.PostgresMonitoredSourceRepository") as monitored_source_repository,
@@ -50,6 +52,8 @@ class ApiDependencyTests(unittest.TestCase):
         cluster_repository.assert_called_once_with(connection=connection)
         opportunity_repository.assert_called_once_with(connection=connection)
         metrics_repository.assert_called_once_with(connection=connection)
+        agent_preferences_repository.assert_called_once_with(connection=connection)
+        agent_feedback_repository.assert_called_once_with(connection=connection)
         competitor_repository.assert_called_once_with(connection=connection)
         market_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
@@ -85,6 +89,14 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(
             dependencies.pipeline_run_metrics_repository,
             metrics_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.agent_preferences_repository,
+            agent_preferences_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.agent_feedback_repository,
+            agent_feedback_repository.return_value,
         )
         self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
         self.assertIs(dependencies.market_repository, market_repository.return_value)
@@ -123,6 +135,8 @@ class ApiDependencyTests(unittest.TestCase):
             patch("api.dependencies.PostgresClusterRepository"),
             patch("api.dependencies.PostgresOpportunityRepository"),
             patch("api.dependencies.PostgresPipelineRunMetricsRepository"),
+            patch("api.dependencies.PostgresAgentPreferencesRepository"),
+            patch("api.dependencies.PostgresAgentFeedbackRepository"),
             patch("api.dependencies.PostgresCompetitorRepository"),
             patch("api.dependencies.PostgresMarketRepository"),
             patch("api.dependencies.PostgresMonitoredSourceRepository"),

@@ -5,8 +5,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from application.agent import (
+    AgentColdStartPlan,
+    AgentColdStartService,
+    rank_opportunities_with_feedback,
+)
 from application.ingestion import SourceAdapter
 from application.ports import (
+    AgentFeedbackRepository,
+    AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
     MarketRepository,
@@ -21,6 +28,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_suggestions import SourceSuggestion, SourceSuggestionService
 from domain.cluster import SignalCluster
+from domain.agent import AgentFeedback, AgentPreferences
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.opportunity import Opportunity
@@ -28,6 +36,8 @@ from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
+    InMemoryAgentFeedbackRepository,
+    InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMarketRepository,
@@ -98,6 +108,24 @@ class MarketUpdateRequest(BaseModel):
     idea_prompt: str | None = None
 
 
+class AgentPreferencesRequest(BaseModel):
+    """HTTP request body for updating agent preferences."""
+
+    preferred_source_families: list[str] | None = None
+    ignored_themes: list[str] | None = None
+    ignored_categories: list[str] | None = None
+    muted_source_ids: list[str] | None = None
+    extra_instructions: str | None = None
+
+
+class AgentFeedbackRequest(BaseModel):
+    """HTTP request body for recording feedback on a gap."""
+
+    market_id: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    reason: str | None = None
+
+
 class MonitoredSourceRequest(BaseModel):
     """HTTP request body for creating a monitored source."""
 
@@ -134,6 +162,12 @@ class SignalApiDependencies:
     )
     pipeline_run_metrics_repository: PipelineRunMetricsRepository = field(
         default_factory=InMemoryPipelineRunMetricsRepository
+    )
+    agent_preferences_repository: AgentPreferencesRepository = field(
+        default_factory=InMemoryAgentPreferencesRepository
+    )
+    agent_feedback_repository: AgentFeedbackRepository = field(
+        default_factory=InMemoryAgentFeedbackRepository
     )
     competitor_repository: CompetitorRepository = field(
         default_factory=InMemoryCompetitorRepository
@@ -245,6 +279,13 @@ async def list_opportunities(
             o for o in opportunities
             if any(sid in scoped_signal_ids for sid in o.evidence_signal_ids)
         ]
+    if market_id is not None:
+        opportunities = rank_opportunities_with_feedback(
+            opportunities,
+            dependencies.agent_feedback_repository.list_agent_feedback(
+                market_id=market_id,
+            ),
+        )
     return {
         "opportunities": [
             _serialize_opportunity(o, dependencies, market_id=market_id)
@@ -591,6 +632,140 @@ async def list_market_source_suggestions(
             )
         ]
     }
+
+
+@router.get("/markets/{market_id}/agent/cold-start")
+async def get_market_agent_cold_start(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return cold-start setup guidance for one niche research agent."""
+    market = dependencies.market_repository.get_market(market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    competitors = [
+        competitor
+        for competitor in dependencies.competitor_repository.list_competitors()
+        if competitor.market_id == market_id
+    ]
+    sources = dependencies.monitored_source_repository.list_monitored_sources(
+        market_id=market_id,
+    )
+    suggestions = SourceSuggestionService().suggest_for_market(
+        market,
+        sources,
+        competitors=competitors,
+    )
+    plan = AgentColdStartService().build_plan(
+        market=market,
+        competitors=competitors,
+        monitored_sources=sources,
+        source_suggestions=suggestions,
+    )
+    return _serialize_agent_cold_start_plan(plan)
+
+
+@router.get("/markets/{market_id}/agent/preferences")
+async def get_market_agent_preferences(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return persisted preferences for one niche research agent."""
+    _ensure_market_exists(market_id, dependencies)
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    )
+    if preferences is None:
+        preferences = AgentPreferences.create(market_id=market_id)
+    return _serialize_agent_preferences(preferences)
+
+
+@router.patch("/markets/{market_id}/agent/preferences")
+async def update_market_agent_preferences(
+    market_id: str,
+    request: AgentPreferencesRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Update persisted preferences for one niche research agent."""
+    _ensure_market_exists(market_id, dependencies)
+    existing = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    ) or AgentPreferences.create(market_id=market_id)
+    fields = _model_fields_set(request)
+    try:
+        preferences = AgentPreferences.create(
+            market_id=market_id,
+            preferred_source_families=(
+                request.preferred_source_families
+                if "preferred_source_families" in fields
+                else existing.preferred_source_families
+            ),
+            ignored_themes=(
+                request.ignored_themes
+                if "ignored_themes" in fields
+                else existing.ignored_themes
+            ),
+            ignored_categories=(
+                request.ignored_categories
+                if "ignored_categories" in fields
+                else existing.ignored_categories
+            ),
+            muted_source_ids=(
+                request.muted_source_ids
+                if "muted_source_ids" in fields
+                else existing.muted_source_ids
+            ),
+            extra_instructions=(
+                request.extra_instructions
+                if "extra_instructions" in fields
+                else existing.extra_instructions
+            ),
+            created_at=existing.created_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.agent_preferences_repository.save_agent_preferences(preferences)
+    return _serialize_agent_preferences(preferences)
+
+
+@router.get("/markets/{market_id}/agent/feedback")
+async def list_market_agent_feedback(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return feedback events for one niche research agent."""
+    _ensure_market_exists(market_id, dependencies)
+    feedback = dependencies.agent_feedback_repository.list_agent_feedback(
+        market_id=market_id,
+    )
+    return {"feedback": [_serialize_agent_feedback(item) for item in feedback]}
+
+
+@router.post("/opportunities/{opportunity_id}/feedback")
+async def create_opportunity_feedback(
+    opportunity_id: str,
+    request: AgentFeedbackRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Record user feedback on one synthesized gap."""
+    _ensure_market_exists(request.market_id, dependencies)
+    if dependencies.opportunity_repository.get_opportunity(opportunity_id) is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+
+    try:
+        feedback = AgentFeedback.create(
+            market_id=request.market_id,
+            opportunity_id=opportunity_id,
+            action=request.action,
+            reason=request.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.agent_feedback_repository.save_agent_feedback(feedback)
+    return _serialize_agent_feedback(feedback)
 
 
 @router.get("/sources")
@@ -1040,6 +1215,53 @@ def _serialize_source_suggestion(suggestion: SourceSuggestion) -> dict[str, Any]
         "rank_score": suggestion.rank_score,
         "validation_status": suggestion.validation_status,
         "validation_error": suggestion.validation_error,
+    }
+
+
+def _serialize_agent_cold_start_plan(plan: AgentColdStartPlan) -> dict[str, Any]:
+    return {
+        "market_id": plan.market_id,
+        "status": plan.status,
+        "brief": {
+            "market_id": plan.brief.market_id,
+            "niche_name": plan.brief.niche_name,
+            "target_user": plan.brief.target_user,
+            "objective": plan.brief.objective,
+            "company_count": plan.brief.company_count,
+            "source_family_priorities": plan.brief.source_family_priorities,
+        },
+        "monitored_source_count": plan.monitored_source_count,
+        "active_source_count": plan.active_source_count,
+        "suggested_source_count": plan.suggested_source_count,
+        "next_actions": plan.next_actions,
+    }
+
+
+def _serialize_agent_preferences(preferences: AgentPreferences) -> dict[str, Any]:
+    return {
+        "market_id": preferences.market_id,
+        "preferred_source_families": preferences.preferred_source_families,
+        "ignored_themes": preferences.ignored_themes,
+        "ignored_categories": preferences.ignored_categories,
+        "muted_source_ids": preferences.muted_source_ids,
+        "extra_instructions": preferences.extra_instructions,
+        "created_at": (
+            preferences.created_at.isoformat() if preferences.created_at else None
+        ),
+        "updated_at": (
+            preferences.updated_at.isoformat() if preferences.updated_at else None
+        ),
+    }
+
+
+def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
+    return {
+        "id": feedback.id,
+        "market_id": feedback.market_id,
+        "opportunity_id": feedback.opportunity_id,
+        "action": feedback.action,
+        "reason": feedback.reason,
+        "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
     }
 
 

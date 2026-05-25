@@ -3,6 +3,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from domain.agent import AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -13,6 +14,8 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceLocator
 from infrastructure.db import (
+    PostgresAgentFeedbackRepository,
+    PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
     PostgresCompetitorRepository,
     PostgresMarketRepository,
@@ -427,6 +430,78 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertIn("UPDATE markets", connection.calls[3][0])
         self.assertIn("DELETE FROM markets", connection.calls[4][0])
         self.assertEqual(connection.commit_count, 3)
+
+    def test_agent_preferences_repository_saves_and_loads_preferences(self):
+        created_at = datetime(2026, 5, 25, 16, 0, tzinfo=UTC)
+        preferences = AgentPreferences.create(
+            market_id="workspace-tools",
+            preferred_source_families=["reviews"],
+            ignored_themes=["pricing"],
+            created_at=created_at,
+        )
+        row = {
+            "market_id": "workspace-tools",
+            "preferred_source_families": ["reviews"],
+            "ignored_themes": ["pricing"],
+            "ignored_categories": [],
+            "muted_source_ids": [],
+            "extra_instructions": None,
+            "created_at": created_at,
+            "updated_at": preferences.updated_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rowcount=1),
+            ]
+        )
+        repository = PostgresAgentPreferencesRepository(connection=connection)
+
+        self.assertTrue(repository.save_agent_preferences(preferences))
+        self.assertEqual(
+            repository.get_agent_preferences("workspace-tools"),
+            preferences,
+        )
+        self.assertTrue(repository.delete_agent_preferences("workspace-tools"))
+        self.assertIn("INSERT INTO agent_preferences", connection.calls[0][0])
+        self.assertIn("SELECT * FROM agent_preferences", connection.calls[1][0])
+        self.assertIn("DELETE FROM agent_preferences", connection.calls[2][0])
+        self.assertEqual(connection.commit_count, 2)
+
+    def test_agent_feedback_repository_saves_and_loads_feedback(self):
+        created_at = datetime(2026, 5, 25, 16, 10, tzinfo=UTC)
+        feedback = AgentFeedback.create(
+            id="feedback-1",
+            market_id="workspace-tools",
+            opportunity_id="opportunity-1",
+            action="save",
+            created_at=created_at,
+        )
+        row = {
+            "id": "feedback-1",
+            "market_id": "workspace-tools",
+            "opportunity_id": "opportunity-1",
+            "action": "save",
+            "reason": None,
+            "created_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresAgentFeedbackRepository(connection=connection)
+
+        self.assertTrue(repository.save_agent_feedback(feedback))
+        self.assertEqual(
+            repository.list_agent_feedback(market_id="workspace-tools"),
+            [feedback],
+        )
+        self.assertIn("INSERT INTO agent_feedback", connection.calls[0][0])
+        self.assertIn("SELECT * FROM agent_feedback", connection.calls[1][0])
+        self.assertEqual(connection.commit_count, 1)
 
     def test_monitored_source_repository_saves_and_loads_enabled_sources(self):
         source = MonitoredSource.create(

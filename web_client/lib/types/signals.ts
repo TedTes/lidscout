@@ -69,6 +69,65 @@ export type Market = {
   created_at: string | null;
 };
 
+export type AgentResearchBrief = {
+  market_id: string;
+  niche_name: string;
+  target_user: string;
+  objective: string;
+  company_count: number;
+  source_family_priorities: string[];
+};
+
+export type AgentColdStartPlan = {
+  market_id: string;
+  status: 'setup_needed' | 'ready_for_scan';
+  brief: AgentResearchBrief;
+  monitored_source_count: number;
+  active_source_count: number;
+  suggested_source_count: number;
+  next_actions: string[];
+};
+
+export type AgentPreferences = {
+  market_id: string;
+  preferred_source_families: string[];
+  ignored_themes: string[];
+  ignored_categories: string[];
+  muted_source_ids: string[];
+  extra_instructions: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AgentPreferencesUpdateRequest = {
+  preferred_source_families?: string[] | null;
+  ignored_themes?: string[] | null;
+  ignored_categories?: string[] | null;
+  muted_source_ids?: string[] | null;
+  extra_instructions?: string | null;
+};
+
+export type AgentFeedbackAction = 'save' | 'dismiss' | 'more_like_this' | 'less_like_this';
+
+export type AgentFeedback = {
+  id: string;
+  market_id: string;
+  opportunity_id: string;
+  action: AgentFeedbackAction;
+  reason: string | null;
+  created_at: string | null;
+};
+
+export type AgentFeedbackRequest = {
+  market_id: string;
+  action: AgentFeedbackAction;
+  reason?: string | null;
+};
+
+export type AgentFeedbackResponse = {
+  feedback: AgentFeedback[];
+};
+
 export type MonitoredSource = {
   id: string;
   competitor_id: string | null;

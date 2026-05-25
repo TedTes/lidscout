@@ -6,6 +6,8 @@ from fastapi import HTTPException
 
 from api.main import app, health_check
 from api.routes.signals import (
+    AgentFeedbackRequest,
+    AgentPreferencesRequest,
     CompetitorRequest,
     MarketRequest,
     MarketUpdateRequest,
@@ -18,8 +20,11 @@ from api.routes.signals import (
     create_market,
     create_market_competitor,
     create_market_source,
+    create_opportunity_feedback,
     delete_market,
     delete_signal,
+    get_market_agent_cold_start,
+    get_market_agent_preferences,
     get_market,
     get_latest_report,
     list_competitor_source_suggestions,
@@ -27,6 +32,7 @@ from api.routes.signals import (
     list_competitors,
     list_clusters,
     list_market_competitors,
+    list_market_agent_feedback,
     list_market_sources,
     list_markets,
     list_market_source_suggestions,
@@ -37,6 +43,7 @@ from api.routes.signals import (
     run_pipeline,
     update_source,
     update_market,
+    update_market_agent_preferences,
 )
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
@@ -48,6 +55,7 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import SourceInput, SourceLocator
 from infrastructure.db import (
+    InMemoryAgentFeedbackRepository,
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMarketRepository,
@@ -128,6 +136,10 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertIn("/markets/{market_id}/competitors", paths)
         self.assertIn("/markets/{market_id}/sources", paths)
         self.assertIn("/markets/{market_id}/source-suggestions", paths)
+        self.assertIn("/markets/{market_id}/agent/cold-start", paths)
+        self.assertIn("/markets/{market_id}/agent/preferences", paths)
+        self.assertIn("/markets/{market_id}/agent/feedback", paths)
+        self.assertIn("/opportunities/{opportunity_id}/feedback", paths)
         self.assertIn("/reports/latest", paths)
         self.assertIn("/pipeline/run", paths)
         self.assertIn("/pipeline/runs", paths)
@@ -403,6 +415,79 @@ class SignalApiRouteTests(unittest.TestCase):
             ["cluster-workspace"],
         )
 
+    def test_market_opportunities_are_ranked_by_agent_feedback(self):
+        signal_repository = InMemorySignalRepository()
+        signal_repository.save_signals(
+            [
+                Signal.create(
+                    id="signal-low",
+                    post_id="reddit:low",
+                    pain="Calendar sync fails",
+                    market_id="workspace-tools",
+                ),
+                Signal.create(
+                    id="signal-high",
+                    post_id="reddit:high",
+                    pain="Templates are hard to find",
+                    market_id="workspace-tools",
+                ),
+            ]
+        )
+        opportunity_repository = InMemoryOpportunityRepository()
+        opportunity_repository.save_opportunities(
+            [
+                Opportunity.create(
+                    id="opportunity-saved",
+                    cluster_id="cluster-low",
+                    title="Calendar reliability",
+                    target_user="admins",
+                    pain_summary="Calendar sync fails.",
+                    why_it_matters="It blocks adoption.",
+                    suggested_wedge="Build reliable sync recovery.",
+                    evidence_count=1,
+                    confidence=0.6,
+                    evidence_signal_ids=["signal-low"],
+                ),
+                Opportunity.create(
+                    id="opportunity-baseline",
+                    cluster_id="cluster-high",
+                    title="Template discovery",
+                    target_user="admins",
+                    pain_summary="Templates are hard to find.",
+                    why_it_matters="It slows setup.",
+                    suggested_wedge="Build better template search.",
+                    evidence_count=1,
+                    confidence=0.8,
+                    evidence_signal_ids=["signal-high"],
+                ),
+            ]
+        )
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            signal_repository=signal_repository,
+            opportunity_repository=opportunity_repository,
+        )
+        asyncio.run(
+            create_opportunity_feedback(
+                "opportunity-saved",
+                AgentFeedbackRequest(
+                    market_id="workspace-tools",
+                    action="save",
+                ),
+                dependencies,
+            )
+        )
+
+        response = asyncio.run(
+            list_opportunities(dependencies, market_id="workspace-tools")
+        )
+
+        self.assertEqual(response["opportunities"][0]["id"], "opportunity-saved")
+
     def test_creates_and_lists_competitors(self):
         dependencies = self._dependencies()
 
@@ -479,6 +564,80 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(deleted, {"id": "workspace-tools", "deleted": True})
         self.assertIsNone(dependencies.market_repository.get_market("workspace-tools"))
+
+    def test_gets_market_agent_cold_start_plan(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="devtools", name="Developer tools")]
+        )
+        dependencies = self._dependencies(market_repository=market_repository)
+
+        response = asyncio.run(get_market_agent_cold_start("devtools", dependencies))
+
+        self.assertEqual(response["status"], "setup_needed")
+        self.assertEqual(response["brief"]["niche_name"], "Developer tools")
+        self.assertIn("add_companies", response["next_actions"])
+        self.assertIn("add_sources", response["next_actions"])
+        self.assertGreater(response["suggested_source_count"], 0)
+
+    def test_updates_market_agent_preferences(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="devtools", name="Developer tools")]
+        )
+        dependencies = self._dependencies(market_repository=market_repository)
+
+        updated = asyncio.run(
+            update_market_agent_preferences(
+                "devtools",
+                AgentPreferencesRequest(
+                    preferred_source_families=["technical_forum", "reviews"],
+                    ignored_themes=["pricing"],
+                    extra_instructions="Prioritize enterprise buyer pain.",
+                ),
+                dependencies,
+            )
+        )
+        loaded = asyncio.run(get_market_agent_preferences("devtools", dependencies))
+
+        self.assertEqual(
+            updated["preferred_source_families"],
+            ["technical_forum", "reviews"],
+        )
+        self.assertEqual(loaded["ignored_themes"], ["pricing"])
+        self.assertEqual(
+            loaded["extra_instructions"],
+            "Prioritize enterprise buyer pain.",
+        )
+
+    def test_creates_opportunity_feedback(self):
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="devtools", name="Developer tools")]
+        )
+        opportunity_repository = InMemoryOpportunityRepository()
+        opportunity_repository.save_opportunities([self._opportunity()])
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            opportunity_repository=opportunity_repository,
+        )
+
+        created = asyncio.run(
+            create_opportunity_feedback(
+                "opportunity-1",
+                AgentFeedbackRequest(
+                    market_id="devtools",
+                    action="save",
+                    reason="Relevant to current roadmap.",
+                ),
+                dependencies,
+            )
+        )
+        listed = asyncio.run(list_market_agent_feedback("devtools", dependencies))
+
+        self.assertEqual(created["action"], "save")
+        self.assertEqual(created["opportunity_id"], "opportunity-1")
+        self.assertEqual(listed["feedback"][0]["reason"], "Relevant to current roadmap.")
 
     def test_lists_market_competitors_and_sources(self):
         market_repository = InMemoryMarketRepository()
@@ -935,6 +1094,7 @@ class SignalApiRouteTests(unittest.TestCase):
         cluster_repository=None,
         opportunity_repository=None,
         pipeline_run_metrics_repository=None,
+        agent_feedback_repository=None,
         competitor_repository=None,
         market_repository=None,
         monitored_source_repository=None,
@@ -955,6 +1115,9 @@ class SignalApiRouteTests(unittest.TestCase):
             pipeline_run_metrics_repository=(
                 pipeline_run_metrics_repository
                 or InMemoryPipelineRunMetricsRepository()
+            ),
+            agent_feedback_repository=(
+                agent_feedback_repository or InMemoryAgentFeedbackRepository()
             ),
             competitor_repository=competitor_repository or InMemoryCompetitorRepository(),
             market_repository=market_repository or InMemoryMarketRepository(),

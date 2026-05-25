@@ -1,5 +1,7 @@
 """Database infrastructure."""
 from infrastructure.db.repository import (
+    InMemoryAgentFeedbackRepository,
+    InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
     InMemoryMarketRepository,
@@ -10,6 +12,8 @@ from infrastructure.db.repository import (
     InMemoryScoreRepository,
     InMemorySignalRepository,
     InMemorySourceLocatorRepository,
+    PostgresAgentFeedbackRepository,
+    PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
     PostgresCompetitorRepository,
     PostgresMarketRepository,
@@ -20,6 +24,8 @@ from infrastructure.db.repository import (
     PostgresScoreRepository,
     PostgresSignalRepository,
     PostgresSourceLocatorRepository,
+    SQLiteAgentFeedbackRepository,
+    SQLiteAgentPreferencesRepository,
     SQLiteClusterRepository,
     SQLiteCompetitorRepository,
     SQLiteMarketRepository,
@@ -35,6 +41,8 @@ from infrastructure.db.repository import (
 
 __all__ = [
     "InMemoryClusterRepository",
+    "InMemoryAgentFeedbackRepository",
+    "InMemoryAgentPreferencesRepository",
     "InMemoryCompetitorRepository",
     "InMemoryMarketRepository",
     "InMemoryMonitoredSourceRepository",
@@ -45,6 +53,8 @@ __all__ = [
     "InMemorySignalRepository",
     "InMemorySourceLocatorRepository",
     "PostgresClusterRepository",
+    "PostgresAgentFeedbackRepository",
+    "PostgresAgentPreferencesRepository",
     "PostgresCompetitorRepository",
     "PostgresMarketRepository",
     "PostgresMonitoredSourceRepository",
@@ -55,6 +65,8 @@ __all__ = [
     "PostgresSignalRepository",
     "PostgresSourceLocatorRepository",
     "SQLiteClusterRepository",
+    "SQLiteAgentFeedbackRepository",
+    "SQLiteAgentPreferencesRepository",
     "SQLiteCompetitorRepository",
     "SQLiteMarketRepository",
     "SQLiteMonitoredSourceRepository",

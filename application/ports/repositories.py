@@ -1,6 +1,7 @@
 """Persistence contracts for domain entities."""
 from typing import Protocol
 
+from domain.agent import AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -121,6 +122,40 @@ class MarketRepository(Protocol):
 
     def delete_market(self, market_id: str) -> bool:
         """Delete one market and return whether it existed."""
+        ...
+
+
+class AgentPreferencesRepository(Protocol):
+    """Persistence boundary for per-niche agent preferences."""
+
+    def save_agent_preferences(self, preferences: AgentPreferences) -> bool:
+        """Persist agent preferences and return whether they changed."""
+        ...
+
+    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
+        """Load agent preferences for one market."""
+        ...
+
+    def delete_agent_preferences(self, market_id: str) -> bool:
+        """Delete agent preferences for one market."""
+        ...
+
+
+class AgentFeedbackRepository(Protocol):
+    """Persistence boundary for user feedback that trains agent behavior."""
+
+    def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        """Persist one feedback event and return whether it changed."""
+        ...
+
+    def list_agent_feedback(
+        self,
+        *,
+        market_id: str | None = None,
+        opportunity_id: str | None = None,
+        action: str | None = None,
+    ) -> list[AgentFeedback]:
+        """Load feedback events, optionally filtered by scope."""
         ...
 
 
