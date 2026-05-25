@@ -47,7 +47,7 @@ export default function NicheThemesPage({ params }: Props) {
     <DashboardShell
       title="Themes"
       subtitle={`${niche?.name ?? 'This niche'} pain patterns grouped by recurring evidence.`}
-      actions={<NicheViewSwitcher marketId={marketId} active="themes" />}
+      actions={<NicheViewSwitcher marketId={marketId} active="themes" onRefresh={load} refreshing={status === 'loading'} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading themes" />}
       {status === 'error' && error && <ErrorPanel message={error} />}

@@ -18,6 +18,15 @@ const FAMILY_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+function IconPlus() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
 export default function NicheSourcesPage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
   const [niche, setNiche] = useState<Market | null>(null);
@@ -28,7 +37,6 @@ export default function NicheSourcesPage({ params }: Props) {
   const [suggestionStatus, setSuggestionStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [showAddSource, setShowAddSource] = useState(false);
-  const [showAddCompany, setShowAddCompany] = useState(false);
 
   const load = async () => {
     setStatus('loading');
@@ -103,15 +111,21 @@ export default function NicheSourcesPage({ params }: Props) {
       title="Sources"
       subtitle={`Sources monitored for ${niche?.name ?? 'this niche'}.`}
       actions={
-        <div className="flex flex-wrap justify-end gap-2">
-          <NicheViewSwitcher marketId={marketId} active="sources" />
-          <button onClick={() => setShowAddCompany(v => !v)} className="rounded-lg border border-slate-700/80 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-slate-100">
-            Add company
-          </button>
-          <button onClick={() => setShowAddSource(v => !v)} className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15">
-            Add source
-          </button>
-        </div>
+        <NicheViewSwitcher
+          marketId={marketId}
+          active="sources"
+          trailingAction={
+            <button
+              type="button"
+              onClick={() => setShowAddSource(v => !v)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 transition hover:bg-violet-500/15 hover:text-violet-200"
+              aria-label="Add source"
+              title="Add source"
+            >
+              <IconPlus />
+            </button>
+          }
+        />
       }
     >
       {status === 'loading' && <LoadingPanel label="Loading sources" />}
@@ -125,18 +139,6 @@ export default function NicheSourcesPage({ params }: Props) {
             <Summary label="Companies" value={companies.length} />
             <Summary label="Errors" value={errorCount} accent={errorCount > 0} danger={errorCount > 0} />
           </div>
-
-          {showAddCompany && (
-            <AddCompanyPanel
-              onAdd={async company => {
-                setCompanies(prev => [...prev, company]);
-                setShowAddCompany(false);
-                await load();
-              }}
-              onCancel={() => setShowAddCompany(false)}
-              marketId={marketId}
-            />
-          )}
 
           {showAddSource && (
             <AddSourcePanel
@@ -218,51 +220,6 @@ export default function NicheSourcesPage({ params }: Props) {
         </div>
       )}
     </DashboardShell>
-  );
-}
-
-function AddCompanyPanel({ marketId, onAdd, onCancel }: { marketId: string; onAdd: (company: Competitor) => void; onCancel: () => void }) {
-  const [name, setName] = useState('');
-  const [website, setWebsite] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const id = slugify(name);
-      const company = await signalApi.createMarketCompetitor(marketId, {
-        id,
-        name,
-        website: website.trim() || null,
-      });
-      onAdd(company);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add company');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
-      <h2 className="text-sm font-semibold text-slate-300">Add company</h2>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label="Company name" value={name} onChange={setName} required />
-        <Field label="Website" value={website} onChange={setWebsite} placeholder="https://example.com" />
-      </div>
-      {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
-      <div className="mt-4 flex gap-2">
-        <button disabled={submitting || !name.trim()} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
-          {submitting ? 'Adding...' : 'Add company'}
-        </button>
-        <button type="button" onClick={onCancel} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-200">
-          Cancel
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -375,8 +332,4 @@ function Summary({ label, value, accent, danger }: { label: string; value: numbe
 
 function familyLabel(family: string | null) {
   return FAMILY_LABELS[family ?? 'other'] ?? family?.replace(/_/g, ' ') ?? FAMILY_LABELS.other;
-}
-
-function slugify(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }

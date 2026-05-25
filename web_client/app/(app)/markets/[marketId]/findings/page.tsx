@@ -71,7 +71,7 @@ export default function NicheFindingsPage({ params }: Props) {
     <DashboardShell
       title="Findings"
       subtitle={`${niche?.name ?? 'This niche'} raw evidence that feeds themes and gaps.`}
-      actions={<NicheViewSwitcher marketId={marketId} active="findings" />}
+      actions={<NicheViewSwitcher marketId={marketId} active="findings" onRefresh={load} refreshing={status === 'loading'} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading findings" />}
       {status === 'error' && error && <ErrorPanel message={error} />}

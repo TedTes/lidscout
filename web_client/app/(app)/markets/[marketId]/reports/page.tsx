@@ -43,14 +43,7 @@ export default function NicheReportPage({ params }: Props) {
     <DashboardShell
       title="Report"
       subtitle={`Latest evidence summary for ${niche?.name ?? 'this niche'}.`}
-      actions={
-        <div className="flex flex-wrap justify-end gap-2">
-          <NicheViewSwitcher marketId={marketId} active="reports" />
-          <button onClick={load} className="rounded-lg border border-slate-700/80 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-600 hover:text-slate-100">
-            Refresh
-          </button>
-        </div>
-      }
+      actions={<NicheViewSwitcher marketId={marketId} active="reports" onRefresh={load} refreshing={status === 'loading'} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading report" />}
       {status === 'error' && error && <ErrorPanel message={error} />}

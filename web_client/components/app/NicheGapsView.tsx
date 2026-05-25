@@ -147,7 +147,7 @@ export default function NicheWorkspacePage({ params }: Props) {
       title={title}
       subtitle={niche?.description ?? 'Ranked product gaps backed by public evidence.'}
       actions={
-        <NicheViewSwitcher marketId={marketId} active="gaps" />
+        <NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />
       }
     >
       {status === 'loading' && <LoadingPanel label="Loading gaps" />}
