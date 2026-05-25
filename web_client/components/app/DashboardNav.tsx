@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { AddNicheDrawer } from '@/components/app/AddNicheDrawer';
 import { signalApi } from '@/lib/api';
 import { Market } from '@/lib/types/signals';
 
@@ -41,16 +42,49 @@ function nicheHref(nicheId: string) {
   return `/markets/${encodeURIComponent(nicheId)}/gaps`;
 }
 
-function addNicheHref() {
-  return '/markets/new';
+function IconTrash() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4h6v2" />
+    </svg>
+  );
 }
 
-function NicheList({ markets, activeId }: { markets: Market[]; activeId: string | null }) {
+function NicheList({
+  markets,
+  activeId,
+  onAddNiche,
+  onDelete,
+}: {
+  markets: Market[];
+  activeId: string | null;
+  onAddNiche: () => void;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await onDelete(id);
+    } finally {
+      setDeletingId(null);
+      setConfirmId(null);
+    }
+  };
+
   if (markets.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-800 px-3 py-3 text-xs text-slate-600">
-        No niches yet
-      </div>
+      <button
+        onClick={onAddNiche}
+        className="w-full rounded-lg border border-dashed border-slate-800 px-3 py-3 text-left text-xs text-slate-600 transition hover:border-slate-700 hover:text-slate-500"
+      >
+        No niches yet — add one
+      </button>
     );
   }
 
@@ -58,26 +92,66 @@ function NicheList({ markets, activeId }: { markets: Market[]; activeId: string 
     <div className="space-y-1">
       {markets.map(market => {
         const active = market.id === activeId;
+
+        if (confirmId === market.id) {
+          return (
+            <div key={market.id} className="rounded-lg border border-rose-500/25 bg-rose-500/[0.06] px-3 py-2">
+              <p className="mb-2 truncate text-xs font-medium text-slate-400">{market.name}</p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleDelete(market.id)}
+                  disabled={deletingId === market.id}
+                  className="rounded px-2 py-1 text-[11px] font-semibold text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-50"
+                >
+                  {deletingId === market.id ? 'Deleting…' : 'Delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmId(null)}
+                  className="rounded px-2 py-1 text-[11px] text-slate-600 transition hover:text-slate-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          );
+        }
+
         return (
-          <Link
-            key={market.id}
-            href={nicheHref(market.id)}
-            className={`group flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-              active
-                ? 'bg-violet-600/[0.13] text-violet-300'
-                : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
-            }`}
-          >
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]' : 'bg-slate-700 group-hover:bg-slate-500'}`} />
-            <span className="min-w-0 flex-1 truncate">{market.name}</span>
-          </Link>
+          <div key={market.id} className="group relative">
+            <Link
+              href={nicheHref(market.id)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2.5 pr-8 text-sm font-medium transition ${
+                active
+                  ? 'bg-violet-600/[0.13] text-violet-300'
+                  : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]' : 'bg-slate-700 group-hover:bg-slate-500'}`} />
+              <span className="min-w-0 flex-1 truncate">{market.name}</span>
+            </Link>
+            <button
+              onClick={e => { e.preventDefault(); setConfirmId(market.id); }}
+              aria-label={`Delete ${market.name}`}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-700 opacity-0 transition hover:bg-white/[0.04] hover:text-rose-400 group-hover:opacity-100"
+            >
+              <IconTrash />
+            </button>
+          </div>
         );
       })}
     </div>
   );
 }
 
-function MobileNicheMenu({ markets, activeId }: { markets: Market[]; activeId: string | null }) {
+function MobileNicheMenu({
+  markets,
+  activeId,
+  onAddNiche,
+}: {
+  markets: Market[];
+  activeId: string | null;
+  onAddNiche: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const active = markets.find(market => market.id === activeId) ?? markets[0] ?? null;
@@ -108,27 +182,24 @@ function MobileNicheMenu({ markets, activeId }: { markets: Market[]; activeId: s
 
       {open && (
         <div className="absolute left-3 right-3 top-full z-50 mt-1 overflow-hidden rounded-lg border border-slate-700/60 bg-[#0b0e24] py-1 shadow-xl shadow-black/50">
-          {markets.length === 0 ? (
+          {markets.map(market => (
             <Link
-              href={addNicheHref()}
+              key={market.id}
+              href={nicheHref(market.id)}
               onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-3 py-2 text-xs text-violet-400"
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs transition hover:bg-white/[0.04] ${market.id === activeId ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              <IconPlus /> Add niche
+              <span className={`h-1.5 w-1.5 rounded-full ${market.id === activeId ? 'bg-violet-400' : 'bg-slate-700'}`} />
+              <span className="min-w-0 flex-1 truncate">{market.name}</span>
             </Link>
-          ) : (
-            markets.map(market => (
-              <Link
-                key={market.id}
-                href={nicheHref(market.id)}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs transition hover:bg-white/[0.04] ${market.id === activeId ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${market.id === activeId ? 'bg-violet-400' : 'bg-slate-700'}`} />
-                <span className="min-w-0 flex-1 truncate">{market.name}</span>
-              </Link>
-            ))
-          )}
+          ))}
+          <div className="mx-3 my-1 h-px bg-white/[0.05]" />
+          <button
+            onClick={() => { setOpen(false); onAddNiche(); }}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-violet-500 transition hover:bg-white/[0.04] hover:text-violet-400"
+          >
+            <IconPlus /> Add niche
+          </button>
         </div>
       )}
     </div>
@@ -137,14 +208,28 @@ function MobileNicheMenu({ markets, activeId }: { markets: Market[]; activeId: s
 
 export default function DashboardNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const activeId = activeNicheFromPath(pathname);
   const [markets, setMarkets] = useState<Market[]>([]);
+  const [showAddNiche, setShowAddNiche] = useState(false);
 
   useEffect(() => {
     signalApi.getMarkets()
       .then(response => setMarkets(response.markets))
       .catch(() => setMarkets([]));
   }, [pathname]);
+
+  const handleNicheCreated = (market: Market) => {
+    setMarkets(prev => [...prev, market]);
+    setShowAddNiche(false);
+    router.push(`/markets/${encodeURIComponent(market.id)}/gaps`);
+  };
+
+  const handleDeleteNiche = async (id: string) => {
+    await signalApi.deleteMarket(id);
+    setMarkets(prev => prev.filter(m => m.id !== id));
+    if (activeId === id) router.push('/markets');
+  };
 
   return (
     <>
@@ -166,12 +251,16 @@ export default function DashboardNav() {
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-700">
               Niches
             </p>
-            <Link href={addNicheHref()} className="rounded p-1 text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400" aria-label="Add niche">
+            <button
+              onClick={() => setShowAddNiche(true)}
+              className="rounded p-1 text-slate-700 transition hover:bg-white/[0.04] hover:text-slate-400"
+              aria-label="Add niche"
+            >
               <IconPlus />
-            </Link>
+            </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            <NicheList markets={markets} activeId={activeId} />
+            <NicheList markets={markets} activeId={activeId} onAddNiche={() => setShowAddNiche(true)} onDelete={handleDeleteNiche} />
           </div>
         </nav>
 
@@ -192,15 +281,21 @@ export default function DashboardNav() {
           </div>
           <span className="text-sm font-bold tracking-tight text-slate-100">LidScout</span>
         </Link>
-        <MobileNicheMenu markets={markets} activeId={activeId} />
-        <Link
-          href={addNicheHref()}
+        <MobileNicheMenu markets={markets} activeId={activeId} onAddNiche={() => setShowAddNiche(true)} />
+        <button
+          onClick={() => setShowAddNiche(true)}
           className="rounded-md border border-slate-800/70 bg-slate-900/50 p-2 text-slate-500 transition hover:text-slate-300"
           aria-label="Add niche"
         >
           <IconPlus />
-        </Link>
+        </button>
       </header>
+
+      <AddNicheDrawer
+        isOpen={showAddNiche}
+        onClose={() => setShowAddNiche(false)}
+        onCreated={handleNicheCreated}
+      />
     </>
   );
 }
