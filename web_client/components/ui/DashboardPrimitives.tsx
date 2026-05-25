@@ -208,10 +208,12 @@ export function Chip({ label }: { label: string }) {
 
 // ── Cluster/theme link ────────────────────────────────────────────────────────
 
-export function ClusterLink({ id, children }: { id: string; children: React.ReactNode }) {
+export function ClusterLink({ id, marketId: marketIdProp, children }: { id: string; marketId?: string; children: React.ReactNode }) {
   const searchParams = useSearchParams();
-  const companyParam = searchParams?.get('company');
-  const href = `/themes/${encodeURIComponent(id)}${companyParam ? '?company=' + companyParam : ''}`;
+  const marketId = marketIdProp ?? searchParams?.get('market') ?? undefined;
+  const href = marketId
+    ? `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(id)}`
+    : `/themes/${encodeURIComponent(id)}`;
 
   return (
     <Link

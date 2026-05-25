@@ -92,7 +92,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load markets');
+        throw new Error(error.response?.data?.detail || 'Failed to load niches');
       }
       throw error;
     }
@@ -110,7 +110,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to create market');
+        throw new Error(error.response?.data?.detail || 'Failed to create niche');
       }
       throw error;
     }
@@ -124,7 +124,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load market sources');
+        throw new Error(error.response?.data?.detail || 'Failed to load niche sources');
       }
       throw error;
     }
@@ -149,7 +149,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to create market source');
+        throw new Error(error.response?.data?.detail || 'Failed to create niche source');
       }
       throw error;
     }
@@ -186,6 +186,18 @@ class SignalApiService {
     }
   }
 
+  async getMarketCompetitors(marketId: string): Promise<CompetitorsResponse> {
+    try {
+      const response = await api.get<CompetitorsResponse>(`/markets/${marketId}/competitors`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load niche companies');
+      }
+      throw error;
+    }
+  }
+
   async createMarketCompetitor(
     marketId: string,
     request: {
@@ -204,7 +216,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to add market company');
+        throw new Error(error.response?.data?.detail || 'Failed to add niche company');
       }
       throw error;
     }
@@ -250,7 +262,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load market source suggestions');
+        throw new Error(error.response?.data?.detail || 'Failed to load niche source suggestions');
       }
       throw error;
     }
@@ -323,6 +335,47 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load signals');
+      }
+      throw error;
+    }
+  }
+
+  async updateMarket(
+    marketId: string,
+    request: { name?: string; description?: string | null; target_user?: string | null }
+  ): Promise<Market> {
+    try {
+      const response = await api.patch<Market>(`/markets/${marketId}`, request);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to update niche');
+      }
+      throw error;
+    }
+  }
+
+  async deleteMarket(marketId: string): Promise<{ id: string; deleted: boolean }> {
+    try {
+      const response = await api.delete<{ id: string; deleted: boolean }>(`/markets/${marketId}`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to delete niche');
+      }
+      throw error;
+    }
+  }
+
+  async deleteSource(sourceId: string): Promise<{ id: string; deleted: boolean }> {
+    try {
+      const response = await api.delete<{ id: string; deleted: boolean }>(
+        `/sources/${sourceId}`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to delete source');
       }
       throw error;
     }

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-export default function LegacyLatestReportRedirect({
+export default function LegacyReportsRedirect({
   searchParams,
 }: {
   searchParams: { market?: string };
