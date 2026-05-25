@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from application.ingestion import SourceResolver
 from domain.post import RawPost
@@ -75,6 +76,33 @@ class SourceResolverTests(unittest.TestCase):
         self.assertEqual(result.posts, [])
         self.assertEqual(result.failed_count, 1)
         self.assertEqual(result.details[0].error, "fetch blocked")
+
+    def test_logs_source_context_with_redacted_locator(self):
+        adapter = MatchingAdapter()
+        resolver = SourceResolver([adapter])
+        source = SourceInput.create(
+            locator="https://example.com/reviews?api_key=secret&q=notion",
+            options={
+                "source_type": "review_search",
+                "source_family": "reviews",
+                "market_id": "workspace-tools",
+                "competitor_id": "notion",
+            },
+        )
+
+        with patch.object(adapter, "can_handle", return_value=True), self.assertLogs(
+            "application.ingestion.source_resolver",
+            level="INFO",
+        ) as captured:
+            resolver.fetch([source])
+
+        logs = "\n".join(captured.output)
+        self.assertIn("source_fetch_started", logs)
+        self.assertIn("source_fetch_completed", logs)
+        self.assertIn("api_key=REDACTED", logs)
+        self.assertIn("q=notion", logs)
+        self.assertIn("workspace-tools", logs)
+        self.assertNotIn("api_key=secret", logs)
 
 
 if __name__ == "__main__":

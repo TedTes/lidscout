@@ -10,6 +10,11 @@ from bs4 import BeautifulSoup
 from domain.post import RawPost
 from domain.source import SourceInput
 from shared.config import get_settings
+from shared.logger import get_logger, log_event
+from shared.url_logging import safe_url_for_logs
+
+
+logger = get_logger(__name__)
 
 
 class BaseUrlAdapter:
@@ -34,6 +39,7 @@ class StaticUrlAdapter(BaseUrlAdapter):
             headers=self.headers,
             timeout=self.timeout_seconds,
         )
+        _log_response("static_url_response_received", source, response)
         response.raise_for_status()
         return [self._normalize_page(source, response.text)]
 
@@ -77,6 +83,7 @@ class JsonUrlAdapter(BaseUrlAdapter):
             headers=self.headers,
             timeout=self.timeout_seconds,
         )
+        _log_response("json_url_response_received", source, response)
         response.raise_for_status()
         return self._normalize_json(source, response.json(), default_limit)
 
@@ -184,6 +191,27 @@ class UrlActivityAdapter:
 def _is_http_url(locator: str) -> bool:
     parsed = urlparse(locator)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _log_response(event: str, source: SourceInput, response: requests.Response) -> None:
+    content_length = response.headers.get("content-length")
+    log_event(
+        logger,
+        event,
+        locator=safe_url_for_logs(source.locator),
+        status_code=response.status_code,
+        content_type=response.headers.get("content-type"),
+        content_length=(
+            int(content_length)
+            if content_length and content_length.isdigit()
+            else None
+        ),
+        source_type=source.options.get("source_type"),
+        source_family=source.options.get("source_family"),
+        market_id=source.options.get("market_id"),
+        competitor_id=source.options.get("competitor_id"),
+        monitored_source_id=source.options.get("monitored_source_id"),
+    )
 
 
 def _looks_like_json_url(locator: str) -> bool:
