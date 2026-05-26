@@ -30,17 +30,17 @@ export default function Hero() {
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Link
-                  href="/reports/notion-2026"
+                  href="/register"
                   className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500"
                 >
-                  View sample report
+                  Get started free
                   <IconArrow />
                 </Link>
                 <Link
-                  href="/markets"
+                  href="/login"
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-800/50 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-100"
                 >
-                  Open dashboard →
+                  Sign in →
                 </Link>
               </div>
             </div>

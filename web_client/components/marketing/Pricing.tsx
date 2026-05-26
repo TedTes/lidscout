@@ -43,7 +43,7 @@ export default function Pricing() {
 
           {/* CTA */}
           <Link
-            href="/markets"
+            href="/register"
             className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/50 transition hover:bg-violet-500"
           >
             Start your research agent
