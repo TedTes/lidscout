@@ -118,8 +118,8 @@ class MarketRepository(Protocol):
         """Load one market by id."""
         ...
 
-    def list_markets(self) -> list[Market]:
-        """Load all persisted markets."""
+    def list_markets(self, user_id: str | None = None) -> list[Market]:
+        """Load all persisted markets, optionally filtered by owner."""
         ...
 
     def update_market(self, market: Market) -> bool:

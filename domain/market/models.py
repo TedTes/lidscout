@@ -12,6 +12,7 @@ class Market:
     description: str | None = None
     target_user: str | None = None
     idea_prompt: str | None = None
+    user_id: str | None = None
     created_at: datetime | None = None
 
     @classmethod
@@ -23,6 +24,7 @@ class Market:
         description: str | None = None,
         target_user: str | None = None,
         idea_prompt: str | None = None,
+        user_id: str | None = None,
         created_at: datetime | None = None,
     ) -> "Market":
         """Create a validated market entity."""
@@ -39,6 +41,7 @@ class Market:
             description=cls._clean_optional(description),
             target_user=cls._clean_optional(target_user),
             idea_prompt=cls._clean_optional(idea_prompt),
+            user_id=user_id,
             created_at=created_at or datetime.now(tz=UTC),
         )
 

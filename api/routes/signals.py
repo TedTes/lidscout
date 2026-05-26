@@ -43,6 +43,7 @@ from domain.agent import (
 )
 from domain.competitor import Competitor
 from domain.market import Market
+from domain.user import User
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
@@ -342,13 +343,14 @@ async def list_opportunities(
 
 @router.get("/markets")
 async def list_markets(
+    current_user: User = Depends(get_current_user),
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return watched markets or niches."""
+    """Return watched markets or niches for the current user."""
     return {
         "markets": [
             _serialize_market(market)
-            for market in dependencies.market_repository.list_markets()
+            for market in dependencies.market_repository.list_markets(user_id=current_user.id)
         ]
     }
 
@@ -356,6 +358,7 @@ async def list_markets(
 @router.post("/markets")
 async def create_market(
     request: MarketRequest,
+    current_user: User = Depends(get_current_user),
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Create a watched market or niche."""
@@ -366,6 +369,7 @@ async def create_market(
             description=request.description,
             target_user=request.target_user,
             idea_prompt=request.idea_prompt,
+            user_id=current_user.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

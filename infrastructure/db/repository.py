@@ -182,8 +182,11 @@ class InMemoryMarketRepository(MarketRepository):
     def get_market(self, market_id: str) -> Market | None:
         return self.markets.get(market_id)
 
-    def list_markets(self) -> list[Market]:
-        return list(self.markets.values())
+    def list_markets(self, user_id: str | None = None) -> list[Market]:
+        markets = list(self.markets.values())
+        if user_id is not None:
+            markets = [m for m in markets if m.user_id == user_id]
+        return markets
 
     def update_market(self, market: Market) -> bool:
         if market.id not in self.markets:
@@ -879,8 +882,8 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
             cursor = self.connection.execute(
                 """
                 INSERT OR IGNORE INTO markets (
-                    id, name, description, target_user, idea_prompt, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    id, name, description, target_user, idea_prompt, user_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     market.id,
@@ -888,6 +891,7 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
                     market.description,
                     market.target_user,
                     market.idea_prompt,
+                    market.user_id,
                     _datetime_to_text(market.created_at),
                 ),
             )
@@ -902,8 +906,13 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
         ).fetchone()
         return _market_from_row(row) if row else None
 
-    def list_markets(self) -> list[Market]:
-        rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
+    def list_markets(self, user_id: str | None = None) -> list[Market]:
+        if user_id is not None:
+            rows = self.connection.execute(
+                "SELECT * FROM markets WHERE user_id = ? ORDER BY name", (user_id,)
+            ).fetchall()
+        else:
+            rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
         return [_market_from_row(row) for row in rows]
 
     def update_market(self, market: Market) -> bool:
@@ -1994,8 +2003,8 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
             cursor = self.connection.execute(
                 """
                 INSERT INTO markets (
-                    id, name, description, target_user, idea_prompt, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s)
+                    id, name, description, target_user, idea_prompt, user_id, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -2004,6 +2013,7 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
                     market.description,
                     market.target_user,
                     market.idea_prompt,
+                    market.user_id,
                     market.created_at,
                 ),
             )
@@ -2018,8 +2028,13 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
         ).fetchone()
         return _market_from_row(row) if row else None
 
-    def list_markets(self) -> list[Market]:
-        rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
+    def list_markets(self, user_id: str | None = None) -> list[Market]:
+        if user_id is not None:
+            rows = self.connection.execute(
+                "SELECT * FROM markets WHERE user_id = %s ORDER BY name", (user_id,)
+            ).fetchall()
+        else:
+            rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
         return [_market_from_row(row) for row in rows]
 
     def update_market(self, market: Market) -> bool:
@@ -2712,6 +2727,7 @@ def _market_from_row(row: sqlite3.Row) -> Market:
         description=row["description"],
         target_user=row["target_user"],
         idea_prompt=row["idea_prompt"],
+        user_id=row["user_id"] if "user_id" in row.keys() else None,
         created_at=_datetime_from_text(row["created_at"]),
     )
 
