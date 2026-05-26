@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-type NicheView = 'gaps' | 'themes' | 'findings' | 'reports' | 'sources';
+type NicheView = 'gaps' | 'themes' | 'findings' | 'reports' | 'sources' | 'activity';
 
 const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => string }> = [
   { id: 'gaps', label: 'Gaps', href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
@@ -11,6 +11,7 @@ const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => s
   { id: 'findings', label: 'Findings', href: marketId => `/markets/${encodeURIComponent(marketId)}/findings` },
   { id: 'reports', label: 'Reports', href: marketId => `/markets/${encodeURIComponent(marketId)}/reports` },
   { id: 'sources', label: 'Sources', href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
+  { id: 'activity', label: 'Activity', href: marketId => `/markets/${encodeURIComponent(marketId)}/activity` },
 ];
 
 function IconRefresh({ spinning }: { spinning?: boolean }) {

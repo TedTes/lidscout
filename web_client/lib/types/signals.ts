@@ -258,3 +258,25 @@ export type SourceLocator = {
   inserted_at: string;
   updated_at: string;
 };
+
+export type AgentActivity = {
+  id: string;
+  market_id: string;
+  event_type: string;
+  title: string;
+  detail: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string | null;
+};
+
+export type AgentActivityResponse = {
+  activity: AgentActivity[];
+};
+
+export type AgentMemorySummary = {
+  market_id: string;
+  headline: string;
+  learned_preferences: string[];
+  source_notes: string[];
+  feedback_notes: string[];
+};

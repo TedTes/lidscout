@@ -10,6 +10,7 @@ import { signalApi } from '@/lib/api';
 import {
   AgentColdStartPlan,
   AgentFeedbackAction,
+  AgentMemorySummary,
   AgentPreferences,
   AgentPreferencesUpdateRequest,
   Market,
@@ -111,6 +112,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
   const [preferences, setPreferences] = useState<AgentPreferences | null>(null);
+  const [memory, setMemory] = useState<AgentMemorySummary | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -125,22 +127,25 @@ export default function NicheWorkspacePage({ params }: Props) {
     setNiche(null);
     setColdStart(null);
     setPreferences(null);
+    setMemory(null);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     try {
-      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes, preferencesRes] = await Promise.all([
+      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes, preferencesRes, memoryRes] = await Promise.all([
         signalApi.getMarkets(),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
         signalApi.getMarketAgentPreferences(marketId).catch(() => null),
+        signalApi.getMarketAgentMemory(marketId).catch(() => null),
       ]);
       setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
       setColdStart(coldStartRes);
       setPreferences(preferencesRes);
+      setMemory(memoryRes);
 
       if (feedbackRes?.feedback) {
         // Take latest action per opportunity (sort asc by created_at, last wins)
@@ -250,6 +255,7 @@ export default function NicheWorkspacePage({ params }: Props) {
             <ResearchBriefPanel
               coldStart={coldStart}
               preferences={preferences}
+              memory={memory}
               marketId={marketId}
               onPreferencesUpdated={setPreferences}
             />
@@ -321,11 +327,13 @@ export default function NicheWorkspacePage({ params }: Props) {
 function ResearchBriefPanel({
   coldStart,
   preferences,
+  memory,
   marketId,
   onPreferencesUpdated,
 }: {
   coldStart: AgentColdStartPlan;
   preferences: AgentPreferences | null;
+  memory: AgentMemorySummary | null;
   marketId: string;
   onPreferencesUpdated: (prefs: AgentPreferences) => void;
 }) {
@@ -445,6 +453,56 @@ function ResearchBriefPanel({
               onSaved={prefs => { onPreferencesUpdated(prefs); setEditing(false); }}
               onCancel={() => setEditing(false)}
             />
+          )}
+
+          {memory && (memory.learned_preferences.length > 0 || memory.source_notes.length > 0 || memory.feedback_notes.length > 0) && (
+            <div className="mt-4 border-t border-slate-800/50 pt-4">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">What the agent has learned</p>
+              {memory.headline && (
+                <p className="mb-3 text-xs leading-relaxed text-slate-500">{memory.headline}</p>
+              )}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {memory.learned_preferences.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-[10px] text-slate-700">Preferences</p>
+                    <ul className="space-y-1">
+                      {memory.learned_preferences.map((note, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-500">
+                          <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-violet-500/50" />
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {memory.source_notes.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-[10px] text-slate-700">Source health</p>
+                    <ul className="space-y-1">
+                      {memory.source_notes.map((note, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-500">
+                          <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {memory.feedback_notes.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-[10px] text-slate-700">Feedback signals</p>
+                    <ul className="space-y-1">
+                      {memory.feedback_notes.map((note, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-500">
+                          <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-emerald-500/50" />
+                          {note}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}

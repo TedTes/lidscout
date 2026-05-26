@@ -6,10 +6,12 @@ import axios from 'axios';
 import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
+  AgentActivityResponse,
   AgentColdStartPlan,
   AgentFeedback,
   AgentFeedbackRequest,
   AgentFeedbackResponse,
+  AgentMemorySummary,
   AgentPreferences,
   AgentPreferencesUpdateRequest,
   Competitor,
@@ -523,7 +525,36 @@ class SignalApiService {
       throw error;
     }
   }
+
+  async getMarketAgentActivity(marketId: string): Promise<AgentActivityResponse> {
+    try {
+      const response = await api.get<AgentActivityResponse>(
+        `/markets/${marketId}/agent/activity`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load agent activity');
+      }
+      throw error;
+    }
+  }
+
+  async getMarketAgentMemory(marketId: string): Promise<AgentMemorySummary> {
+    try {
+      const response = await api.get<AgentMemorySummary>(
+        `/markets/${marketId}/agent/memory`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load agent memory');
+      }
+      throw error;
+    }
+  }
 }
+
 
 // Export singleton instance
 export const businessApi = new BusinessApiService();
