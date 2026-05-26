@@ -2,11 +2,12 @@
 API endpoints for business search.
 Following Single Responsibility Principle - only handles HTTP routing.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from api.controllers.businesses import search_businesses as search_businesses_controller
+from api.routes.auth import get_current_user
 from api.schemas import SearchCriteria, SearchResponse
 
-router = APIRouter(prefix="/api/businesses", tags=["businesses"])
+router = APIRouter(prefix="/api/businesses", tags=["businesses"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/search", response_model=SearchResponse)

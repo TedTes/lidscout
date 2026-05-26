@@ -1,12 +1,13 @@
 """
 API endpoints for public interaction extraction.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from api.controllers.interactions import extract_interactions as extract_interactions_controller
+from api.routes.auth import get_current_user
 from api.schemas import InteractionExtractionRequest, InteractionExtractionResponse
 
-router = APIRouter(prefix="/api/interactions", tags=["interactions"])
+router = APIRouter(prefix="/api/interactions", tags=["interactions"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/extract", response_model=InteractionExtractionResponse)

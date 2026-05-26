@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from api.routes.auth import get_current_user
 from pydantic import BaseModel, Field
 
 from application.agent import (
@@ -72,7 +73,7 @@ from workers.run_daily_pipeline import (
     run_daily_pipeline,
 )
 
-router = APIRouter(tags=["signals"])
+router = APIRouter(tags=["signals"], dependencies=[Depends(get_current_user)])
 
 
 class PipelineSourceRequest(BaseModel):
