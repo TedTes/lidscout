@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, Metric } from '@/components/ui/DashboardPrimitives';
+import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Competitor, Market, MonitoredSource, SourceCoverageSummary, SourceSuggestion } from '@/lib/types/signals';
 
@@ -174,11 +174,11 @@ export default function NicheSourcesPage({ params }: Props) {
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
           {/* Stats */}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Monitored" value={summary?.source_count ?? sources.length} />
-            <Metric label="Active" value={activeCount} accent={activeCount > 0} />
-            <Metric label="Failing" value={errorCount} danger={errorCount > 0} />
-          </div>
+          <StatRow stats={[
+            { label: 'Monitored', value: summary?.source_count ?? sources.length },
+            { label: 'Active', value: activeCount, accent: activeCount > 0 },
+            { label: 'Failing', value: errorCount, danger: errorCount > 0 },
+          ]} />
 
           {/* Add source form */}
           {showAddSource && (

@@ -5,14 +5,11 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
   AgentColdStartPlan,
   AgentFeedbackAction,
-  AgentMemorySummary,
-  AgentPreferences,
-  AgentPreferencesUpdateRequest,
   Market,
   Opportunity,
   SignalCluster,
@@ -86,22 +83,6 @@ function IconThumbDown() {
   );
 }
 
-function IconChevron({ open }: { open: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function IconEdit() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-    </svg>
-  );
-}
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
@@ -111,8 +92,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
-  const [preferences, setPreferences] = useState<AgentPreferences | null>(null);
-  const [memory, setMemory] = useState<AgentMemorySummary | null>(null);
+  const [showBrief, setShowBrief] = useState(false);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -126,26 +106,21 @@ export default function NicheWorkspacePage({ params }: Props) {
     setFeedbackError(null);
     setNiche(null);
     setColdStart(null);
-    setPreferences(null);
-    setMemory(null);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     try {
-      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes, preferencesRes, memoryRes] = await Promise.all([
+      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes] = await Promise.all([
         signalApi.getMarkets(),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
-        signalApi.getMarketAgentPreferences(marketId).catch(() => null),
-        signalApi.getMarketAgentMemory(marketId).catch(() => null),
       ]);
       setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
       setColdStart(coldStartRes);
-      setPreferences(preferencesRes);
-      setMemory(memoryRes);
+      setShowBrief(coldStartRes !== null && coldStartRes.status === 'setup_needed');
 
       if (feedbackRes?.feedback) {
         // Take latest action per opportunity (sort asc by created_at, last wins)
@@ -251,42 +226,50 @@ export default function NicheWorkspacePage({ params }: Props) {
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
 
-          {coldStart && (
-            <ResearchBriefPanel
-              coldStart={coldStart}
-              preferences={preferences}
-              memory={memory}
-              marketId={marketId}
-              onPreferencesUpdated={setPreferences}
-            />
-          )}
-
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Metric label="Gaps identified" value={opportunities.length} accent={opportunities.length > 0} />
-                <Metric label="Strong signals" value={strongCount} accent={strongCount > 0} />
-                <Metric label="Evidence items" value={evidenceCount} />
+              <div className="flex flex-wrap items-center gap-3">
+                <StatRow compact stats={[
+                  { label: 'Gaps identified', value: opportunities.length, accent: opportunities.length > 0 },
+                  { label: 'Strong signals', value: strongCount, accent: strongCount > 0 },
+                  { label: 'Evidence items', value: evidenceCount },
+                ]} />
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
+                    {(['all', 'saved', 'dismissed'] as const).map(filter => (
+                      <button
+                        key={filter}
+                        onClick={() => setGapFilter(filter)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${gapFilter === filter ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                        {filter}
+                        {filter === 'saved' && savedIds.size > 0 && (
+                          <span className="ml-1 text-slate-600">({savedIds.size})</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {coldStart && (
+                    <button
+                      onClick={() => setShowBrief(v => !v)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                        showBrief
+                          ? 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+                          : 'border-slate-700/70 text-slate-500 hover:border-slate-600 hover:text-slate-300'
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                      Research brief
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
-                  {(['all', 'saved', 'dismissed'] as const).map(filter => (
-                    <button
-                      key={filter}
-                      onClick={() => setGapFilter(filter)}
-                      className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${gapFilter === filter ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
-                {savedIds.size > 0 && gapFilter !== 'saved' && (
-                  <span className="text-xs text-slate-600">{savedIds.size} saved</span>
-                )}
-              </div>
+              {showBrief && coldStart && (
+                <ResearchBriefPanel coldStart={coldStart} marketId={marketId} />
+              )}
               {feedbackError && (
                 <p className="text-xs text-rose-400">{feedbackError}</p>
               )}
@@ -326,40 +309,17 @@ export default function NicheWorkspacePage({ params }: Props) {
 
 function ResearchBriefPanel({
   coldStart,
-  preferences,
-  memory,
   marketId,
-  onPreferencesUpdated,
 }: {
   coldStart: AgentColdStartPlan;
-  preferences: AgentPreferences | null;
-  memory: AgentMemorySummary | null;
   marketId: string;
-  onPreferencesUpdated: (prefs: AgentPreferences) => void;
 }) {
-  const [open, setOpen] = useState(coldStart.status === 'setup_needed');
-  const [editing, setEditing] = useState(false);
-
   return (
-    <section className="rounded-xl border border-slate-800/60 bg-slate-900/30">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="flex w-full items-center justify-between px-5 py-3.5 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]' : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'}`} />
-          <span className="text-xs font-semibold text-slate-500">Research brief</span>
-          {coldStart.status === 'setup_needed' && (
-            <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">Setup needed</span>
-          )}
-        </div>
-        <span className="text-slate-700"><IconChevron open={open} /></span>
-      </button>
-
-      {open && (
-        <div className="border-t border-slate-800/50 px-5 pb-5 pt-4">
-          <div className="grid gap-4 sm:grid-cols-2">
+    <section className="rounded-xl border border-slate-800/60 bg-slate-900/30 px-5 pb-5 pt-4">
+      {coldStart.status === 'setup_needed' && (
+        <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-amber-400">Setup needed</p>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-3">
               {coldStart.brief.objective && (
                 <BriefField label="Objective" value={coldStart.brief.objective} />
@@ -392,120 +352,7 @@ function ResearchBriefPanel({
                 </div>
               )}
             </div>
-          </div>
-
-          {preferences && !editing && (
-            <div className="mt-4 border-t border-slate-800/50 pt-4">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Agent preferences</p>
-                <button
-                  onClick={() => setEditing(true)}
-                  className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
-                >
-                  <IconEdit /> Edit
-                </button>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {preferences.preferred_source_families.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-[10px] text-slate-700">Preferred sources</p>
-                    <div className="flex flex-wrap gap-1">
-                      {preferences.preferred_source_families.map(f => <PrefChip key={f} label={f} />)}
-                    </div>
-                  </div>
-                )}
-                {preferences.ignored_themes.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-[10px] text-slate-700">Ignored themes</p>
-                    <div className="flex flex-wrap gap-1">
-                      {preferences.ignored_themes.map(t => <PrefChip key={t} label={t} muted />)}
-                    </div>
-                  </div>
-                )}
-                {preferences.ignored_categories.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-[10px] text-slate-700">Ignored categories</p>
-                    <div className="flex flex-wrap gap-1">
-                      {preferences.ignored_categories.map(c => <PrefChip key={c} label={c} muted />)}
-                    </div>
-                  </div>
-                )}
-                {preferences.extra_instructions && (
-                  <div className="sm:col-span-2">
-                    <p className="mb-1 text-[10px] text-slate-700">Extra instructions</p>
-                    <p className="text-xs leading-relaxed text-slate-500">{preferences.extra_instructions}</p>
-                  </div>
-                )}
-                {preferences.preferred_source_families.length === 0 &&
-                  preferences.ignored_themes.length === 0 &&
-                  preferences.ignored_categories.length === 0 &&
-                  !preferences.extra_instructions && (
-                    <p className="text-xs text-slate-700 sm:col-span-2">No preferences set — agent uses defaults.</p>
-                  )}
-              </div>
-            </div>
-          )}
-
-          {editing && preferences && (
-            <PreferencesEditForm
-              marketId={marketId}
-              preferences={preferences}
-              onSaved={prefs => { onPreferencesUpdated(prefs); setEditing(false); }}
-              onCancel={() => setEditing(false)}
-            />
-          )}
-
-          {memory && (memory.learned_preferences.length > 0 || memory.source_notes.length > 0 || memory.feedback_notes.length > 0) && (
-            <div className="mt-4 border-t border-slate-800/50 pt-4">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">What the agent has learned</p>
-              {memory.headline && (
-                <p className="mb-3 text-xs leading-relaxed text-slate-500">{memory.headline}</p>
-              )}
-              <div className="grid gap-3 sm:grid-cols-3">
-                {memory.learned_preferences.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-[10px] text-slate-700">Preferences</p>
-                    <ul className="space-y-1">
-                      {memory.learned_preferences.map((note, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-500">
-                          <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-violet-500/50" />
-                          {note}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {memory.source_notes.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-[10px] text-slate-700">Source health</p>
-                    <ul className="space-y-1">
-                      {memory.source_notes.map((note, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-500">
-                          <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
-                          {note}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {memory.feedback_notes.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-[10px] text-slate-700">Feedback signals</p>
-                    <ul className="space-y-1">
-                      {memory.feedback_notes.map((note, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-500">
-                          <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-emerald-500/50" />
-                          {note}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -515,122 +362,6 @@ function BriefField({ label, value }: { label: string; value: string }) {
     <div>
       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
       <p className="text-xs leading-relaxed text-slate-400">{value}</p>
-    </div>
-  );
-}
-
-function PrefChip({ label, muted }: { label: string; muted?: boolean }) {
-  return (
-    <span className={`rounded-md px-2 py-0.5 text-[11px] ${muted ? 'bg-slate-800/50 text-slate-600' : 'bg-violet-500/10 text-violet-400'}`}>
-      {label}
-    </span>
-  );
-}
-
-// ── Preferences edit form ──────────────────────────────────────────────────────
-
-function PreferencesEditForm({
-  marketId,
-  preferences,
-  onSaved,
-  onCancel,
-}: {
-  marketId: string;
-  preferences: AgentPreferences;
-  onSaved: (prefs: AgentPreferences) => void;
-  onCancel: () => void;
-}) {
-  const [preferredFamilies, setPreferredFamilies] = useState(preferences.preferred_source_families.join(', '));
-  const [ignoredThemes, setIgnoredThemes] = useState(preferences.ignored_themes.join(', '));
-  const [ignoredCategories, setIgnoredCategories] = useState(preferences.ignored_categories.join(', '));
-  const [extraInstructions, setExtraInstructions] = useState(preferences.extra_instructions ?? '');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const parseList = (v: string) => v.split(',').map(s => s.trim()).filter(Boolean);
-
-  const save = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const request: AgentPreferencesUpdateRequest = {
-        preferred_source_families: parseList(preferredFamilies),
-        ignored_themes: parseList(ignoredThemes),
-        ignored_categories: parseList(ignoredCategories),
-        extra_instructions: extraInstructions.trim() || null,
-      };
-      const updated = await signalApi.updateMarketAgentPreferences(marketId, request);
-      onSaved(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save preferences');
-      setSaving(false);
-    }
-  };
-
-  const fieldCls = 'w-full rounded-md border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-xs text-slate-300 outline-none placeholder:text-slate-700 transition focus:border-violet-500/60';
-  const labelCls = 'mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-600';
-
-  return (
-    <div className="mt-4 border-t border-slate-800/50 pt-4">
-      <p className={labelCls}>Edit preferences</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className={labelCls}>Preferred source families</label>
-          <input
-            value={preferredFamilies}
-            onChange={e => setPreferredFamilies(e.target.value)}
-            placeholder="reviews, social, technical_forum"
-            className={fieldCls}
-          />
-          <p className="mt-0.5 text-[10px] text-slate-700">Comma-separated</p>
-        </div>
-        <div>
-          <label className={labelCls}>Ignored themes</label>
-          <input
-            value={ignoredThemes}
-            onChange={e => setIgnoredThemes(e.target.value)}
-            placeholder="pricing, onboarding"
-            className={fieldCls}
-          />
-          <p className="mt-0.5 text-[10px] text-slate-700">Comma-separated</p>
-        </div>
-        <div>
-          <label className={labelCls}>Ignored categories</label>
-          <input
-            value={ignoredCategories}
-            onChange={e => setIgnoredCategories(e.target.value)}
-            placeholder="marketing, hiring"
-            className={fieldCls}
-          />
-          <p className="mt-0.5 text-[10px] text-slate-700">Comma-separated</p>
-        </div>
-        <div>
-          <label className={labelCls}>Extra instructions</label>
-          <textarea
-            value={extraInstructions}
-            onChange={e => setExtraInstructions(e.target.value)}
-            rows={2}
-            placeholder="Focus on B2B SaaS tools…"
-            className={`${fieldCls} resize-none`}
-          />
-        </div>
-      </div>
-      {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
-      <div className="mt-3 flex gap-2">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          onClick={onCancel}
-          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-        >
-          Cancel
-        </button>
-      </div>
     </div>
   );
 }

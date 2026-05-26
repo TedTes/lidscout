@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric, relativeTime } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, MarketSignalReport } from '@/lib/types/signals';
 
@@ -54,20 +54,11 @@ export default function NicheReportPage({ params }: Props) {
 
       {status === 'ready' && report && (
         <div className="space-y-5 animate-fade-in">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Top themes" value={report.top_clusters.length} />
-            <Metric label="Emerging pains" value={report.emerging_pains.length} />
-            <Metric label="Gaps" value={report.recommended_opportunities.length} accent={report.recommended_opportunities.length > 0} />
-          </div>
-
-          <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-300">{report.title}</h2>
-              <span className="text-xs text-slate-700">
-                {relativeTime(report.generated_at) ?? new Date(report.generated_at).toLocaleDateString()}
-              </span>
-            </div>
-          </section>
+          <StatRow stats={[
+            { label: 'Top themes', value: report.top_clusters.length },
+            { label: 'Emerging pains', value: report.emerging_pains.length },
+            { label: 'Gaps', value: report.recommended_opportunities.length, accent: report.recommended_opportunities.length > 0 },
+          ]} />
 
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40">
             <div className="border-b border-slate-800/70 px-5 py-4">

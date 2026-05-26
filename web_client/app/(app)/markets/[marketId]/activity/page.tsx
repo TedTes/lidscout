@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
+import { ErrorPanel, LoadingPanel, StatRow, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { AgentActivity, Market } from '@/lib/types/signals';
 
@@ -22,7 +22,7 @@ function eventMeta(eventType: string) {
   return EVENT_META[eventType] ?? { label: eventType.replace(/_/g, ' '), dotCls: 'bg-slate-700', textCls: 'text-slate-600' };
 }
 
-function ActivityItem({ item }: { item: AgentActivity }) {
+function ActivityItem({ item, isLast }: { item: AgentActivity; isLast?: boolean }) {
   const meta = eventMeta(item.event_type);
   const time = relativeTime(item.created_at);
 
@@ -30,7 +30,7 @@ function ActivityItem({ item }: { item: AgentActivity }) {
     <div className="flex gap-4 py-4">
       <div className="relative flex flex-col items-center">
         <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${meta.dotCls}`} />
-        <span className="mt-1.5 flex-1 w-px bg-slate-800/60" />
+        {!isLast && <span className="mt-1.5 flex-1 w-px bg-slate-800/60" />}
       </div>
       <div className="min-w-0 flex-1 pb-1">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -56,7 +56,6 @@ export default function NicheActivityPage({ params }: Props) {
   const [activity, setActivity] = useState<AgentActivity[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
-
   const load = async () => {
     setStatus('loading');
     setError(null);
@@ -93,30 +92,16 @@ export default function NicheActivityPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: 'Events', value: activity.length },
-              { label: 'Runs completed', value: runCount },
-              { label: 'Source failures', value: failCount },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-xl border border-slate-800/70 bg-slate-900/40 px-5 py-4">
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
-                <p className="text-2xl font-black tabular-nums text-slate-100">{value}</p>
-              </div>
-            ))}
-          </div>
+          <StatRow compact stats={[
+            { label: 'Events', value: activity.length },
+            { label: 'Runs completed', value: runCount },
+            { label: 'Source failures', value: failCount, danger: failCount > 0 },
+          ]} />
 
-          {activity.length === 0 ? (
-            <EmptyPanel
-              title="No activity yet"
-              detail="Events appear after the agent runs its first scan."
-            />
-          ) : (
+          {activity.length > 0 && (
             <div className="rounded-xl border border-slate-800/70 bg-slate-900/40 px-5 pt-2 pb-1">
               {activity.map((item, i) => (
-                <div key={item.id} className={i < activity.length - 1 ? '' : '[&>div>div:last-child]:hidden'}>
-                  <ActivityItem item={item} />
-                </div>
+                <ActivityItem key={item.id} item={item} isLast={i === activity.length - 1} />
               ))}
             </div>
           )}

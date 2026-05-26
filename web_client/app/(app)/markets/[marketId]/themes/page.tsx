@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { EmptyPanel, ErrorPanel, LoadingPanel, Metric, ScoreBadge } from '@/components/ui/DashboardPrimitives';
+import { EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, SignalCluster } from '@/lib/types/signals';
 
@@ -54,11 +54,11 @@ export default function NicheThemesPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Themes" value={themes.length} />
-            <Metric label="Findings grouped" value={findingCount} />
-            <Metric label="Multi-company themes" value={broadThemes} accent={broadThemes > 0} />
-          </div>
+          <StatRow stats={[
+            { label: 'Themes', value: themes.length },
+            { label: 'Findings grouped', value: findingCount },
+            { label: 'Multi-company', value: broadThemes, accent: broadThemes > 0 },
+          ]} />
 
           {themes.length === 0 ? (
             <EmptyPanel title="No themes yet" detail="Themes appear after findings are grouped from active sources." />

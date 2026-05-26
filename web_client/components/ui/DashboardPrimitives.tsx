@@ -112,6 +112,38 @@ export function SkeletonRow() {
   );
 }
 
+// ── Stat row (compact inline stats bar) ─────────────────────────────────────
+
+export function StatRow({
+  stats,
+  compact,
+}: {
+  stats: Array<{ label: string; value: string | number; accent?: boolean; danger?: boolean }>;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`flex items-stretch overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/40 ${compact ? 'w-fit shrink-0' : ''}`}>
+      {stats.map((s, i) => (
+        <div
+          key={s.label}
+          className={`flex items-center gap-2 ${compact ? 'px-3 py-1.5' : 'px-4 py-2.5 min-w-0 flex-1'} ${i > 0 ? 'border-l border-slate-800/60' : ''}`}
+        >
+          <span
+            className={`${compact ? 'text-sm font-semibold' : 'text-lg font-bold'} tabular-nums tracking-tight ${
+              s.danger ? 'text-rose-300' : s.accent ? 'text-violet-300' : 'text-slate-100'
+            }`}
+          >
+            {s.value}
+          </span>
+          <span className={`text-[10px] font-semibold uppercase tracking-wider text-slate-600 ${compact ? 'whitespace-nowrap' : 'truncate'}`}>
+            {s.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Metric card ──────────────────────────────────────────────────────────────
 
 export function Metric({

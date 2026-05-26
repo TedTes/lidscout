@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, Metric, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
+import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, StatRow, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, Signal, SignalCluster } from '@/lib/types/signals';
 
@@ -86,13 +86,12 @@ export default function NicheFindingsPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Findings" value={signals.length} />
-            <Metric label="High urgency" value={highUrgency} accent={highUrgency > 0} />
-            <Metric label="Themes linked" value={clusters.length} />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <StatRow compact stats={[
+              { label: 'Findings', value: signals.length },
+              { label: 'High urgency', value: highUrgency, accent: highUrgency > 0 },
+              { label: 'Themes linked', value: clusters.length },
+            ]} />
             <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
               {(['all', 'high', 'medium', 'low'] as const).map(filter => (
                 <button
@@ -104,7 +103,7 @@ export default function NicheFindingsPage({ params }: Props) {
                 </button>
               ))}
             </div>
-            <div className="relative">
+            <div className="relative ml-auto">
               <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
               </svg>
@@ -112,7 +111,7 @@ export default function NicheFindingsPage({ params }: Props) {
                 value={query}
                 onChange={event => handleQueryChange(event.target.value)}
                 placeholder="Search findings…"
-                className="min-w-[200px] rounded-lg border border-slate-700/70 bg-slate-900/60 py-2 pl-8 pr-3 text-sm text-slate-300 outline-none placeholder:text-slate-600 focus:border-violet-500/40"
+                className="min-w-[180px] rounded-lg border border-slate-700/70 bg-slate-900/60 py-2 pl-8 pr-3 text-sm text-slate-300 outline-none placeholder:text-slate-600 focus:border-violet-500/40"
               />
             </div>
           </div>
