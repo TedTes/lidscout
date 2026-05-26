@@ -10,7 +10,9 @@ from typing import Any
 
 from application.ports import (
     AgentActivityRepository,
+    AgentAlertRepository,
     AgentFeedbackRepository,
+    AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
@@ -24,7 +26,13 @@ from application.ports import (
     SourceHealthRepository,
     SourceLocatorRepository,
 )
-from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
+from domain.agent import (
+    AgentActivity,
+    AgentAlert,
+    AgentFeedback,
+    AgentFollowUp,
+    AgentPreferences,
+)
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -263,6 +271,83 @@ class InMemoryAgentActivityRepository(AgentActivityRepository):
             reverse=True,
         )
         return activity[:limit] if limit is not None else activity
+
+
+@dataclass
+class InMemoryAgentAlertRepository(AgentAlertRepository):
+    """In-memory agent alert repository."""
+
+    alerts_by_id: dict[str, AgentAlert] = field(default_factory=dict)
+
+    def save_agent_alert(self, alert: AgentAlert) -> bool:
+        if alert.id in self.alerts_by_id:
+            return False
+        self.alerts_by_id[alert.id] = alert
+        return True
+
+    def get_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        return self.alerts_by_id.get(alert_id)
+
+    def list_agent_alerts(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAlert]:
+        alerts = list(self.alerts_by_id.values())
+        if market_id is not None:
+            alerts = [item for item in alerts if item.market_id == market_id]
+        if status is not None:
+            alerts = [item for item in alerts if item.status == status]
+        alerts = sorted(
+            alerts,
+            key=lambda item: item.created_at or datetime.min,
+            reverse=True,
+        )
+        return alerts[:limit] if limit is not None else alerts
+
+    def acknowledge_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        alert = self.alerts_by_id.get(alert_id)
+        if alert is None:
+            return None
+        acknowledged = alert.acknowledge()
+        self.alerts_by_id[alert_id] = acknowledged
+        return acknowledged
+
+
+@dataclass
+class InMemoryAgentFollowUpRepository(AgentFollowUpRepository):
+    """In-memory agent follow-up repository."""
+
+    follow_ups_by_id: dict[str, AgentFollowUp] = field(default_factory=dict)
+
+    def save_agent_follow_up(self, follow_up: AgentFollowUp) -> bool:
+        if follow_up.id in self.follow_ups_by_id:
+            return False
+        self.follow_ups_by_id[follow_up.id] = follow_up
+        return True
+
+    def list_agent_follow_ups(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentFollowUp]:
+        follow_ups = list(self.follow_ups_by_id.values())
+        if market_id is not None:
+            follow_ups = [
+                item for item in follow_ups if item.market_id == market_id
+            ]
+        if status is not None:
+            follow_ups = [item for item in follow_ups if item.status == status]
+        follow_ups = sorted(
+            follow_ups,
+            key=lambda item: item.created_at or datetime.min,
+            reverse=True,
+        )
+        return follow_ups[:limit] if limit is not None else follow_ups
 
 
 @dataclass
@@ -1019,6 +1104,155 @@ class SQLiteAgentActivityRepository(_SQLiteRepository, AgentActivityRepository):
             params.append(limit)
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_activity_from_row(row) for row in rows]
+
+
+class SQLiteAgentAlertRepository(_SQLiteRepository, AgentAlertRepository):
+    """SQLite-backed agent alert repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_alerts (
+                id TEXT PRIMARY KEY,
+                market_id TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                title TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                status TEXT NOT NULL,
+                detail TEXT,
+                metadata TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                acknowledged_at TEXT
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_agent_alert(self, alert: AgentAlert) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT OR IGNORE INTO agent_alerts (
+                id, market_id, alert_type, title, severity, status, detail,
+                metadata, created_at, acknowledged_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            _agent_alert_values(alert, sqlite=True),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def get_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        row = self.connection.execute(
+            "SELECT * FROM agent_alerts WHERE id = ?",
+            (alert_id,),
+        ).fetchone()
+        return _agent_alert_from_row(row) if row else None
+
+    def list_agent_alerts(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAlert]:
+        query = "SELECT * FROM agent_alerts"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if market_id is not None:
+            clauses.append("market_id = ?")
+            params.append(market_id)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_alert_from_row(row) for row in rows]
+
+    def acknowledge_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        alert = self.get_agent_alert(alert_id)
+        if alert is None:
+            return None
+        acknowledged = alert.acknowledge()
+        self.connection.execute(
+            """
+            UPDATE agent_alerts
+            SET status = ?, acknowledged_at = ?
+            WHERE id = ?
+            """,
+            (
+                acknowledged.status,
+                _datetime_to_text(acknowledged.acknowledged_at),
+                alert_id,
+            ),
+        )
+        self.connection.commit()
+        return acknowledged
+
+
+class SQLiteAgentFollowUpRepository(_SQLiteRepository, AgentFollowUpRepository):
+    """SQLite-backed agent follow-up repository."""
+
+    def _initialize_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_follow_ups (
+                id TEXT PRIMARY KEY,
+                market_id TEXT NOT NULL,
+                question TEXT NOT NULL,
+                opportunity_id TEXT,
+                cluster_id TEXT,
+                status TEXT NOT NULL,
+                response TEXT,
+                metadata TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_agent_follow_up(self, follow_up: AgentFollowUp) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT OR IGNORE INTO agent_follow_ups (
+                id, market_id, question, opportunity_id, cluster_id, status,
+                response, metadata, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            _agent_follow_up_values(follow_up, sqlite=True),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
+
+    def list_agent_follow_ups(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentFollowUp]:
+        query = "SELECT * FROM agent_follow_ups"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if market_id is not None:
+            clauses.append("market_id = ?")
+            params.append(market_id)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_follow_up_from_row(row) for row in rows]
 
 
 class SQLitePipelineRunMetricsRepository(
@@ -1945,6 +2179,115 @@ class PostgresAgentActivityRepository(_PostgresRepository, AgentActivityReposito
         return [_agent_activity_from_row(row) for row in rows]
 
 
+class PostgresAgentAlertRepository(_PostgresRepository, AgentAlertRepository):
+    """Postgres-backed agent alert repository."""
+
+    def save_agent_alert(self, alert: AgentAlert) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO agent_alerts (
+                id, market_id, alert_type, title, severity, status, detail,
+                metadata, created_at, acknowledged_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            _agent_alert_values(alert, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def get_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        row = self.connection.execute(
+            "SELECT * FROM agent_alerts WHERE id = %s",
+            (alert_id,),
+        ).fetchone()
+        return _agent_alert_from_row(row) if row else None
+
+    def list_agent_alerts(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAlert]:
+        query = "SELECT * FROM agent_alerts"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if market_id is not None:
+            clauses.append("market_id = %s")
+            params.append(market_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_alert_from_row(row) for row in rows]
+
+    def acknowledge_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        alert = self.get_agent_alert(alert_id)
+        if alert is None:
+            return None
+        acknowledged = alert.acknowledge()
+        self.connection.execute(
+            """
+            UPDATE agent_alerts
+            SET status = %s, acknowledged_at = %s
+            WHERE id = %s
+            """,
+            (acknowledged.status, acknowledged.acknowledged_at, alert_id),
+        )
+        self.connection.commit()
+        return acknowledged
+
+
+class PostgresAgentFollowUpRepository(_PostgresRepository, AgentFollowUpRepository):
+    """Postgres-backed agent follow-up repository."""
+
+    def save_agent_follow_up(self, follow_up: AgentFollowUp) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO agent_follow_ups (
+                id, market_id, question, opportunity_id, cluster_id, status,
+                response, metadata, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            _agent_follow_up_values(follow_up, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def list_agent_follow_ups(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentFollowUp]:
+        query = "SELECT * FROM agent_follow_ups"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if market_id is not None:
+            clauses.append("market_id = %s")
+            params.append(market_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_follow_up_from_row(row) for row in rows]
+
+
 class PostgresPipelineRunMetricsRepository(
     _PostgresRepository,
     PipelineRunMetricsRepository,
@@ -2446,6 +2789,78 @@ def _agent_activity_from_row(row: sqlite3.Row) -> AgentActivity:
         detail=row["detail"],
         metadata=_from_json(row["metadata"]),
         created_at=_datetime_from_text(row["created_at"]),
+    )
+
+
+def _agent_alert_values(alert: AgentAlert, *, sqlite: bool) -> tuple:
+    return (
+        alert.id,
+        alert.market_id,
+        alert.alert_type,
+        alert.title,
+        alert.severity,
+        alert.status,
+        alert.detail,
+        _to_json(alert.metadata),
+        _datetime_to_text(alert.created_at) if sqlite else alert.created_at,
+        (
+            _datetime_to_text(alert.acknowledged_at)
+            if sqlite
+            else alert.acknowledged_at
+        ),
+    )
+
+
+def _agent_alert_from_row(row: sqlite3.Row) -> AgentAlert:
+    return AgentAlert.create(
+        id=row["id"],
+        market_id=row["market_id"],
+        alert_type=row["alert_type"],
+        title=row["title"],
+        severity=row["severity"],
+        status=row["status"],
+        detail=row["detail"],
+        metadata=_from_json(row["metadata"]),
+        created_at=_datetime_from_text(row["created_at"]),
+        acknowledged_at=_datetime_from_text(row["acknowledged_at"]),
+    )
+
+
+def _agent_follow_up_values(follow_up: AgentFollowUp, *, sqlite: bool) -> tuple:
+    return (
+        follow_up.id,
+        follow_up.market_id,
+        follow_up.question,
+        follow_up.opportunity_id,
+        follow_up.cluster_id,
+        follow_up.status,
+        follow_up.response,
+        _to_json(follow_up.metadata),
+        (
+            _datetime_to_text(follow_up.created_at)
+            if sqlite
+            else follow_up.created_at
+        ),
+        (
+            _datetime_to_text(follow_up.updated_at)
+            if sqlite
+            else follow_up.updated_at
+        ),
+    )
+
+
+def _agent_follow_up_from_row(row: sqlite3.Row) -> AgentFollowUp:
+    return AgentFollowUp.create(
+        id=row["id"],
+        market_id=row["market_id"],
+        question=row["question"],
+        opportunity_id=row["opportunity_id"],
+        cluster_id=row["cluster_id"],
+        status=row["status"],
+        response=row["response"],
+        metadata=_from_json(row["metadata"]),
+        created_at=_datetime_from_text(row["created_at"]),
+        updated_at=_datetime_from_text(row["updated_at"]),
     )
 
 
