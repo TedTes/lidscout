@@ -40,6 +40,12 @@ class AppConfig:
     RESEND_FROM_EMAIL: str | None
     REPORT_RECIPIENT: str | None
     PIPELINE_SCHEDULE: str
+    JWT_SECRET: str
+    JWT_EXPIRY_MINUTES: int
+    GOOGLE_CLIENT_ID: str | None
+    GOOGLE_CLIENT_SECRET: str | None
+    API_URL: str
+    FRONTEND_URL: str
 
 
 def _csv(value: str) -> list[str]:
@@ -109,4 +115,10 @@ def get_app_config() -> AppConfig:
         RESEND_FROM_EMAIL=_optional_env("RESEND_FROM_EMAIL") or _optional_env("EMAIL_FROM"),
         REPORT_RECIPIENT=_optional_env("REPORT_RECIPIENT"),
         PIPELINE_SCHEDULE=os.getenv("PIPELINE_SCHEDULE", "0 8 * * *").strip(),
+        JWT_SECRET=os.getenv("JWT_SECRET", "change-me-in-production"),
+        JWT_EXPIRY_MINUTES=int(os.getenv("JWT_EXPIRY_MINUTES", str(60 * 24 * 30))),
+        GOOGLE_CLIENT_ID=_optional_env("GOOGLE_CLIENT_ID"),
+        GOOGLE_CLIENT_SECRET=_optional_env("GOOGLE_CLIENT_SECRET"),
+        API_URL=_env_or_default("API_URL", "http://localhost:8000"),
+        FRONTEND_URL=_env_or_default("FRONTEND_URL", "http://localhost:3000"),
     )
