@@ -12,7 +12,13 @@ AgentActivityType = Literal[
     "source_failed",
     "feedback_recorded",
     "preferences_updated",
+    "brief_updated",
+    "alert_created",
+    "follow_up_recorded",
 ]
+
+AgentAlertSeverity = Literal["info", "warning", "critical"]
+AgentAlertStatus = Literal["open", "acknowledged"]
 
 AgentFeedbackAction = Literal[
     "save",
@@ -20,6 +26,8 @@ AgentFeedbackAction = Literal[
     "more_like_this",
     "less_like_this",
 ]
+
+AgentFollowUpStatus = Literal["queued", "answered", "dismissed"]
 
 
 @dataclass(frozen=True)
@@ -158,6 +166,9 @@ class AgentActivity:
             "source_failed",
             "feedback_recorded",
             "preferences_updated",
+            "brief_updated",
+            "alert_created",
+            "follow_up_recorded",
         }:
             raise ValueError("unsupported activity event type")
         if not normalized_title:
@@ -171,6 +182,151 @@ class AgentActivity:
             detail=_clean_optional(detail),
             metadata=metadata or {},
             created_at=created_at or datetime.now(tz=UTC),
+        )
+
+
+@dataclass(frozen=True)
+class AgentAlert:
+    """One proactive agent alert for a niche."""
+
+    id: str
+    market_id: str
+    alert_type: str
+    title: str
+    severity: AgentAlertSeverity = "info"
+    status: AgentAlertStatus = "open"
+    detail: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        market_id: str,
+        alert_type: str,
+        title: str,
+        id: str | None = None,
+        severity: str = "info",
+        status: str = "open",
+        detail: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+        acknowledged_at: datetime | None = None,
+    ) -> "AgentAlert":
+        """Create a validated proactive alert."""
+        alert_id = (id or f"agent-alert-{uuid4().hex}").strip()
+        normalized_market_id = market_id.strip()
+        normalized_alert_type = alert_type.strip().lower()
+        normalized_title = title.strip()
+        normalized_severity = severity.strip().lower()
+        normalized_status = status.strip().lower()
+
+        if not alert_id:
+            raise ValueError("id is required")
+        if not normalized_market_id:
+            raise ValueError("market_id is required")
+        if not normalized_alert_type:
+            raise ValueError("alert_type is required")
+        if not normalized_title:
+            raise ValueError("title is required")
+        if normalized_severity not in {"info", "warning", "critical"}:
+            raise ValueError("severity must be info, warning, or critical")
+        if normalized_status not in {"open", "acknowledged"}:
+            raise ValueError("status must be open or acknowledged")
+
+        created = created_at or datetime.now(tz=UTC)
+        return cls(
+            id=alert_id,
+            market_id=normalized_market_id,
+            alert_type=normalized_alert_type,
+            title=normalized_title,
+            severity=normalized_severity,  # type: ignore[arg-type]
+            status=normalized_status,  # type: ignore[arg-type]
+            detail=_clean_optional(detail),
+            metadata=metadata or {},
+            created_at=created,
+            acknowledged_at=(
+                acknowledged_at
+                if normalized_status == "acknowledged"
+                else None
+            ),
+        )
+
+    def acknowledge(self, acknowledged_at: datetime | None = None) -> "AgentAlert":
+        """Return an acknowledged copy of this alert."""
+        return AgentAlert.create(
+            id=self.id,
+            market_id=self.market_id,
+            alert_type=self.alert_type,
+            title=self.title,
+            severity=self.severity,
+            status="acknowledged",
+            detail=self.detail,
+            metadata=self.metadata,
+            created_at=self.created_at,
+            acknowledged_at=acknowledged_at or datetime.now(tz=UTC),
+        )
+
+
+@dataclass(frozen=True)
+class AgentFollowUp:
+    """A user follow-up question or research instruction for the agent."""
+
+    id: str
+    market_id: str
+    question: str
+    opportunity_id: str | None = None
+    cluster_id: str | None = None
+    status: AgentFollowUpStatus = "queued"
+    response: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        market_id: str,
+        question: str,
+        id: str | None = None,
+        opportunity_id: str | None = None,
+        cluster_id: str | None = None,
+        status: str = "queued",
+        response: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "AgentFollowUp":
+        """Create a validated follow-up intent."""
+        follow_up_id = (id or f"agent-follow-up-{uuid4().hex}").strip()
+        normalized_market_id = market_id.strip()
+        normalized_question = question.strip()
+        normalized_status = status.strip().lower()
+
+        if not follow_up_id:
+            raise ValueError("id is required")
+        if not normalized_market_id:
+            raise ValueError("market_id is required")
+        if not normalized_question:
+            raise ValueError("question is required")
+        if normalized_status not in {"queued", "answered", "dismissed"}:
+            raise ValueError("status must be queued, answered, or dismissed")
+
+        created = created_at or datetime.now(tz=UTC)
+        return cls(
+            id=follow_up_id,
+            market_id=normalized_market_id,
+            question=normalized_question,
+            opportunity_id=_clean_optional(opportunity_id),
+            cluster_id=_clean_optional(cluster_id),
+            status=normalized_status,  # type: ignore[arg-type]
+            response=_clean_optional(response),
+            metadata=metadata or {},
+            created_at=created,
+            updated_at=updated_at or created,
         )
 
 

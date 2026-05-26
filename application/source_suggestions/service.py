@@ -6,8 +6,9 @@ from application.source_suggestions.ranking import rank_source_candidates
 from application.source_suggestions.template_renderer import render_source_candidates
 from application.source_suggestions.validation import validate_source_candidates
 from domain.competitor import Competitor
+from domain.agent import AgentPreferences
 from domain.market import Market
-from domain.source import MonitoredSource, SourceCandidate, SourceTemplate
+from domain.source import MonitoredSource, SourceCandidate, SourceHealth, SourceTemplate
 
 SourceSuggestion = SourceCandidate
 
@@ -24,6 +25,8 @@ class SourceSuggestionService:
         existing_sources: list[MonitoredSource] | None = None,
         *,
         market: Market | None = None,
+        preferences: AgentPreferences | None = None,
+        source_health: list[SourceHealth] | None = None,
     ) -> list[SourceSuggestion]:
         """Return rendered source suggestions for a competitor and optional market."""
         existing_locators = {
@@ -40,13 +43,22 @@ class SourceSuggestionService:
             market=market,
             existing_locators=existing_locators,
         )
-        return rank_source_candidates(validate_source_candidates(candidates))
+        return rank_source_candidates(
+            _adapt_candidates(
+                validate_source_candidates(candidates),
+                existing_sources or [],
+                preferences=preferences,
+                source_health=source_health or [],
+            )
+        )
 
     def suggest_for_market(
         self,
         market: Market,
         existing_sources: list[MonitoredSource] | None = None,
         competitors: list[Competitor] | None = None,
+        preferences: AgentPreferences | None = None,
+        source_health: list[SourceHealth] | None = None,
     ) -> list[SourceSuggestion]:
         """Return rendered source suggestions for a market-level watchlist."""
         existing_locators = {
@@ -76,7 +88,12 @@ class SourceSuggestionService:
                 )
             )
         return rank_source_candidates(
-            validate_source_candidates(_dedupe_candidates(candidates))
+            _adapt_candidates(
+                validate_source_candidates(_dedupe_candidates(candidates)),
+                existing_sources or [],
+                preferences=preferences,
+                source_health=source_health or [],
+            )
         )
 
     def _applicable_templates(
@@ -112,6 +129,68 @@ def _dedupe_candidates(candidates: list[SourceCandidate]) -> list[SourceCandidat
         seen.add(locator_key)
         deduped.append(candidate)
     return deduped
+
+
+def _adapt_candidates(
+    candidates: list[SourceCandidate],
+    existing_sources: list[MonitoredSource],
+    *,
+    preferences: AgentPreferences | None,
+    source_health: list[SourceHealth],
+) -> list[SourceCandidate]:
+    source_by_locator = {
+        source.locator.strip().rstrip("/"): source
+        for source in existing_sources
+    }
+    health_by_source_id = {
+        health.monitored_source_id: health
+        for health in source_health
+    }
+    preferred_families = set(preferences.preferred_source_families if preferences else [])
+    muted_source_ids = set(preferences.muted_source_ids if preferences else [])
+
+    adapted: list[SourceCandidate] = []
+    for candidate in candidates:
+        rank_score = candidate.rank_score
+        rationale = candidate.rationale
+        source = source_by_locator.get(candidate.locator.strip().rstrip("/"))
+        health = health_by_source_id.get(source.id) if source is not None else None
+
+        if candidate.source_family in preferred_families:
+            rank_score += 0.15
+            rationale = f"{rationale} Preferred by this agent."
+        if source is not None and source.id in muted_source_ids:
+            rank_score = max(0.0, rank_score - 0.5)
+            rationale = f"{rationale} Muted in current agent preferences."
+        if health is not None:
+            if health.last_status == "healthy" and health.signal_yield_rate > 0:
+                rank_score += min(0.2, health.signal_yield_rate)
+                rationale = f"{rationale} Recent scans produced findings."
+            elif health.last_status == "failing":
+                rank_score = max(0.0, rank_score - 0.35)
+                rationale = f"{rationale} Recent scans failed; review before adding more."
+
+        adapted.append(
+            SourceCandidate.create(
+                locator=candidate.locator,
+                source_type=candidate.source_type,
+                label=candidate.label,
+                rationale=rationale,
+                source_family=candidate.source_family,
+                competitor_id=candidate.competitor_id,
+                competitor_name=candidate.competitor_name,
+                market_id=candidate.market_id,
+                market_name=candidate.market_name,
+                limit=candidate.limit,
+                options=candidate.options,
+                template_id=candidate.template_id,
+                already_monitored=candidate.already_monitored,
+                rank_score=rank_score,
+                validation_status=candidate.validation_status,
+                validation_error=candidate.validation_error,
+            )
+        )
+    return adapted
 
 
 def _template_categories(
