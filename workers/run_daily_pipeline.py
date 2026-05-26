@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from application.clustering import ClusteringService
+from application.agent import generate_threshold_alerts
 from application.extraction import ExtractionService
 from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from application.ingestion import (
@@ -22,6 +23,7 @@ from application.opportunity import (
 )
 from application.ports import (
     AgentActivityRepository,
+    AgentAlertRepository,
     AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
@@ -39,6 +41,7 @@ from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
 from domain.cluster import SignalCluster
 from domain.agent import AgentActivity
+from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
@@ -64,6 +67,7 @@ class PipelineConfig:
     pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
     agent_preferences_repository: AgentPreferencesRepository | None = None
     agent_activity_repository: AgentActivityRepository | None = None
+    agent_alert_repository: AgentAlertRepository | None = None
     competitor_repository: CompetitorRepository | None = None
     monitored_source_repository: MonitoredSourceRepository | None = None
     source_health_repository: SourceHealthRepository | None = None
@@ -190,6 +194,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         email_result=email_result,
     )
     _save_pipeline_run_metrics(config.pipeline_run_metrics_repository, result)
+    _record_threshold_alerts(config, clusters, opportunity_synthesis_result.opportunities)
     _record_pipeline_activity(config, result)
     return result
 
@@ -336,6 +341,36 @@ def _record_pipeline_activity(
             "email_error": result.email_result.error,
         },
     )
+
+
+def _record_threshold_alerts(
+    config: PipelineConfig,
+    clusters: list[SignalCluster],
+    opportunities: list[Opportunity],
+) -> None:
+    if config.agent_alert_repository is None or config.market_id is None:
+        return
+    alerts = generate_threshold_alerts(
+        market_id=config.market_id,
+        clusters=clusters,
+        opportunities=opportunities,
+    )
+    for alert in alerts:
+        inserted = config.agent_alert_repository.save_agent_alert(alert)
+        if not inserted:
+            continue
+        _record_agent_activity(
+            config.agent_activity_repository,
+            market_id=config.market_id,
+            event_type="alert_created",
+            title="Threshold alert created",
+            detail=alert.title,
+            metadata={
+                "alert_id": alert.id,
+                "alert_type": alert.alert_type,
+                "severity": alert.severity,
+            },
+        )
 
 
 def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:

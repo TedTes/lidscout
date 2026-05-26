@@ -48,6 +48,7 @@ def run_configured_daily_pipeline(
                 runtime_dependencies.agent_preferences_repository
             ),
             agent_activity_repository=runtime_dependencies.agent_activity_repository,
+            agent_alert_repository=runtime_dependencies.agent_alert_repository,
             competitor_repository=runtime_dependencies.competitor_repository,
             market_repository=runtime_dependencies.market_repository,
             monitored_source_repository=runtime_dependencies.monitored_source_repository,
