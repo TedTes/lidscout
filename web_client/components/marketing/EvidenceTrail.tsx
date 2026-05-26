@@ -80,7 +80,7 @@ export default function EvidenceTrail() {
             <p className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
               Source · {gap.sourceLabel} · {gap.company}
             </p>
-            <blockquote className="text-base font-medium leading-relaxed text-slate-300 italic">
+            <blockquote className="text-base font-medium leading-relaxed text-slate-500 italic">
               &ldquo;{gap.evidenceQuote}&rdquo;
             </blockquote>
           </div>
@@ -93,7 +93,7 @@ export default function EvidenceTrail() {
             <p className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-slate-700">
               Clustered with {gap.mentions - 1} similar signals into
             </p>
-            <p className="text-xl font-bold text-slate-200">{theme}</p>
+            <p className="text-xl font-bold text-slate-400">{theme}</p>
             <p className="mt-3 text-xs leading-relaxed text-slate-600">{gap.painSummary}</p>
           </div>
 
@@ -105,7 +105,7 @@ export default function EvidenceTrail() {
             <p className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-emerald-700">
               Ranked gap · {gap.strength === 'strong' ? 'strong evidence' : 'moderate evidence'}
             </p>
-            <p className="text-xl font-bold leading-snug text-slate-100">{gap.title}</p>
+            <p className="text-xl font-bold leading-snug text-slate-300">{gap.title}</p>
             <p className="mt-3 text-xs leading-relaxed text-slate-600">
               <span className="text-slate-500 font-medium">Wedge → </span>
               {gap.suggestedWedge}
