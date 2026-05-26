@@ -1,8 +1,12 @@
 import Link from 'next/link';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { IconRadar } from '@/components/marketing/icons';
+import { AuthProvider } from '@/lib/context/AuthContext';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
+    <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ''}>
+    <AuthProvider>
     <div className="min-h-screen bg-[#07091a] flex flex-col">
       <header className="flex h-14 shrink-0 items-center px-6">
         <Link href="/" className="flex items-center gap-2.5">
@@ -16,5 +20,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {children}
       </main>
     </div>
+    </AuthProvider>
+    </GoogleOAuthProvider>
   );
 }

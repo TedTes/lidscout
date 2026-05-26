@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AddNicheDrawer } from '@/components/app/AddNicheDrawer';
 import { signalApi } from '@/lib/api';
+import { useAuth } from '@/lib/context/AuthContext';
 import { Market } from '@/lib/types/signals';
 
 function IconRadar() {
@@ -209,6 +210,7 @@ function MobileNicheMenu({
 export default function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, logout } = useAuth();
   const activeId = activeNicheFromPath(pathname);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [showAddNiche, setShowAddNiche] = useState(false);
@@ -264,6 +266,22 @@ export default function DashboardNav() {
           </div>
         </nav>
 
+        <div className="mx-4 mb-4 mt-2 border-t border-white/[0.06] pt-3">
+          {user && (
+            <p className="mb-2 truncate px-2 text-[10px] text-slate-700">{user.email}</p>
+          )}
+          <button
+            onClick={logout}
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Sign out
+          </button>
+        </div>
       </aside>
 
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-white/[0.06] bg-[#07091a]/95 px-4 backdrop-blur-md lg:hidden">

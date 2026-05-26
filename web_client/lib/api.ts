@@ -3,6 +3,7 @@
  * Following Single Responsibility Principle - only handles API calls.
  */
 import axios from 'axios';
+import { clearToken, getToken } from '@/lib/auth';
 import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
@@ -36,6 +37,67 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+api.interceptors.request.use(config => {
+  const token = getToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (axios.isAxiosError(err) && err.response?.status === 401) {
+      clearToken();
+      if (typeof window !== 'undefined') window.location.href = '/login';
+    }
+    return Promise.reject(err);
+  }
+);
+
+// ── Auth API ──────────────────────────────────────────────────────────────────
+
+type TokenResponse = { access_token: string; token_type: string };
+type UserResponse = { id: string; email: string };
+
+class AuthApiService {
+  async register(email: string, password: string): Promise<TokenResponse> {
+    try {
+      const res = await api.post<TokenResponse>('/auth/register', { email, password });
+      return res.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Registration failed');
+      throw error;
+    }
+  }
+
+  async login(email: string, password: string): Promise<TokenResponse> {
+    try {
+      const res = await api.post<TokenResponse>('/auth/login', { email, password });
+      return res.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Invalid email or password');
+      throw error;
+    }
+  }
+
+  async me(): Promise<UserResponse> {
+    const res = await api.get<UserResponse>('/auth/me');
+    return res.data;
+  }
+
+  async googleLogin(credential: string): Promise<TokenResponse> {
+    try {
+      const res = await api.post<TokenResponse>('/auth/google', { credential });
+      return res.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Google sign-in failed');
+      throw error;
+    }
+  }
+}
+
+export const authApi = new AuthApiService();
 
 class BusinessApiService {
   /**

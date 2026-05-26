@@ -2,23 +2,33 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { GoogleLogin } from '@react-oauth/google';
+import { useAuth } from '@/lib/context/AuthContext';
+import { useSearchParams } from 'next/navigation';
+
+const OAUTH_ERRORS: Record<string, string> = {
+  oauth_cancelled: 'Sign-in was cancelled.',
+  oauth_failed: 'Google sign-in failed. Please try again.',
+};
 
 export default function LoginPage() {
+  const { login, googleLogin } = useAuth();
+  const params = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    OAUTH_ERRORS[params.get('error') ?? ''] ?? null,
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      // TODO: wire to auth backend
-      await new Promise(r => setTimeout(r, 800));
-      window.location.href = '/markets';
-    } catch {
-      setError('Invalid email or password.');
+      await login(email, password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid email or password.');
     } finally {
       setLoading(false);
     }
@@ -29,6 +39,29 @@ export default function LoginPage() {
       <div className="mb-8 text-center">
         <h1 className="text-2xl font-bold text-slate-100">Sign in</h1>
         <p className="mt-1.5 text-sm text-slate-500">Welcome back to LidScout</p>
+      </div>
+
+      <GoogleLogin
+        onSuccess={async cr => {
+          if (!cr.credential) return;
+          try {
+            await googleLogin(cr.credential);
+          } catch {
+            setError('Google sign-in failed. Please try again.');
+          }
+        }}
+        onError={() => setError('Google sign-in failed. Please try again.')}
+        width="368"
+        theme="filled_black"
+        size="large"
+        text="continue_with"
+        shape="rectangular"
+      />
+
+      <div className="relative my-1 flex items-center gap-3">
+        <div className="h-px flex-1 bg-slate-800/80" />
+        <span className="text-[11px] text-slate-600">or</span>
+        <div className="h-px flex-1 bg-slate-800/80" />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
