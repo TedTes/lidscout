@@ -14,7 +14,9 @@ from application.agent import (
 from application.ingestion import SourceAdapter
 from application.ports import (
     AgentActivityRepository,
+    AgentAlertRepository,
     AgentFeedbackRepository,
+    AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
@@ -31,7 +33,13 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_suggestions import SourceSuggestion, SourceSuggestionService
 from domain.cluster import SignalCluster
-from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
+from domain.agent import (
+    AgentActivity,
+    AgentAlert,
+    AgentFeedback,
+    AgentFollowUp,
+    AgentPreferences,
+)
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.opportunity import Opportunity
@@ -40,7 +48,9 @@ from domain.signal import Signal
 from domain.source import MonitoredSource, SourceInput
 from infrastructure.db import (
     InMemoryAgentActivityRepository,
+    InMemoryAgentAlertRepository,
     InMemoryAgentFeedbackRepository,
+    InMemoryAgentFollowUpRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryCompetitorRepository,
@@ -123,12 +133,30 @@ class AgentPreferencesRequest(BaseModel):
     extra_instructions: str | None = None
 
 
+class AgentBriefRequest(BaseModel):
+    """HTTP request body for updating the agent research brief."""
+
+    niche_name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    target_user: str | None = None
+    objective: str | None = None
+    extra_instructions: str | None = None
+
+
 class AgentFeedbackRequest(BaseModel):
     """HTTP request body for recording feedback on a gap."""
 
     market_id: str = Field(min_length=1)
     action: str = Field(min_length=1)
     reason: str | None = None
+
+
+class AgentFollowUpRequest(BaseModel):
+    """HTTP request body for storing a follow-up research question."""
+
+    question: str = Field(min_length=1)
+    opportunity_id: str | None = None
+    cluster_id: str | None = None
 
 
 class MonitoredSourceRequest(BaseModel):
@@ -176,6 +204,12 @@ class SignalApiDependencies:
     )
     agent_activity_repository: AgentActivityRepository = field(
         default_factory=InMemoryAgentActivityRepository
+    )
+    agent_alert_repository: AgentAlertRepository = field(
+        default_factory=InMemoryAgentAlertRepository
+    )
+    agent_follow_up_repository: AgentFollowUpRepository = field(
+        default_factory=InMemoryAgentFollowUpRepository
     )
     competitor_repository: CompetitorRepository = field(
         default_factory=InMemoryCompetitorRepository
@@ -610,6 +644,14 @@ async def list_competitor_source_suggestions(
                 competitor,
                 existing_sources,
                 market=market,
+                preferences=(
+                    dependencies.agent_preferences_repository.get_agent_preferences(
+                        competitor.market_id
+                    )
+                    if competitor.market_id
+                    else None
+                ),
+                source_health=dependencies.source_health_repository.list_source_health(),
             )
         ]
     }
@@ -628,6 +670,10 @@ async def list_market_source_suggestions(
     existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
         market_id=market_id,
     )
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    )
+    source_health = dependencies.source_health_repository.list_source_health()
     competitors = [
         competitor
         for competitor in dependencies.competitor_repository.list_competitors()
@@ -640,6 +686,8 @@ async def list_market_source_suggestions(
                 market,
                 existing_sources,
                 competitors=competitors,
+                preferences=preferences,
+                source_health=source_health,
             )
         ]
     }
@@ -667,6 +715,10 @@ async def get_market_agent_cold_start(
         market,
         sources,
         competitors=competitors,
+        preferences=dependencies.agent_preferences_repository.get_agent_preferences(
+            market_id,
+        ),
+        source_health=dependencies.source_health_repository.list_source_health(),
     )
     plan = AgentColdStartService().build_plan(
         market=market,
@@ -675,6 +727,93 @@ async def get_market_agent_cold_start(
         source_suggestions=suggestions,
     )
     return _serialize_agent_cold_start_plan(plan)
+
+
+@router.get("/markets/{market_id}/agent/brief")
+async def get_market_agent_brief(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return the editable research brief for one niche agent."""
+    market = dependencies.market_repository.get_market(market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    ) or AgentPreferences.create(market_id=market_id)
+    return _serialize_agent_brief(market, preferences)
+
+
+@router.patch("/markets/{market_id}/agent/brief")
+async def update_market_agent_brief(
+    market_id: str,
+    request: AgentBriefRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Update the niche research brief used by future agent runs."""
+    existing_market = dependencies.market_repository.get_market(market_id)
+    if existing_market is None:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    fields = _model_fields_set(request)
+    try:
+        market = Market.create(
+            id=existing_market.id,
+            name=(
+                request.niche_name
+                if "niche_name" in fields
+                else existing_market.name
+            ),
+            description=(
+                request.description
+                if "description" in fields
+                else existing_market.description
+            ),
+            target_user=(
+                request.target_user
+                if "target_user" in fields
+                else existing_market.target_user
+            ),
+            idea_prompt=(
+                request.objective
+                if "objective" in fields
+                else existing_market.idea_prompt
+            ),
+            created_at=existing_market.created_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    ) or AgentPreferences.create(market_id=market_id)
+    if "extra_instructions" in fields:
+        preferences = AgentPreferences.create(
+            market_id=market_id,
+            preferred_source_families=preferences.preferred_source_families,
+            ignored_themes=preferences.ignored_themes,
+            ignored_categories=preferences.ignored_categories,
+            muted_source_ids=preferences.muted_source_ids,
+            extra_instructions=request.extra_instructions,
+            created_at=preferences.created_at,
+        )
+        dependencies.agent_preferences_repository.save_agent_preferences(preferences)
+
+    dependencies.market_repository.update_market(market)
+    _record_agent_activity(
+        dependencies,
+        market_id=market_id,
+        event_type="brief_updated",
+        title="Research brief updated",
+        detail="The agent research brief was updated for future runs.",
+        metadata={
+            "niche_name": market.name,
+            "target_user": market.target_user,
+            "objective": market.idea_prompt,
+            "has_extra_instructions": bool(preferences.extra_instructions),
+        },
+    )
+    return _serialize_agent_brief(market, preferences)
 
 
 @router.get("/markets/{market_id}/agent/preferences")
@@ -822,6 +961,128 @@ async def list_market_agent_activity(
     return {"activity": [_serialize_agent_activity(item) for item in activity]}
 
 
+@router.get("/markets/{market_id}/agent/runs")
+async def list_market_agent_runs(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Return recent run-memory events for one niche agent."""
+    _ensure_market_exists(market_id, dependencies)
+    bounded_limit = min(max(limit, 1), 50)
+    activity = dependencies.agent_activity_repository.list_agent_activity(
+        market_id=market_id,
+        limit=100,
+    )
+    runs = [
+        item
+        for item in activity
+        if item.event_type in {"run_started", "run_completed"}
+    ][:bounded_limit]
+    return {"runs": [_serialize_agent_activity(item) for item in runs]}
+
+
+@router.get("/markets/{market_id}/agent/alerts")
+async def list_market_agent_alerts(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    status: str | None = None,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Return proactive threshold alerts for one niche agent."""
+    _ensure_market_exists(market_id, dependencies)
+    bounded_limit = min(max(limit, 1), 100)
+    alerts = dependencies.agent_alert_repository.list_agent_alerts(
+        market_id=market_id,
+        status=status,
+        limit=bounded_limit,
+    )
+    return {"alerts": [_serialize_agent_alert(item) for item in alerts]}
+
+
+@router.patch("/markets/{market_id}/agent/alerts/{alert_id}/acknowledge")
+async def acknowledge_market_agent_alert(
+    market_id: str,
+    alert_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Mark one proactive alert as acknowledged."""
+    _ensure_market_exists(market_id, dependencies)
+    alert = dependencies.agent_alert_repository.get_agent_alert(alert_id)
+    if alert is None or alert.market_id != market_id:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    acknowledged = dependencies.agent_alert_repository.acknowledge_agent_alert(
+        alert_id,
+    )
+    if acknowledged is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return _serialize_agent_alert(acknowledged)
+
+
+@router.get("/markets/{market_id}/agent/follow-ups")
+async def list_market_agent_follow_ups(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    status: str | None = None,
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Return stored follow-up questions for one niche agent."""
+    _ensure_market_exists(market_id, dependencies)
+    bounded_limit = min(max(limit, 1), 100)
+    follow_ups = dependencies.agent_follow_up_repository.list_agent_follow_ups(
+        market_id=market_id,
+        status=status,
+        limit=bounded_limit,
+    )
+    return {"follow_ups": [_serialize_agent_follow_up(item) for item in follow_ups]}
+
+
+@router.post("/markets/{market_id}/agent/follow-ups")
+async def create_market_agent_follow_up(
+    market_id: str,
+    request: AgentFollowUpRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Store a follow-up question or instruction for future agent work."""
+    _ensure_market_exists(market_id, dependencies)
+    if (
+        request.opportunity_id is not None
+        and dependencies.opportunity_repository.get_opportunity(request.opportunity_id)
+        is None
+    ):
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    if (
+        request.cluster_id is not None
+        and dependencies.cluster_repository.get_cluster(request.cluster_id) is None
+    ):
+        raise HTTPException(status_code=404, detail="Cluster not found")
+
+    try:
+        follow_up = AgentFollowUp.create(
+            market_id=market_id,
+            question=request.question,
+            opportunity_id=request.opportunity_id,
+            cluster_id=request.cluster_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dependencies.agent_follow_up_repository.save_agent_follow_up(follow_up)
+    _record_agent_activity(
+        dependencies,
+        market_id=market_id,
+        event_type="follow_up_recorded",
+        title="Follow-up recorded",
+        detail=follow_up.question,
+        metadata={
+            "follow_up_id": follow_up.id,
+            "opportunity_id": follow_up.opportunity_id,
+            "cluster_id": follow_up.cluster_id,
+        },
+    )
+    return _serialize_agent_follow_up(follow_up)
+
+
 @router.get("/markets/{market_id}/agent/memory")
 async def get_market_agent_memory(
     market_id: str,
@@ -949,6 +1210,7 @@ async def run_pipeline(
             ),
             agent_preferences_repository=dependencies.agent_preferences_repository,
             agent_activity_repository=dependencies.agent_activity_repository,
+            agent_alert_repository=dependencies.agent_alert_repository,
             competitor_repository=dependencies.competitor_repository,
             market_repository=dependencies.market_repository,
             monitored_source_repository=dependencies.monitored_source_repository,
@@ -1400,6 +1662,56 @@ def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
         "created_at": (
             activity.created_at.isoformat() if activity.created_at else None
         ),
+    }
+
+
+def _serialize_agent_alert(alert: AgentAlert) -> dict[str, Any]:
+    return {
+        "id": alert.id,
+        "market_id": alert.market_id,
+        "alert_type": alert.alert_type,
+        "title": alert.title,
+        "severity": alert.severity,
+        "status": alert.status,
+        "detail": alert.detail,
+        "metadata": alert.metadata,
+        "created_at": alert.created_at.isoformat() if alert.created_at else None,
+        "acknowledged_at": (
+            alert.acknowledged_at.isoformat() if alert.acknowledged_at else None
+        ),
+    }
+
+
+def _serialize_agent_follow_up(follow_up: AgentFollowUp) -> dict[str, Any]:
+    return {
+        "id": follow_up.id,
+        "market_id": follow_up.market_id,
+        "question": follow_up.question,
+        "opportunity_id": follow_up.opportunity_id,
+        "cluster_id": follow_up.cluster_id,
+        "status": follow_up.status,
+        "response": follow_up.response,
+        "metadata": follow_up.metadata,
+        "created_at": (
+            follow_up.created_at.isoformat() if follow_up.created_at else None
+        ),
+        "updated_at": (
+            follow_up.updated_at.isoformat() if follow_up.updated_at else None
+        ),
+    }
+
+
+def _serialize_agent_brief(
+    market: Market,
+    preferences: AgentPreferences,
+) -> dict[str, Any]:
+    return {
+        "market_id": market.id,
+        "niche_name": market.name,
+        "description": market.description,
+        "target_user": market.target_user,
+        "objective": market.idea_prompt,
+        "extra_instructions": preferences.extra_instructions,
     }
 
 

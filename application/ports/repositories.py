@@ -1,7 +1,13 @@
 """Persistence contracts for domain entities."""
 from typing import Protocol
 
-from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
+from domain.agent import (
+    AgentActivity,
+    AgentAlert,
+    AgentFeedback,
+    AgentFollowUp,
+    AgentPreferences,
+)
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -174,6 +180,50 @@ class AgentActivityRepository(Protocol):
         limit: int | None = None,
     ) -> list[AgentActivity]:
         """Load activity events, optionally filtered by scope."""
+        ...
+
+
+class AgentAlertRepository(Protocol):
+    """Persistence boundary for proactive agent alerts."""
+
+    def save_agent_alert(self, alert: AgentAlert) -> bool:
+        """Persist one agent alert."""
+        ...
+
+    def get_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        """Load one agent alert by id."""
+        ...
+
+    def list_agent_alerts(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAlert]:
+        """Load alerts, optionally filtered by scope and status."""
+        ...
+
+    def acknowledge_agent_alert(self, alert_id: str) -> AgentAlert | None:
+        """Mark one alert acknowledged and return the updated alert."""
+        ...
+
+
+class AgentFollowUpRepository(Protocol):
+    """Persistence boundary for user follow-up questions and instructions."""
+
+    def save_agent_follow_up(self, follow_up: AgentFollowUp) -> bool:
+        """Persist one follow-up intent."""
+        ...
+
+    def list_agent_follow_ups(
+        self,
+        *,
+        market_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentFollowUp]:
+        """Load follow-ups, optionally filtered by scope and status."""
         ...
 
 
