@@ -7,3 +7,18 @@ healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+# ── Service configuration ─────────────────────────────────────────────────────
+#
+# This repo runs as two Railway services from the same Dockerfile.
+# Set SERVICE_TYPE in each service's environment variables:
+#
+#   api service    → SERVICE_TYPE=api    (default, runs uvicorn)
+#   worker service → SERVICE_TYPE=worker (runs celery worker + beat)
+#
+# Both services require:
+#   DATABASE_URL, LLM_API_KEY, REDIS_URL, JWT_SECRET,
+#   REPORT_RECIPIENT, PIPELINE_SCHEDULE (optional, default: "0 8 * * *")
+#
+# Worker does not need: PORT, CORS_ORIGINS
+# API does not need:    PIPELINE_SCHEDULE (used by Beat inside worker)
