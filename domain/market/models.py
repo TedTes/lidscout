@@ -13,6 +13,9 @@ class Market:
     target_user: str | None = None
     idea_prompt: str | None = None
     user_id: str | None = None
+    # Which template this niche was seeded from. Preserved for future
+    # "reset to defaults" / template-diff features. Never mutated after creation.
+    template_id: str | None = None
     created_at: datetime | None = None
 
     @classmethod
@@ -25,6 +28,7 @@ class Market:
         target_user: str | None = None,
         idea_prompt: str | None = None,
         user_id: str | None = None,
+        template_id: str | None = None,
         created_at: datetime | None = None,
     ) -> "Market":
         """Create a validated market entity."""
@@ -42,6 +46,7 @@ class Market:
             target_user=cls._clean_optional(target_user),
             idea_prompt=cls._clean_optional(idea_prompt),
             user_id=user_id,
+            template_id=template_id,
             created_at=created_at or datetime.now(tz=UTC),
         )
 

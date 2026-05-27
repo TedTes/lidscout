@@ -16,12 +16,24 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer(auto_error=False)
 _auth_service: AuthService | None = None
 _market_repo: object | None = None
+_competitor_repo: object | None = None
+_source_repo: object | None = None
+_activity_repo: object | None = None
 
 
-def configure_auth_service(service: AuthService, market_repo: object | None = None) -> None:
-    global _auth_service, _market_repo
+def configure_auth_service(
+    service: AuthService,
+    market_repo: object | None = None,
+    competitor_repo: object | None = None,
+    source_repo: object | None = None,
+    activity_repo: object | None = None,
+) -> None:
+    global _auth_service, _market_repo, _competitor_repo, _source_repo, _activity_repo
     _auth_service = service
     _market_repo = market_repo
+    _competitor_repo = competitor_repo
+    _source_repo = source_repo
+    _activity_repo = activity_repo
 
 
 def _get_auth_service() -> AuthService:
@@ -86,12 +98,12 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
 
 
 def _seed_markets_for_token(token: str, auth_service: AuthService) -> None:
-    if _market_repo is None:
+    if _market_repo is None or _competitor_repo is None or _source_repo is None:
         return
     try:
         from application.onboarding.templates import seed_template_markets
         user = auth_service.verify_token(token)
-        seed_template_markets(user.id, _market_repo)
+        seed_template_markets(user.id, _market_repo, _competitor_repo, _source_repo, _activity_repo)
     except Exception:
         pass
 

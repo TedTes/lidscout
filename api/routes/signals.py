@@ -1,8 +1,9 @@
 """API endpoints for market signal workflows."""
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from api.routes.auth import get_current_user
 from pydantic import BaseModel, Field
 
@@ -445,6 +446,63 @@ async def delete_market(
         "id": market_id,
         "deleted": True,
     }
+
+
+@router.get("/templates")
+async def list_templates() -> dict[str, Any]:
+    """Return all available niche templates for the guided add-niche flow."""
+    from application.onboarding.niche_templates import ALL_TEMPLATES
+    return {
+        "templates": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "description": t.description,
+                "company_count": len(t.companies),
+                "company_names": [c.name for c in t.companies],
+                "source_families": sorted({s.source_family for s in t.market_sources}),
+            }
+            for t in ALL_TEMPLATES
+        ]
+    }
+
+
+@router.post("/templates/{template_id}/apply", status_code=201)
+async def apply_template(
+    template_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Seed one template as a new market for the current user.
+
+    Triggers a background pipeline scan immediately after seeding so the
+    AgentWorkingPanel has data as soon as possible after the first login.
+    """
+    from application.onboarding.niche_templates import get_template
+    from application.onboarding.templates import apply_template as _apply_template
+
+    if get_template(template_id) is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    info = _apply_template(
+        user_id=current_user.id,
+        template_id=template_id,
+        market_repo=dependencies.market_repository,
+        competitor_repo=dependencies.competitor_repository,
+        source_repo=dependencies.monitored_source_repository,
+        activity_repo=dependencies.agent_activity_repository,
+    )
+
+    if info is None:
+        raise HTTPException(status_code=409, detail="Template already applied")
+
+    market = dependencies.market_repository.get_market(info["market_id"])
+    if market is None:
+        raise HTTPException(status_code=500, detail="Market creation failed")
+
+    background_tasks.add_task(_trigger_scan, info["market_id"], dependencies)
+    return _serialize_market(market)
 
 
 @router.get("/markets/{market_id}/competitors")
@@ -1243,6 +1301,18 @@ async def run_pipeline(
     return _serialize_pipeline_result(result)
 
 
+@router.get("/pipeline/schedule")
+async def get_pipeline_schedule() -> dict[str, Any]:
+    """Return the pipeline cron schedule and computed next run time."""
+    from shared.config import get_app_config
+    cron = get_app_config().PIPELINE_SCHEDULE
+    next_run_at = _next_cron_run(cron)
+    return {
+        "cron": cron,
+        "next_run_at": next_run_at.isoformat() if next_run_at else None,
+    }
+
+
 @router.get("/pipeline/runs")
 async def list_pipeline_runs(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
@@ -1256,6 +1326,18 @@ async def list_pipeline_runs(
     return {
         "runs": [_serialize_pipeline_run_metrics(run) for run in recent_metrics]
     }
+
+
+def _trigger_scan(market_id: str, dependencies: SignalApiDependencies) -> None:
+    """Background task: run pipeline for one market immediately after seeding.
+
+    Silently skips if pipeline dependencies are not configured.
+    """
+    try:
+        from workers.jobs import run_configured_daily_pipeline
+        run_configured_daily_pipeline(market_id=market_id, dependencies=dependencies)
+    except Exception:
+        pass
 
 
 def _ensure_pipeline_dependencies(
@@ -1868,6 +1950,29 @@ def _model_fields_set(model: BaseModel) -> set[str]:
     if fields is not None:
         return set(fields)
     return set(getattr(model, "__fields_set__", set()))
+
+
+def _next_cron_run(cron: str) -> datetime | None:
+    """Return the next UTC datetime for a simple daily cron expression.
+
+    Handles the common 5-field form `minute hour * * *`.
+    Returns None if the expression can't be parsed.
+    """
+    from datetime import timedelta
+    parts = cron.strip().split()
+    if len(parts) != 5:
+        return None
+    try:
+        minute = int(parts[0])
+        hour = int(parts[1])
+    except ValueError:
+        return None
+
+    now = datetime.now(UTC)
+    candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate
 
 
 def _serialize_pipeline_run_metrics(metrics: PipelineRunMetrics) -> dict[str, Any]:

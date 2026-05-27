@@ -43,7 +43,7 @@ async def configure_runtime_dependencies() -> None:
     from shared.config import get_app_config
     from infrastructure.db.repository import connect_postgres
     app_config = get_app_config()
-    from infrastructure.db import PostgresMarketRepository
+    from infrastructure.db import PostgresAgentActivityRepository, PostgresCompetitorRepository, PostgresMarketRepository, PostgresMonitoredSourceRepository
     connection = connect_postgres(app_config.DATABASE_URL)
     configure_auth_service(
         AuthService(
@@ -52,6 +52,9 @@ async def configure_runtime_dependencies() -> None:
             expiry_minutes=app_config.JWT_EXPIRY_MINUTES,
         ),
         market_repo=PostgresMarketRepository(connection=connection),
+        competitor_repo=PostgresCompetitorRepository(connection=connection),
+        source_repo=PostgresMonitoredSourceRepository(connection=connection),
+        activity_repo=PostgresAgentActivityRepository(connection=connection),
     )
     configure_signal_api_dependencies(build_signal_api_dependencies())
 
