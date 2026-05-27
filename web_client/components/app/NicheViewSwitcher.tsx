@@ -49,7 +49,7 @@ export function NicheViewSwitcher({
   trailingAction?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex items-center justify-start gap-2 lg:justify-end">
       <div className="min-w-0 flex gap-1 overflow-x-auto rounded-full border border-slate-800/80 bg-slate-900/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {VIEWS.map(view => {
           const selected = view.id === active;
