@@ -415,6 +415,16 @@ class InMemoryCompetitorRepository(CompetitorRepository):
     def list_competitors(self) -> list[Competitor]:
         return list(self.competitors.values())
 
+    def delete_competitors_by_market(self, market_id: str) -> int:
+        competitor_ids = [
+            competitor_id
+            for competitor_id, competitor in self.competitors.items()
+            if competitor.market_id == market_id
+        ]
+        for competitor_id in competitor_ids:
+            self.competitors.pop(competitor_id, None)
+        return len(competitor_ids)
+
 
 @dataclass
 class InMemoryMonitoredSourceRepository(MonitoredSourceRepository):
@@ -870,10 +880,21 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
                 description TEXT,
                 target_user TEXT,
                 idea_prompt TEXT,
+                user_id TEXT,
+                template_id TEXT,
                 created_at TEXT
             )
             """
         )
+        for statement in (
+            "ALTER TABLE markets ADD COLUMN user_id TEXT",
+            "ALTER TABLE markets ADD COLUMN template_id TEXT",
+        ):
+            try:
+                self.connection.execute(statement)
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc):
+                    raise
         self.connection.commit()
 
     def save_markets(self, markets: list[Market]) -> int:
@@ -1439,6 +1460,14 @@ class SQLiteCompetitorRepository(_SQLiteRepository, CompetitorRepository):
     def list_competitors(self) -> list[Competitor]:
         rows = self.connection.execute("SELECT * FROM competitors ORDER BY name").fetchall()
         return [_competitor_from_row(row) for row in rows]
+
+    def delete_competitors_by_market(self, market_id: str) -> int:
+        cursor = self.connection.execute(
+            "DELETE FROM competitors WHERE market_id = ?",
+            (market_id,),
+        )
+        self.connection.commit()
+        return cursor.rowcount
 
 
 class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceRepository):
@@ -2423,6 +2452,14 @@ class PostgresCompetitorRepository(_PostgresRepository, CompetitorRepository):
     def list_competitors(self) -> list[Competitor]:
         rows = self.connection.execute("SELECT * FROM competitors ORDER BY name").fetchall()
         return [_competitor_from_row(row) for row in rows]
+
+    def delete_competitors_by_market(self, market_id: str) -> int:
+        cursor = self.connection.execute(
+            "DELETE FROM competitors WHERE market_id = %s",
+            (market_id,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor)
 
 
 class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepository):

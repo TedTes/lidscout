@@ -1,6 +1,7 @@
 """API endpoints for market signal workflows."""
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import logging
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -69,6 +70,7 @@ from infrastructure.db import (
 )
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
+from shared.logger import get_logger, log_event
 from workers.run_daily_pipeline import (
     PipelineConfig,
     PipelineRunResult,
@@ -76,6 +78,7 @@ from workers.run_daily_pipeline import (
 )
 
 router = APIRouter(tags=["signals"], dependencies=[Depends(get_current_user)])
+logger = get_logger(__name__)
 
 
 class PipelineSourceRequest(BaseModel):
@@ -344,14 +347,15 @@ async def list_opportunities(
 
 @router.get("/markets")
 async def list_markets(
-    current_user: User = Depends(get_current_user),
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return watched markets or niches for the current user."""
+    user_id = _current_user_id(current_user)
     return {
         "markets": [
             _serialize_market(market)
-            for market in dependencies.market_repository.list_markets(user_id=current_user.id)
+            for market in dependencies.market_repository.list_markets(user_id=user_id)
         ]
     }
 
@@ -359,8 +363,8 @@ async def list_markets(
 @router.post("/markets")
 async def create_market(
     request: MarketRequest,
-    current_user: User = Depends(get_current_user),
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a watched market or niche."""
     try:
@@ -370,7 +374,7 @@ async def create_market(
             description=request.description,
             target_user=request.target_user,
             idea_prompt=request.idea_prompt,
-            user_id=current_user.id,
+            user_id=_current_user_id(current_user),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -383,11 +387,10 @@ async def create_market(
 async def get_market(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return one watched market."""
-    market = dependencies.market_repository.get_market(market_id)
-    if market is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    market = _get_owned_market(market_id, dependencies, current_user)
     return _serialize_market(market)
 
 
@@ -396,11 +399,10 @@ async def update_market(
     market_id: str,
     request: MarketUpdateRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update one watched market."""
-    existing = dependencies.market_repository.get_market(market_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    existing = _get_owned_market(market_id, dependencies, current_user)
 
     fields_set = _model_fields_set(request)
     try:
@@ -422,6 +424,8 @@ async def update_market(
                 if "idea_prompt" in fields_set
                 else existing.idea_prompt
             ),
+            user_id=existing.user_id,
+            template_id=existing.template_id,
             created_at=existing.created_at,
         )
     except ValueError as exc:
@@ -436,10 +440,11 @@ async def update_market(
 async def delete_market(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Delete one watched market."""
-    if dependencies.market_repository.get_market(market_id) is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    _get_owned_market(market_id, dependencies, current_user)
+    _delete_market_competitors(market_id, dependencies)
     if not dependencies.market_repository.delete_market(market_id):
         raise HTTPException(status_code=404, detail="Market not found")
     return {
@@ -460,7 +465,18 @@ async def list_templates() -> dict[str, Any]:
                 "description": t.description,
                 "company_count": len(t.companies),
                 "company_names": [c.name for c in t.companies],
-                "source_families": sorted({s.source_family for s in t.market_sources}),
+                "source_families": sorted(
+                    {
+                        s.source_family
+                        for s in t.market_sources
+                    }
+                    | {"social", "technical_forum"}
+                    | (
+                        {"reviews"}
+                        if any(c.g2_slug for c in t.companies)
+                        else set()
+                    )
+                ),
             }
             for t in ALL_TEMPLATES
         ]
@@ -509,9 +525,10 @@ async def apply_template(
 async def list_market_competitors(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return competitors linked to one market."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     competitors = [
         competitor
         for competitor in dependencies.competitor_repository.list_competitors()
@@ -525,9 +542,10 @@ async def create_market_competitor(
     market_id: str,
     request: CompetitorRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a monitored competitor scoped to one market."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     if request.market_id is not None and request.market_id != market_id:
         raise HTTPException(
             status_code=400,
@@ -554,9 +572,10 @@ async def create_market_competitor(
 async def list_market_sources(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return monitored sources linked to one market."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     sources = dependencies.monitored_source_repository.list_monitored_sources(
         market_id=market_id,
     )
@@ -574,9 +593,10 @@ async def create_market_source(
     market_id: str,
     request: MonitoredSourceRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a monitored source scoped directly to one market."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     try:
         source = MonitoredSource.create(
             market_id=market_id,
@@ -724,11 +744,10 @@ async def list_competitor_source_suggestions(
 async def list_market_source_suggestions(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return opinionated default source candidates for one market."""
-    market = dependencies.market_repository.get_market(market_id)
-    if market is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    market = _get_owned_market(market_id, dependencies, current_user)
 
     existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
         market_id=market_id,
@@ -760,11 +779,10 @@ async def list_market_source_suggestions(
 async def get_market_agent_cold_start(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return cold-start setup guidance for one niche research agent."""
-    market = dependencies.market_repository.get_market(market_id)
-    if market is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    market = _get_owned_market(market_id, dependencies, current_user)
 
     competitors = [
         competitor
@@ -796,11 +814,10 @@ async def get_market_agent_cold_start(
 async def get_market_agent_brief(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return the editable research brief for one niche agent."""
-    market = dependencies.market_repository.get_market(market_id)
-    if market is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    market = _get_owned_market(market_id, dependencies, current_user)
     preferences = dependencies.agent_preferences_repository.get_agent_preferences(
         market_id,
     ) or AgentPreferences.create(market_id=market_id)
@@ -812,11 +829,10 @@ async def update_market_agent_brief(
     market_id: str,
     request: AgentBriefRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update the niche research brief used by future agent runs."""
-    existing_market = dependencies.market_repository.get_market(market_id)
-    if existing_market is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    existing_market = _get_owned_market(market_id, dependencies, current_user)
 
     fields = _model_fields_set(request)
     try:
@@ -842,6 +858,8 @@ async def update_market_agent_brief(
                 if "objective" in fields
                 else existing_market.idea_prompt
             ),
+            user_id=existing_market.user_id,
+            template_id=existing_market.template_id,
             created_at=existing_market.created_at,
         )
     except ValueError as exc:
@@ -883,9 +901,10 @@ async def update_market_agent_brief(
 async def get_market_agent_preferences(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return persisted preferences for one niche research agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     preferences = dependencies.agent_preferences_repository.get_agent_preferences(
         market_id,
     )
@@ -899,9 +918,10 @@ async def update_market_agent_preferences(
     market_id: str,
     request: AgentPreferencesRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update persisted preferences for one niche research agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     existing = dependencies.agent_preferences_repository.get_agent_preferences(
         market_id,
     ) or AgentPreferences.create(market_id=market_id)
@@ -960,9 +980,10 @@ async def update_market_agent_preferences(
 async def list_market_agent_feedback(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return feedback events for one niche research agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     feedback = dependencies.agent_feedback_repository.list_agent_feedback(
         market_id=market_id,
     )
@@ -974,9 +995,10 @@ async def create_opportunity_feedback(
     opportunity_id: str,
     request: AgentFeedbackRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Record user feedback on one synthesized gap."""
-    _ensure_market_exists(request.market_id, dependencies)
+    _get_owned_market(request.market_id, dependencies, current_user)
     if dependencies.opportunity_repository.get_opportunity(opportunity_id) is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
 
@@ -1010,11 +1032,12 @@ async def create_opportunity_feedback(
 async def list_market_agent_activity(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
     limit: int = 25,
     event_type: str | None = None,
 ) -> dict[str, Any]:
     """Return recent user-visible activity for one niche research agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 100)
     activity = dependencies.agent_activity_repository.list_agent_activity(
         market_id=market_id,
@@ -1028,10 +1051,11 @@ async def list_market_agent_activity(
 async def list_market_agent_runs(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
     limit: int = 10,
 ) -> dict[str, Any]:
     """Return recent run-memory events for one niche agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 50)
     activity = dependencies.agent_activity_repository.list_agent_activity(
         market_id=market_id,
@@ -1049,11 +1073,12 @@ async def list_market_agent_runs(
 async def list_market_agent_alerts(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
     status: str | None = None,
     limit: int = 25,
 ) -> dict[str, Any]:
     """Return proactive threshold alerts for one niche agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 100)
     alerts = dependencies.agent_alert_repository.list_agent_alerts(
         market_id=market_id,
@@ -1068,9 +1093,10 @@ async def acknowledge_market_agent_alert(
     market_id: str,
     alert_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Mark one proactive alert as acknowledged."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     alert = dependencies.agent_alert_repository.get_agent_alert(alert_id)
     if alert is None or alert.market_id != market_id:
         raise HTTPException(status_code=404, detail="Alert not found")
@@ -1086,11 +1112,12 @@ async def acknowledge_market_agent_alert(
 async def list_market_agent_follow_ups(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
     status: str | None = None,
     limit: int = 25,
 ) -> dict[str, Any]:
     """Return stored follow-up questions for one niche agent."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 100)
     follow_ups = dependencies.agent_follow_up_repository.list_agent_follow_ups(
         market_id=market_id,
@@ -1105,9 +1132,10 @@ async def create_market_agent_follow_up(
     market_id: str,
     request: AgentFollowUpRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Store a follow-up question or instruction for future agent work."""
-    _ensure_market_exists(market_id, dependencies)
+    _get_owned_market(market_id, dependencies, current_user)
     if (
         request.opportunity_id is not None
         and dependencies.opportunity_repository.get_opportunity(request.opportunity_id)
@@ -1150,11 +1178,10 @@ async def create_market_agent_follow_up(
 async def get_market_agent_memory(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return a compact summary of persisted agent memory for one niche."""
-    market = dependencies.market_repository.get_market(market_id)
-    if market is None:
-        raise HTTPException(status_code=404, detail="Market not found")
+    market = _get_owned_market(market_id, dependencies, current_user)
     preferences = dependencies.agent_preferences_repository.get_agent_preferences(
         market_id,
     ) or AgentPreferences.create(market_id=market_id)
@@ -1336,8 +1363,15 @@ def _trigger_scan(market_id: str, dependencies: SignalApiDependencies) -> None:
     try:
         from workers.jobs import run_configured_daily_pipeline
         run_configured_daily_pipeline(market_id=market_id, dependencies=dependencies)
-    except Exception:
-        pass
+    except Exception as exc:
+        log_event(
+            logger,
+            "template_seed_scan_failed",
+            level=logging.ERROR,
+            market_id=market_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 def _ensure_pipeline_dependencies(
@@ -1398,6 +1432,33 @@ def _ensure_market_exists(
 ) -> None:
     if dependencies.market_repository.get_market(market_id) is None:
         raise HTTPException(status_code=404, detail="Market not found")
+
+
+def _current_user_id(current_user: User | Any) -> str | None:
+    return current_user.id if isinstance(current_user, User) else None
+
+
+def _get_owned_market(
+    market_id: str,
+    dependencies: SignalApiDependencies,
+    current_user: User | Any,
+) -> Market:
+    market = dependencies.market_repository.get_market(market_id)
+    user_id = _current_user_id(current_user)
+    if market is None or (
+        user_id is not None
+        and market.user_id is not None
+        and str(market.user_id) != str(user_id)
+    ):
+        raise HTTPException(status_code=404, detail="Market not found")
+    return market
+
+
+def _delete_market_competitors(
+    market_id: str,
+    dependencies: SignalApiDependencies,
+) -> None:
+    dependencies.competitor_repository.delete_competitors_by_market(market_id)
 
 
 def _scoped_signal_ids(

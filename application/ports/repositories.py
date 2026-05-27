@@ -270,6 +270,10 @@ class CompetitorRepository(Protocol):
         """Load all persisted competitors."""
         ...
 
+    def delete_competitors_by_market(self, market_id: str) -> int:
+        """Delete competitors scoped to one market and return the count."""
+        ...
+
 
 class MonitoredSourceRepository(Protocol):
     """Persistence boundary for competitor-linked monitored sources."""
