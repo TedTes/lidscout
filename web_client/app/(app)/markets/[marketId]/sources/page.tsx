@@ -74,14 +74,14 @@ export default function NicheSourcesPage({ params }: Props) {
     setSuggestionStatus('loading');
     setError(null);
     try {
-      const [marketsRes, sourcesRes, companiesRes, suggestionsRes] = await Promise.all([
-        signalApi.getMarkets(),
+      const [market, sourcesRes, companiesRes, suggestionsRes] = await Promise.all([
+        signalApi.getMarket(marketId),
         signalApi.getSources({ market_id: marketId }),
         signalApi.getMarketCompetitors(marketId),
         signalApi.getMarketSourceSuggestions(marketId),
       ]);
       const loadedSources = sourcesRes.sources;
-      setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
+      setNiche(market);
       setSources(loadedSources);
       setSummary(sourcesRes.summary ?? null);
       setCompanies(companiesRes.competitors);

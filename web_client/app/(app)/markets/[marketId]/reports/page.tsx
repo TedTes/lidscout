@@ -21,11 +21,11 @@ export default function NicheReportPage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [marketsRes, reportRes] = await Promise.all([
-        signalApi.getMarkets(),
+      const [market, reportRes] = await Promise.all([
+        signalApi.getMarket(marketId),
         signalApi.getLatestReport({ market_id: marketId }),
       ]);
-      setNiche(marketsRes.markets.find(market => market.id === marketId) ?? null);
+      setNiche(market);
       setReport(reportRes);
       setStatus('ready');
     } catch (err) {

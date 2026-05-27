@@ -60,11 +60,11 @@ export default function NicheActivityPage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [marketsRes, activityRes] = await Promise.all([
-        signalApi.getMarkets(),
+      const [market, activityRes] = await Promise.all([
+        signalApi.getMarket(marketId),
         signalApi.getMarketAgentActivity(marketId),
       ]);
-      setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
+      setNiche(market);
       setActivity(activityRes.activity);
       setStatus('ready');
     } catch (err) {

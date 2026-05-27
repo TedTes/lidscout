@@ -117,8 +117,8 @@ export default function NicheWorkspacePage({ params }: Props) {
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     try {
-      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes, scheduleRes] = await Promise.all([
-        signalApi.getMarkets(),
+      const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes, scheduleRes] = await Promise.all([
+        signalApi.getMarket(marketId),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
@@ -127,7 +127,7 @@ export default function NicheWorkspacePage({ params }: Props) {
         signalApi.getMarketSources(marketId).catch(() => null),
         signalApi.getPipelineSchedule().catch(() => null),
       ]);
-      setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
+      setNiche(market);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
       setColdStart(coldStartRes);

@@ -33,12 +33,12 @@ export default function NicheFindingsPage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [marketsRes, signalsRes, clustersRes] = await Promise.all([
-        signalApi.getMarkets(),
+      const [market, signalsRes, clustersRes] = await Promise.all([
+        signalApi.getMarket(marketId),
         signalApi.getSignals({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
       ]);
-      setNiche(marketsRes.markets.find(market => market.id === marketId) ?? null);
+      setNiche(market);
       setSignals(signalsRes.signals);
       setClusters(clustersRes.clusters);
       setStatus('ready');

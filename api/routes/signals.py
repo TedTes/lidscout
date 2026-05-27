@@ -264,7 +264,9 @@ async def list_signals(
         signals = [s for s in signals if s.competitor_id == competitor_id]
     if market_id is not None:
         signals = [s for s in signals if s.market_id == market_id]
-    return {"signals": [_serialize_signal(s, dependencies) for s in signals]}
+    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
+    markets_by_id = {m.id: m for m in dependencies.market_repository.list_markets()}
+    return {"signals": [_serialize_signal(s, dependencies, _competitors_by_id=competitors_by_id, _markets_by_id=markets_by_id) for s in signals]}
 
 
 @router.delete("/signals/{signal_id}")
@@ -292,10 +294,11 @@ async def list_clusters(
 ) -> dict[str, Any]:
     """Return persisted signal clusters, optionally filtered by scope."""
     clusters = dependencies.cluster_repository.list_clusters()
+    all_signals = dependencies.signal_repository.list_signals()
     if competitor_id is not None or market_id is not None:
         scoped_signal_ids = {
             s.id
-            for s in dependencies.signal_repository.list_signals()
+            for s in all_signals
             if (competitor_id is None or s.competitor_id == competitor_id)
             and (market_id is None or s.market_id == market_id)
         }
@@ -303,9 +306,11 @@ async def list_clusters(
             c for c in clusters
             if any(sid in scoped_signal_ids for sid in c.signal_ids)
         ]
+    signals_by_id = {s.id: s for s in all_signals}
+    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
     return {
         "clusters": [
-            _serialize_cluster(c, dependencies, market_id=market_id)
+            _serialize_cluster(c, dependencies, market_id=market_id, _signals_by_id=signals_by_id, _competitors_by_id=competitors_by_id)
             for c in clusters
         ]
     }
@@ -319,10 +324,11 @@ async def list_opportunities(
 ) -> dict[str, Any]:
     """Return synthesized product opportunities, optionally filtered by scope."""
     opportunities = dependencies.opportunity_repository.list_opportunities()
+    all_signals = dependencies.signal_repository.list_signals()
     if competitor_id is not None or market_id is not None:
         scoped_signal_ids = {
             s.id
-            for s in dependencies.signal_repository.list_signals()
+            for s in all_signals
             if (competitor_id is None or s.competitor_id == competitor_id)
             and (market_id is None or s.market_id == market_id)
         }
@@ -337,9 +343,11 @@ async def list_opportunities(
                 market_id=market_id,
             ),
         )
+    signals_by_id = {s.id: s for s in all_signals}
+    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
     return {
         "opportunities": [
-            _serialize_opportunity(o, dependencies, market_id=market_id)
+            _serialize_opportunity(o, dependencies, market_id=market_id, _signals_by_id=signals_by_id, _competitors_by_id=competitors_by_id)
             for o in opportunities
         ]
     }
@@ -579,9 +587,12 @@ async def list_market_sources(
     sources = dependencies.monitored_source_repository.list_monitored_sources(
         market_id=market_id,
     )
+    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
+    markets_by_id = {m.id: m for m in dependencies.market_repository.list_markets()}
+    health_by_id = {h.monitored_source_id: h for h in dependencies.source_health_repository.list_source_health()}
     return {
         "sources": [
-            _serialize_monitored_source(source, dependencies)
+            _serialize_monitored_source(source, dependencies, _competitors_by_id=competitors_by_id, _markets_by_id=markets_by_id, _health_by_id=health_by_id)
             for source in sources
         ],
         "summary": _source_coverage_summary(sources),
@@ -1221,9 +1232,12 @@ async def list_sources(
         market_id=market_id,
         enabled=enabled,
     )
+    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
+    markets_by_id = {m.id: m for m in dependencies.market_repository.list_markets()}
+    health_by_id = {h.monitored_source_id: h for h in dependencies.source_health_repository.list_source_health()}
     return {
         "sources": [
-            _serialize_monitored_source(source, dependencies)
+            _serialize_monitored_source(source, dependencies, _competitors_by_id=competitors_by_id, _markets_by_id=markets_by_id, _health_by_id=health_by_id)
             for source in sources
         ],
         "summary": _source_coverage_summary(sources),
@@ -1480,32 +1494,25 @@ def _company_breadth_for_signal_ids(
     signal_ids: list[str],
     *,
     market_id: str | None = None,
+    _signals_by_id: dict | None = None,
+    _competitors_by_id: dict | None = None,
 ) -> dict[str, Any]:
     signal_id_set = set(signal_ids)
-    signals = [
-        signal
-        for signal in dependencies.signal_repository.list_signals()
-        if signal.id in signal_id_set
-    ]
+    if _signals_by_id is not None:
+        signals = [_signals_by_id[sid] for sid in signal_id_set if sid in _signals_by_id]
+    else:
+        signals = [s for s in dependencies.signal_repository.list_signals() if s.id in signal_id_set]
     company_ids = sorted(
-        {
-            signal.competitor_id
-            for signal in signals
-            if signal.competitor_id is not None
-        }
+        {signal.competitor_id for signal in signals if signal.competitor_id is not None}
     )
-    competitors_by_id = {
-        competitor.id: competitor
-        for competitor in dependencies.competitor_repository.list_competitors()
-    }
+    if _competitors_by_id is None:
+        _competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
     company_names = [
-        competitors_by_id[company_id].name
-        for company_id in company_ids
-        if company_id in competitors_by_id
+        _competitors_by_id[cid].name for cid in company_ids if cid in _competitors_by_id
     ]
     resolved_market_id = market_id or _single_market_id(signals)
     market_company_count = (
-        _market_company_count(dependencies, resolved_market_id)
+        _market_company_count(dependencies, resolved_market_id, _competitors_by_id=_competitors_by_id)
         if resolved_market_id is not None
         else None
     )
@@ -1532,12 +1539,15 @@ def _single_market_id(signals: list[Signal]) -> str | None:
 def _market_company_count(
     dependencies: SignalApiDependencies,
     market_id: str,
+    *,
+    _competitors_by_id: dict | None = None,
 ) -> int:
-    return sum(
-        1
-        for competitor in dependencies.competitor_repository.list_competitors()
-        if competitor.market_id == market_id
+    competitors = (
+        _competitors_by_id.values()
+        if _competitors_by_id is not None
+        else dependencies.competitor_repository.list_competitors()
     )
+    return sum(1 for c in competitors if c.market_id == market_id)
 
 
 def _market_report_title(
@@ -1566,17 +1576,28 @@ def _serialize_market(market: Market) -> dict[str, Any]:
 def _serialize_signal(
     signal: Signal,
     dependencies: SignalApiDependencies | None = None,
+    *,
+    _competitors_by_id: dict | None = None,
+    _markets_by_id: dict | None = None,
 ) -> dict[str, Any]:
-    competitor = (
-        dependencies.competitor_repository.get_competitor(signal.competitor_id)
-        if dependencies is not None and signal.competitor_id is not None
-        else None
-    )
-    market = (
-        dependencies.market_repository.get_market(signal.market_id)
-        if dependencies is not None and signal.market_id is not None
-        else None
-    )
+    if signal.competitor_id is not None:
+        if _competitors_by_id is not None:
+            competitor = _competitors_by_id.get(signal.competitor_id)
+        elif dependencies is not None:
+            competitor = dependencies.competitor_repository.get_competitor(signal.competitor_id)
+        else:
+            competitor = None
+    else:
+        competitor = None
+    if signal.market_id is not None:
+        if _markets_by_id is not None:
+            market = _markets_by_id.get(signal.market_id)
+        elif dependencies is not None:
+            market = dependencies.market_repository.get_market(signal.market_id)
+        else:
+            market = None
+    else:
+        market = None
     return {
         "id": signal.id,
         "post_id": signal.post_id,
@@ -1614,22 +1635,35 @@ def _serialize_competitor(competitor: Competitor) -> dict[str, Any]:
 def _serialize_monitored_source(
     source: MonitoredSource,
     dependencies: SignalApiDependencies | None = None,
+    *,
+    _competitors_by_id: dict | None = None,
+    _markets_by_id: dict | None = None,
+    _health_by_id: dict | None = None,
 ) -> dict[str, Any]:
-    competitor = (
-        dependencies.competitor_repository.get_competitor(source.competitor_id)
-        if dependencies is not None and source.competitor_id is not None
-        else None
-    )
-    market = (
-        dependencies.market_repository.get_market(source.market_id)
-        if dependencies is not None and source.market_id is not None
-        else None
-    )
-    health = (
-        dependencies.source_health_repository.get_source_health(source.id)
-        if dependencies is not None
-        else None
-    )
+    if source.competitor_id is not None:
+        if _competitors_by_id is not None:
+            competitor = _competitors_by_id.get(source.competitor_id)
+        elif dependencies is not None:
+            competitor = dependencies.competitor_repository.get_competitor(source.competitor_id)
+        else:
+            competitor = None
+    else:
+        competitor = None
+    if source.market_id is not None:
+        if _markets_by_id is not None:
+            market = _markets_by_id.get(source.market_id)
+        elif dependencies is not None:
+            market = dependencies.market_repository.get_market(source.market_id)
+        else:
+            market = None
+    else:
+        market = None
+    if _health_by_id is not None:
+        health = _health_by_id.get(source.id)
+    elif dependencies is not None:
+        health = dependencies.source_health_repository.get_source_health(source.id)
+    else:
+        health = None
     return {
         "id": source.id,
         "competitor_id": source.competitor_id,
@@ -1888,6 +1922,8 @@ def _serialize_cluster(
     dependencies: SignalApiDependencies | None = None,
     *,
     market_id: str | None = None,
+    _signals_by_id: dict | None = None,
+    _competitors_by_id: dict | None = None,
 ) -> dict[str, Any]:
     serialized = {
         "id": cluster.id,
@@ -1904,6 +1940,8 @@ def _serialize_cluster(
                 dependencies,
                 cluster.signal_ids,
                 market_id=market_id,
+                _signals_by_id=_signals_by_id,
+                _competitors_by_id=_competitors_by_id,
             )
         )
     return serialized
@@ -1914,6 +1952,8 @@ def _serialize_opportunity(
     dependencies: SignalApiDependencies | None = None,
     *,
     market_id: str | None = None,
+    _signals_by_id: dict | None = None,
+    _competitors_by_id: dict | None = None,
 ) -> dict[str, Any]:
     serialized = {
         "id": opportunity.id,
@@ -1933,6 +1973,8 @@ def _serialize_opportunity(
                 dependencies,
                 opportunity.evidence_signal_ids,
                 market_id=market_id,
+                _signals_by_id=_signals_by_id,
+                _competitors_by_id=_competitors_by_id,
             )
         )
     return serialized

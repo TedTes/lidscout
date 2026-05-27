@@ -22,11 +22,11 @@ export default function NicheThemesPage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [marketsRes, clustersRes] = await Promise.all([
-        signalApi.getMarkets(),
+      const [market, clustersRes] = await Promise.all([
+        signalApi.getMarket(marketId),
         signalApi.getClusters({ market_id: marketId }),
       ]);
-      setNiche(marketsRes.markets.find(market => market.id === marketId) ?? null);
+      setNiche(market);
       setThemes(clustersRes.clusters);
       setStatus('ready');
     } catch (err) {

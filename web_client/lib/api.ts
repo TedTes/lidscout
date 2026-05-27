@@ -157,6 +157,21 @@ class InteractionApiService {
 }
 
 class SignalApiService {
+  private _marketCache = new Map<string, { data: Market; exp: number }>();
+
+  async getMarket(marketId: string): Promise<Market> {
+    const hit = this._marketCache.get(marketId);
+    if (hit && hit.exp > Date.now()) return hit.data;
+    try {
+      const response = await api.get<Market>(`/markets/${marketId}`);
+      this._marketCache.set(marketId, { data: response.data, exp: Date.now() + 30_000 });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load niche');
+      throw error;
+    }
+  }
+
   async getMarkets(): Promise<MarketsResponse> {
     try {
       const response = await api.get<MarketsResponse>('/markets');
