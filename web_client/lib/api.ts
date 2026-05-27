@@ -24,6 +24,7 @@ import {
   MonitoredSource,
   MonitoredSourceUpdateRequest,
   MonitoredSourcesResponse,
+  NicheTemplatesResponse,
   OpportunitiesResponse,
   SignalsResponse,
   SourceSuggestionsResponse,
@@ -271,6 +272,18 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to apply template');
+      }
+      throw error;
+    }
+  }
+
+  async getTemplates(): Promise<NicheTemplatesResponse> {
+    try {
+      const response = await api.get<NicheTemplatesResponse>('/templates');
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load niche templates');
       }
       throw error;
     }

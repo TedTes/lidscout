@@ -251,7 +251,7 @@ export default function NicheWorkspacePage({ params }: Props) {
               scanFailed={scanFailed}
               nextScanAt={nextScanAt}
               marketId={marketId}
-              onEditBrief={() => setShowBrief(v => !v)}
+              onViewBrief={() => setShowBrief(v => !v)}
             />
           ) : (
             <>
@@ -399,14 +399,14 @@ function AgentWorkingPanel({
   scanFailed,
   nextScanAt,
   marketId,
-  onEditBrief,
+  onViewBrief,
 }: {
   competitors: Competitor[];
   sources: MonitoredSource[];
   scanFailed: boolean;
   nextScanAt: string | null;
   marketId: string;
-  onEditBrief: () => void;
+  onViewBrief: () => void;
 }) {
   const sourceFamilies = [...new Set(
     sources
@@ -474,10 +474,10 @@ function AgentWorkingPanel({
           View sources
         </Link>
         <button
-          onClick={onEditBrief}
+          onClick={onViewBrief}
           className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200"
         >
-          Edit research brief
+          View research brief
         </button>
         <span className="text-[11px] text-slate-700">Changes apply to future scans only.</span>
         {nextScanAt && (

@@ -69,6 +69,19 @@ export type Market = {
   created_at: string | null;
 };
 
+export type NicheTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  company_count: number;
+  company_names: string[];
+  source_families: string[];
+};
+
+export type NicheTemplatesResponse = {
+  templates: NicheTemplate[];
+};
+
 export type AgentResearchBrief = {
   market_id: string;
   niche_name: string;

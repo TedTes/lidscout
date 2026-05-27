@@ -107,9 +107,13 @@ function IconChevronLeft() {
 // ── Step: Template Picker ──────────────────────────────────────────────────────
 
 function TemplatePickerStep({
+  loading,
+  templates,
   onSelect,
   onCustom,
 }: {
+  loading: boolean;
+  templates: TemplateCard[];
   onSelect: (template: TemplateCard) => void;
   onCustom: () => void;
 }) {
@@ -122,8 +126,11 @@ function TemplatePickerStep({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+        {loading && (
+          <p className="mb-3 text-xs text-slate-600">Loading curated niches…</p>
+        )}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {TEMPLATES.map(t => (
+          {templates.map(t => (
             <button
               key={t.id}
               onClick={() => onSelect(t)}
@@ -375,12 +382,27 @@ type Props = {
 export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>('pick');
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateCard | null>(null);
+  const [templates, setTemplates] = useState<TemplateCard[]>(TEMPLATES);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setStep('pick');
       setSelectedTemplate(null);
+      setTemplatesLoading(true);
+      signalApi.getTemplates()
+        .then(response => {
+          setTemplates(response.templates.map(template => ({
+            id: template.id,
+            name: template.name,
+            description: template.description,
+            companies: template.company_names,
+            sourceFamilies: template.source_families,
+          })));
+        })
+        .catch(() => setTemplates(TEMPLATES))
+        .finally(() => setTemplatesLoading(false));
     }
   }, [isOpen]);
 
@@ -452,6 +474,8 @@ export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
 
         {step === 'pick' && (
           <TemplatePickerStep
+            loading={templatesLoading}
+            templates={templates}
             onSelect={handleSelectTemplate}
             onCustom={() => setStep('custom')}
           />
