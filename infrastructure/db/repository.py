@@ -882,8 +882,8 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
             cursor = self.connection.execute(
                 """
                 INSERT OR IGNORE INTO markets (
-                    id, name, description, target_user, idea_prompt, user_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    id, name, description, target_user, idea_prompt, user_id, template_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     market.id,
@@ -892,6 +892,7 @@ class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
                     market.target_user,
                     market.idea_prompt,
                     market.user_id,
+                    market.template_id,
                     _datetime_to_text(market.created_at),
                 ),
             )
@@ -2003,8 +2004,8 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
             cursor = self.connection.execute(
                 """
                 INSERT INTO markets (
-                    id, name, description, target_user, idea_prompt, user_id, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    id, name, description, target_user, idea_prompt, user_id, template_id, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
@@ -2014,6 +2015,7 @@ class PostgresMarketRepository(_PostgresRepository, MarketRepository):
                     market.target_user,
                     market.idea_prompt,
                     market.user_id,
+                    market.template_id,
                     market.created_at,
                 ),
             )
@@ -2721,13 +2723,15 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
 
 
 def _market_from_row(row: sqlite3.Row) -> Market:
+    keys = row.keys()
     return Market.create(
         id=row["id"],
         name=row["name"],
         description=row["description"],
         target_user=row["target_user"],
         idea_prompt=row["idea_prompt"],
-        user_id=row["user_id"] if "user_id" in row.keys() else None,
+        user_id=row["user_id"] if "user_id" in keys else None,
+        template_id=row["template_id"] if "template_id" in keys else None,
         created_at=_datetime_from_text(row["created_at"]),
     )
 
