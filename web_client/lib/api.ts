@@ -264,6 +264,18 @@ class SignalApiService {
     }
   }
 
+  async applyTemplate(templateId: string): Promise<Market> {
+    try {
+      const response = await api.post<Market>(`/templates/${templateId}/apply`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to apply template');
+      }
+      throw error;
+    }
+  }
+
   async getMarketSources(marketId: string): Promise<MonitoredSourcesResponse> {
     try {
       const response = await api.get<MonitoredSourcesResponse>(
@@ -613,6 +625,15 @@ class SignalApiService {
         throw new Error(error.response?.data?.detail || 'Failed to load agent memory');
       }
       throw error;
+    }
+  }
+
+  async getPipelineSchedule(): Promise<{ cron: string; next_run_at: string | null }> {
+    try {
+      const response = await api.get<{ cron: string; next_run_at: string | null }>('/pipeline/schedule');
+      return response.data;
+    } catch {
+      return { cron: '0 8 * * *', next_run_at: null };
     }
   }
 }

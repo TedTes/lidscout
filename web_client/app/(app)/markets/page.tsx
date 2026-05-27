@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardShell from '@/components/app/DashboardShell';
-import { AddMarketPanel } from '@/components/app/AddMarketPanel';
+import { AddNicheFlow } from '@/components/app/AddNicheFlow';
 import { LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market } from '@/lib/types/signals';
@@ -20,7 +20,7 @@ function IconPlus() {
 export default function NichesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [showFlow, setShowFlow] = useState(false);
 
   useEffect(() => {
     signalApi.getMarkets()
@@ -34,7 +34,7 @@ export default function NichesPage() {
       .catch(() => setLoading(false));
   }, [router]);
 
-  const handleAdd = (market: Market) => {
+  const handleCreated = (market: Market) => {
     router.replace(`/markets/${encodeURIComponent(market.id)}/gaps`);
   };
 
@@ -47,26 +47,28 @@ export default function NichesPage() {
   }
 
   return (
-    <DashboardShell title="Niches" subtitle="Add your first niche to start surfacing gaps.">
-      {showForm ? (
-        <AddMarketPanel onAdd={handleAdd} onCancel={() => setShowForm(false)} />
-      ) : (
-        <div className="rounded-xl border border-dashed border-slate-800 px-8 py-20 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-slate-600">
-            <IconPlus />
-          </div>
-          <p className="font-medium text-slate-300">Add your first niche</p>
-          <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-slate-600">
-            Pick a niche, add companies and sources, then LidScout will surface ranked gaps from the evidence.
-          </p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500"
-          >
-            <IconPlus /> Add niche
-          </button>
+    <DashboardShell title="Niches" subtitle="Pick a template or define your own niche to start surfacing gaps.">
+      <div className="rounded-xl border border-dashed border-slate-800 px-8 py-20 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-slate-600">
+          <IconPlus />
         </div>
-      )}
+        <p className="font-medium text-slate-300">Add your first niche</p>
+        <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-slate-600">
+          Start from a curated template — companies, sources, and a research brief are pre-configured — or define your own.
+        </p>
+        <button
+          onClick={() => setShowFlow(true)}
+          className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500"
+        >
+          <IconPlus /> Add niche
+        </button>
+      </div>
+
+      <AddNicheFlow
+        isOpen={showFlow}
+        onClose={() => setShowFlow(false)}
+        onCreated={handleCreated}
+      />
     </DashboardShell>
   );
 }

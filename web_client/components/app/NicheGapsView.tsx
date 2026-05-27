@@ -10,7 +10,9 @@ import { signalApi } from '@/lib/api';
 import {
   AgentColdStartPlan,
   AgentFeedbackAction,
+  Competitor,
   Market,
+  MonitoredSource,
   Opportunity,
   SignalCluster,
 } from '@/lib/types/signals';
@@ -92,6 +94,9 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [sources, setSources] = useState<MonitoredSource[]>([]);
+  const [nextScanAt, setNextScanAt] = useState<string | null>(null);
   const [showBrief, setShowBrief] = useState(false);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -106,20 +111,29 @@ export default function NicheWorkspacePage({ params }: Props) {
     setFeedbackError(null);
     setNiche(null);
     setColdStart(null);
+    setCompetitors([]);
+    setSources([]);
+    setNextScanAt(null);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     try {
-      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes] = await Promise.all([
+      const [marketsRes, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes, scheduleRes] = await Promise.all([
         signalApi.getMarkets(),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
+        signalApi.getMarketCompetitors(marketId).catch(() => null),
+        signalApi.getMarketSources(marketId).catch(() => null),
+        signalApi.getPipelineSchedule().catch(() => null),
       ]);
       setNiche(marketsRes.markets.find(m => m.id === marketId) ?? null);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
       setColdStart(coldStartRes);
+      setCompetitors(competitorsRes?.competitors ?? []);
+      setSources(sourcesRes?.sources ?? []);
+      setNextScanAt(scheduleRes?.next_run_at ?? null);
       setShowBrief(coldStartRes !== null && coldStartRes.status === 'setup_needed');
 
       if (feedbackRes?.feedback) {
@@ -212,7 +226,9 @@ export default function NicheWorkspacePage({ params }: Props) {
     }
   };
 
-  const needsSetup = coldStart?.status === 'setup_needed' && opportunities.length === 0;
+  const agentIsWorking = competitors.length > 0 && sources.length > 0 && opportunities.length === 0;
+  const needsSetup = !agentIsWorking && coldStart?.status === 'setup_needed' && opportunities.length === 0;
+  const scanFailed = agentIsWorking && sources.some(s => s.last_error !== null);
 
   return (
     <DashboardShell
@@ -228,6 +244,15 @@ export default function NicheWorkspacePage({ params }: Props) {
 
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
+          ) : agentIsWorking ? (
+            <AgentWorkingPanel
+              competitors={competitors}
+              sources={sources}
+              scanFailed={scanFailed}
+              nextScanAt={nextScanAt}
+              marketId={marketId}
+              onEditBrief={() => setShowBrief(v => !v)}
+            />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-3">
@@ -362,6 +387,105 @@ function BriefField({ label, value }: { label: string; value: string }) {
     <div>
       <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
       <p className="text-xs leading-relaxed text-slate-400">{value}</p>
+    </div>
+  );
+}
+
+// ── Agent working panel ────────────────────────────────────────────────────────
+
+function AgentWorkingPanel({
+  competitors,
+  sources,
+  scanFailed,
+  nextScanAt,
+  marketId,
+  onEditBrief,
+}: {
+  competitors: Competitor[];
+  sources: MonitoredSource[];
+  scanFailed: boolean;
+  nextScanAt: string | null;
+  marketId: string;
+  onEditBrief: () => void;
+}) {
+  const sourceFamilies = [...new Set(
+    sources
+      .map(s => (s.source_family ?? (s.options?.source_family as string | undefined)))
+      .filter((f): f is string => typeof f === 'string' && f.length > 0)
+  )];
+
+  const displayCompanies = competitors.slice(0, 6);
+  const extraCount = competitors.length - displayCompanies.length;
+
+  return (
+    <div className={`rounded-xl border p-5 ${scanFailed ? 'border-amber-500/20 bg-amber-500/[0.04]' : 'border-violet-500/20 bg-violet-500/[0.03]'}`}>
+      <div className="mb-3 flex items-center gap-2">
+        {scanFailed ? (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]" />
+            <h2 className="text-sm font-semibold text-amber-300">Scan encountered errors</h2>
+          </>
+        ) : (
+          <>
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.6)]" />
+            <h2 className="text-sm font-semibold text-violet-300">Agent is monitoring</h2>
+          </>
+        )}
+      </div>
+
+      <p className="mb-4 text-xs leading-relaxed text-slate-500">
+        {scanFailed
+          ? 'One or more sources returned errors on the last scan. Check the Sources tab for details. Signals will appear here once a scan completes successfully.'
+          : 'Sources are configured and active. Gaps will appear here after the first scan completes.'}
+      </p>
+
+      {displayCompanies.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Monitoring</p>
+          <div className="flex flex-wrap gap-1.5">
+            {displayCompanies.map(c => (
+              <span key={c.id} className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] text-slate-400">{c.name}</span>
+            ))}
+            {extraCount > 0 && (
+              <span className="rounded-md bg-slate-800/40 px-2 py-0.5 text-[11px] text-slate-600">+{extraCount} more</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {sourceFamilies.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Source channels</p>
+          <div className="flex flex-wrap gap-1.5">
+            {sourceFamilies.map(f => (
+              <span key={f} className="rounded-md border border-slate-800/50 bg-slate-800/40 px-2 py-0.5 text-[11px] capitalize text-slate-500">
+                {f.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-slate-800/50 pt-3">
+        <Link
+          href={`/markets/${encodeURIComponent(marketId)}/sources`}
+          className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+        >
+          View sources
+        </Link>
+        <button
+          onClick={onEditBrief}
+          className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+        >
+          Edit research brief
+        </button>
+        <span className="text-[11px] text-slate-700">Changes apply to future scans only.</span>
+        {nextScanAt && (
+          <span className="ml-auto text-[11px] text-slate-700">
+            Next scan {new Date(nextScanAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

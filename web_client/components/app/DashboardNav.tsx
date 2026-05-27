@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { AddNicheDrawer } from '@/components/app/AddNicheDrawer';
+import { AddNicheFlow } from '@/components/app/AddNicheFlow';
 import { signalApi } from '@/lib/api';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Market } from '@/lib/types/signals';
@@ -301,7 +301,7 @@ export default function DashboardNav() {
         </button>
       </header>
 
-      <AddNicheDrawer
+      <AddNicheFlow
         isOpen={showAddNiche}
         onClose={() => setShowAddNiche(false)}
         onCreated={handleNicheCreated}
