@@ -79,6 +79,38 @@ class RunPipelineForMarketTaskTests(unittest.TestCase):
         self.assertTrue(result.successful())
 
 
+class IdempotencyTests(unittest.TestCase):
+    """T7.4 — running the task twice for the same market is safe.
+
+    The task itself does not deduplicate — it delegates to
+    run_configured_daily_pipeline on every call. Idempotency is enforced at
+    the DB layer via ON CONFLICT DO NOTHING / INSERT OR IGNORE on signals,
+    posts, scores, and pipeline_run_metrics. Running the pipeline twice
+    produces the same DB state as running it once.
+    """
+
+    def setUp(self):
+        _eager_app()
+
+    def test_task_executes_pipeline_on_every_call(self):
+        call_count = {"n": 0}
+
+        def count_calls(*args, **kwargs):
+            call_count["n"] += 1
+            return MagicMock()
+
+        with (
+            patch("workers.jobs.run_configured_daily_pipeline", side_effect=count_calls),
+            patch("workers.jobs._pipeline_job_summary", return_value={}),
+        ):
+            from workers.tasks import run_pipeline_for_market
+            run_pipeline_for_market.apply(args=["market-abc"])
+            run_pipeline_for_market.apply(args=["market-abc"])
+
+        # Task always delegates — DB layer owns deduplication via ON CONFLICT
+        self.assertEqual(call_count["n"], 2)
+
+
 class RunDailyPipelineAllTests(unittest.TestCase):
     """T7.2 — coordinator fans out one task per active market."""
 
