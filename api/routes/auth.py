@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -10,6 +11,7 @@ from api.schemas.auth import GoogleTokenRequest, LoginRequest, RegisterRequest, 
 from application.auth import AuthError, AuthService
 from domain.user import User
 from shared.config import get_app_config
+from shared.logger import get_logger, log_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,6 +21,7 @@ _market_repo: object | None = None
 _competitor_repo: object | None = None
 _source_repo: object | None = None
 _activity_repo: object | None = None
+logger = get_logger(__name__)
 
 
 def configure_auth_service(
@@ -104,8 +107,14 @@ def _seed_markets_for_token(token: str, auth_service: AuthService) -> None:
         from application.onboarding.templates import seed_template_markets
         user = auth_service.verify_token(token)
         seed_template_markets(user.id, _market_repo, _competitor_repo, _source_repo, _activity_repo)
-    except Exception:
-        pass
+    except Exception as exc:
+        log_event(
+            logger,
+            "default_template_seed_failed",
+            level=logging.ERROR,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
 
 
 @router.post("/google", response_model=TokenResponse)

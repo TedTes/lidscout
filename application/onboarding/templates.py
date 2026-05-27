@@ -17,6 +17,7 @@ mutate already-seeded user niches.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -27,6 +28,9 @@ from application.onboarding.niche_templates import (
     TemplateSource,
     get_template,
 )
+from shared.logger import get_logger, log_event
+
+logger = get_logger(__name__)
 
 DEFAULT_TEMPLATE_IDS = (
     "ai-coding-tools",
@@ -100,10 +104,18 @@ def seed_template_markets(
             with connection.transaction():
                 info = _insert_template(connection, user_id, template)
             seeded.append(info)
-        except Exception:
-            # Log and continue — partial seeding is better than no seeding
-            # when one template's data is temporarily unavailable.
-            pass
+        except Exception as exc:
+            # Continue seeding other templates, but keep enough signal to debug
+            # broken template data or database constraints in production.
+            log_event(
+                logger,
+                "template_seed_failed",
+                level=logging.ERROR,
+                user_id=user_id,
+                template_id=template_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
 
     # Activity events fire only after each transaction commits successfully.
     if activity_repo is not None:
