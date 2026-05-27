@@ -1,4 +1,13 @@
-"""Background jobs for signal detection workflows."""
+"""Background jobs for signal detection workflows.
+
+Scheduled pipeline execution is handled by Celery Beat via workers/tasks.py.
+This module is kept as a manual CLI escape hatch only:
+
+    python -m workers.jobs run-daily-pipeline [recipient] [market_id]
+    python -m workers.jobs check [market_id]
+
+Do NOT schedule this via Railway Cron — that role belongs to Beat.
+"""
 from __future__ import annotations
 
 import json
