@@ -56,6 +56,7 @@ from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import MonitoredSource, SourceHealth, SourceInput, SourceLocator
+from domain.user import User
 from infrastructure.db import (
     InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
@@ -565,11 +566,44 @@ class SignalApiRouteTests(unittest.TestCase):
         dependencies.market_repository.save_markets(
             [Market.create(id="workspace-tools", name="Workspace tools")]
         )
+        dependencies.competitor_repository.save_competitors(
+            [
+                Competitor.create(
+                    id="notion",
+                    name="Notion",
+                    market_id="workspace-tools",
+                )
+            ]
+        )
 
         deleted = asyncio.run(delete_market("workspace-tools", dependencies))
 
         self.assertEqual(deleted, {"id": "workspace-tools", "deleted": True})
         self.assertIsNone(dependencies.market_repository.get_market("workspace-tools"))
+        self.assertEqual(dependencies.competitor_repository.list_competitors(), [])
+
+    def test_market_routes_hide_other_users_markets(self):
+        dependencies = self._dependencies()
+        dependencies.market_repository.save_markets(
+            [
+                Market.create(
+                    id="workspace-tools",
+                    name="Workspace tools",
+                    user_id="owner-1",
+                )
+            ]
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(
+                get_market(
+                    "workspace-tools",
+                    dependencies,
+                    User(id="owner-2", email="other@example.com"),
+                )
+            )
+
+        self.assertEqual(raised.exception.status_code, 404)
 
     def test_gets_market_agent_cold_start_plan(self):
         market_repository = InMemoryMarketRepository()

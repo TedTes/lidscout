@@ -6,20 +6,38 @@ from api.dependencies import build_signal_api_dependencies
 from shared.config import AppConfig
 
 
+def _app_config(**overrides):
+    values = {
+        "DATABASE_URL": "postgresql://postgres.example/lidscout",
+        "LLM_API_KEY": None,
+        "OPENAI_RESPONSE_MODEL": "response-model",
+        "OPENAI_RELEVANCE_MODEL": "relevance-model",
+        "OPENAI_EMBEDDING_MODEL": "embedding-model",
+        "EMAIL_API_KEY": None,
+        "RESEND_API_KEY": None,
+        "RESEND_FROM_EMAIL": None,
+        "REPORT_RECIPIENT": None,
+        "PIPELINE_SCHEDULE": "0 8 * * *",
+        "JWT_SECRET": "test-secret",
+        "JWT_EXPIRY_MINUTES": 60,
+        "GOOGLE_CLIENT_ID": None,
+        "GOOGLE_CLIENT_SECRET": None,
+        "API_URL": "http://localhost:8000",
+        "FRONTEND_URL": "http://localhost:3000",
+    }
+    values.update(overrides)
+    return AppConfig(**values)
+
+
 class ApiDependencyTests(unittest.TestCase):
     def test_builds_runtime_dependencies_from_postgres_config(self):
         database_url = "postgresql://postgres.example/lidscout"
-        config = AppConfig(
+        config = _app_config(
             DATABASE_URL=database_url,
             LLM_API_KEY="llm-key",
-            OPENAI_RESPONSE_MODEL="response-model",
-            OPENAI_RELEVANCE_MODEL="relevance-model",
-            OPENAI_EMBEDDING_MODEL="embedding-model",
-            EMAIL_API_KEY=None,
             RESEND_API_KEY="resend-key",
             RESEND_FROM_EMAIL="LidScout <alerts@example.com>",
             REPORT_RECIPIENT="founder@example.com",
-            PIPELINE_SCHEDULE="0 8 * * *",
         )
 
         with ExitStack() as stack:
@@ -49,6 +67,12 @@ class ApiDependencyTests(unittest.TestCase):
             )
             agent_activity_repository = stack.enter_context(
                 patch("api.dependencies.PostgresAgentActivityRepository")
+            )
+            agent_alert_repository = stack.enter_context(
+                patch("api.dependencies.PostgresAgentAlertRepository")
+            )
+            agent_follow_up_repository = stack.enter_context(
+                patch("api.dependencies.PostgresAgentFollowUpRepository")
             )
             competitor_repository = stack.enter_context(
                 patch("api.dependencies.PostgresCompetitorRepository")
@@ -97,6 +121,8 @@ class ApiDependencyTests(unittest.TestCase):
         agent_preferences_repository.assert_called_once_with(connection=connection)
         agent_feedback_repository.assert_called_once_with(connection=connection)
         agent_activity_repository.assert_called_once_with(connection=connection)
+        agent_alert_repository.assert_called_once_with(connection=connection)
+        agent_follow_up_repository.assert_called_once_with(connection=connection)
         competitor_repository.assert_called_once_with(connection=connection)
         market_repository.assert_called_once_with(connection=connection)
         monitored_source_repository.assert_called_once_with(connection=connection)
@@ -146,6 +172,14 @@ class ApiDependencyTests(unittest.TestCase):
             dependencies.agent_activity_repository,
             agent_activity_repository.return_value,
         )
+        self.assertIs(
+            dependencies.agent_alert_repository,
+            agent_alert_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.agent_follow_up_repository,
+            agent_follow_up_repository.return_value,
+        )
         self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
         self.assertIs(dependencies.market_repository, market_repository.return_value)
         self.assertIs(
@@ -167,17 +201,8 @@ class ApiDependencyTests(unittest.TestCase):
 
     def test_leaves_llm_client_empty_without_key(self):
         database_url = "postgresql://postgres.example/lidscout"
-        config = AppConfig(
+        config = _app_config(
             DATABASE_URL=database_url,
-            LLM_API_KEY=None,
-            OPENAI_RESPONSE_MODEL="response-model",
-            OPENAI_RELEVANCE_MODEL="relevance-model",
-            OPENAI_EMBEDDING_MODEL="embedding-model",
-            EMAIL_API_KEY=None,
-            RESEND_API_KEY=None,
-            RESEND_FROM_EMAIL=None,
-            REPORT_RECIPIENT=None,
-            PIPELINE_SCHEDULE="0 8 * * *",
         )
 
         with ExitStack() as stack:
@@ -191,6 +216,8 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresAgentPreferencesRepository",
                 "api.dependencies.PostgresAgentFeedbackRepository",
                 "api.dependencies.PostgresAgentActivityRepository",
+                "api.dependencies.PostgresAgentAlertRepository",
+                "api.dependencies.PostgresAgentFollowUpRepository",
                 "api.dependencies.PostgresCompetitorRepository",
                 "api.dependencies.PostgresMarketRepository",
                 "api.dependencies.PostgresMonitoredSourceRepository",
@@ -223,17 +250,8 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIsNone(dependencies.email_client)
 
     def test_rejects_non_postgres_database_url(self):
-        config = AppConfig(
+        config = _app_config(
             DATABASE_URL="sqlite:///lidscout.db",
-            LLM_API_KEY=None,
-            OPENAI_RESPONSE_MODEL="response-model",
-            OPENAI_RELEVANCE_MODEL="relevance-model",
-            OPENAI_EMBEDDING_MODEL="embedding-model",
-            EMAIL_API_KEY=None,
-            RESEND_API_KEY=None,
-            RESEND_FROM_EMAIL=None,
-            REPORT_RECIPIENT=None,
-            PIPELINE_SCHEDULE="0 8 * * *",
         )
 
         with self.assertRaises(ValueError):
