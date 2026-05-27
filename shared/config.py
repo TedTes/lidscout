@@ -46,6 +46,7 @@ class AppConfig:
     GOOGLE_CLIENT_SECRET: str | None
     API_URL: str
     FRONTEND_URL: str
+    REDIS_URL: str | None
 
 
 def _csv(value: str) -> list[str]:
@@ -121,4 +122,5 @@ def get_app_config() -> AppConfig:
         GOOGLE_CLIENT_SECRET=_optional_env("GOOGLE_CLIENT_SECRET"),
         API_URL=_env_or_default("API_URL", "http://localhost:8000"),
         FRONTEND_URL=_env_or_default("FRONTEND_URL", "http://localhost:3000"),
+        REDIS_URL=_optional_env("REDIS_URL"),
     )
