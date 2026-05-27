@@ -48,6 +48,15 @@ function IconPlus() {
   );
 }
 
+function IconCopy() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 function IconChevron({ open }: { open: boolean }) {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
@@ -102,8 +111,10 @@ export default function NicheSourcesPage({ params }: Props) {
   }, [marketId]);
 
   const newSuggestions = suggestions.filter(s => !s.already_monitored);
-  const activeCount = summary?.active_count ?? sources.filter(s => s.enabled).length;
-  const errorCount = summary?.error_count ?? sources.filter(s => s.last_error || s.health?.last_status === 'failing').length;
+  const activeCount = sources.filter(s => sourceHealth(s) === 'active').length;
+  const errorCount = sources.filter(s => sourceHealth(s) === 'failing').length;
+
+  const HEALTH_ORDER: Record<'active' | 'failing' | 'paused', number> = { active: 0, paused: 1, failing: 2 };
 
   const groupedSources = useMemo(() => {
     const groups = new Map<string, MonitoredSource[]>();
@@ -111,8 +122,27 @@ export default function NicheSourcesPage({ params }: Props) {
       const family = source.source_family ?? 'other';
       groups.set(family, [...(groups.get(family) ?? []), source]);
     });
-    return [...groups.entries()].sort(([a], [b]) => familyLabel(a).localeCompare(familyLabel(b)));
+    return [...groups.entries()]
+      .sort(([a], [b]) => familyLabel(a).localeCompare(familyLabel(b)))
+      .map(([family, members]) => [
+        family,
+        [...members].sort((a, b) => HEALTH_ORDER[sourceHealth(a)] - HEALTH_ORDER[sourceHealth(b)]),
+      ] as [string, MonitoredSource[]]);
   }, [sources]);
+
+  const [copied, setCopied] = useState(false);
+
+  const copySources = () => {
+    const lines = sources.map(s => {
+      const health = sourceHealth(s);
+      const icon = health === 'active' ? '✅' : health === 'failing' ? '❌' : '⏸️';
+      return `${icon} ${s.locator}  [${familyLabel(s.source_family)}${s.competitor_name ? ` · ${s.competitor_name}` : ''}]${s.last_error ? `  ⚠ ${s.last_error}` : ''}`;
+    });
+    const header = `${niche?.name ?? 'Niche'} sources (${sources.length} total · ${activeCount} active · ${errorCount} failing)\n\n`;
+    navigator.clipboard.writeText(header + lines.join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const removeSource = (id: string) => {
     setSources(prev => prev.filter(s => s.id !== id));
@@ -197,7 +227,20 @@ export default function NicheSourcesPage({ params }: Props) {
           {/* ── Monitored sources ── */}
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40">
             <div className="border-b border-slate-800/70 px-5 py-4">
-              <h2 className="text-sm font-semibold text-slate-300">Monitored sources</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-300">Monitored sources</h2>
+                {sources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={copySources}
+                    title="Copy all sources to clipboard"
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${copied ? 'border-emerald-500/30 text-emerald-400' : 'border-slate-700/60 text-slate-500 hover:border-slate-600 hover:text-slate-300'}`}
+                  >
+                    <IconCopy />
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                )}
+              </div>
               <p className="mt-0.5 text-xs text-slate-600">What this niche is currently watching.</p>
             </div>
 
@@ -288,7 +331,7 @@ function SourceRow({
   onRemoved,
 }: {
   source: MonitoredSource;
-  onToggle: () => void;
+  onToggle: () => Promise<void>;
   onRemoved: () => void;
 }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -392,7 +435,7 @@ function SuggestionRow({
   onAdd,
 }: {
   suggestion: SourceSuggestion;
-  onAdd: () => void;
+  onAdd: () => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
 
