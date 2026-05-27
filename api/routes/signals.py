@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import logging
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from api.routes.auth import get_current_user
 from pydantic import BaseModel, Field
 
@@ -494,13 +494,12 @@ async def list_templates() -> dict[str, Any]:
 @router.post("/templates/{template_id}/apply", status_code=201)
 async def apply_template(
     template_id: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Seed one template as a new market for the current user.
 
-    Triggers a background pipeline scan immediately after seeding so the
+    Enqueues a pipeline scan via Celery immediately after seeding so the
     AgentWorkingPanel has data as soon as possible after the first login.
     """
     from application.onboarding.niche_templates import get_template
@@ -525,7 +524,7 @@ async def apply_template(
     if market is None:
         raise HTTPException(status_code=500, detail="Market creation failed")
 
-    background_tasks.add_task(_trigger_scan, info["market_id"], dependencies)
+    _enqueue_pipeline(info["market_id"])
     return _serialize_market(market)
 
 
@@ -1369,18 +1368,30 @@ async def list_pipeline_runs(
     }
 
 
-def _trigger_scan(market_id: str, dependencies: SignalApiDependencies) -> None:
-    """Background task: run pipeline for one market immediately after seeding.
+def _enqueue_pipeline(market_id: str) -> None:
+    """Push a pipeline task onto the Celery queue.
 
-    Silently skips if pipeline dependencies are not configured.
+    Logs a warning and continues if Redis is unavailable — the daily
+    Beat schedule will pick up the market on its next run.
     """
     try:
-        from workers.jobs import run_configured_daily_pipeline
-        run_configured_daily_pipeline(market_id=market_id, dependencies=dependencies)
+        from workers.tasks import run_pipeline_for_market
+        import redis as redis_lib
+        run_pipeline_for_market.delay(market_id)
+        log_event(logger, "pipeline_enqueued", market_id=market_id)
+    except redis_lib.exceptions.ConnectionError as exc:
+        log_event(
+            logger,
+            "pipeline_enqueue_skipped",
+            level=logging.WARNING,
+            market_id=market_id,
+            reason="Redis unavailable",
+            error=str(exc),
+        )
     except Exception as exc:
         log_event(
             logger,
-            "template_seed_scan_failed",
+            "pipeline_enqueue_failed",
             level=logging.ERROR,
             market_id=market_id,
             error_type=type(exc).__name__,
