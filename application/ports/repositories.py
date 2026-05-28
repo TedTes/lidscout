@@ -1,6 +1,7 @@
 """Persistence contracts for domain entities."""
 from typing import Protocol
 
+from domain.niche import Gap, Niche, NicheCompany, NicheSource, UserNiche
 from domain.agent import (
     AgentActivity,
     AgentAlert,
@@ -319,4 +320,130 @@ class SourceHealthRepository(Protocol):
         status: str | None = None,
     ) -> list[SourceHealth]:
         """Load source health snapshots, optionally filtered."""
+        ...
+
+
+class NicheRepository(Protocol):
+    """Persistence boundary for shared operator-curated niches."""
+
+    def save_niches(self, niches: list[Niche]) -> int:
+        """Persist niches and return the number saved."""
+        ...
+
+    def get_niche(self, niche_id: str) -> Niche | None:
+        """Load one niche by id."""
+        ...
+
+    def list_niches(
+        self,
+        *,
+        category: str | None = None,
+        status: str | None = None,
+    ) -> list[Niche]:
+        """Load niches, optionally filtered by category or status."""
+        ...
+
+    def update_niche(self, niche: Niche) -> bool:
+        """Update an existing niche and return whether it changed."""
+        ...
+
+    def delete_niche(self, niche_id: str) -> bool:
+        """Delete one niche and return whether it existed."""
+        ...
+
+
+class NicheCompanyRepository(Protocol):
+    """Persistence boundary for per-niche companies."""
+
+    def save_niche_companies(self, companies: list[NicheCompany]) -> int:
+        """Persist companies and return the number saved."""
+        ...
+
+    def list_niche_companies(self, niche_id: str) -> list[NicheCompany]:
+        """Load all companies for a niche."""
+        ...
+
+    def delete_niche_company(self, company_id: str) -> bool:
+        """Delete one company and return whether it existed."""
+        ...
+
+
+class NicheSourceRepository(Protocol):
+    """Persistence boundary for niche-bound monitoring sources."""
+
+    def save_niche_sources(self, sources: list[NicheSource]) -> int:
+        """Persist sources and return the number saved."""
+        ...
+
+    def list_niche_sources(
+        self,
+        niche_id: str,
+        *,
+        is_gate_free: bool | None = None,
+        buyer_voice_verified: bool | None = None,
+    ) -> list[NicheSource]:
+        """Load sources for a niche, optionally filtered."""
+        ...
+
+    def update_niche_source_health(
+        self,
+        source_id: str,
+        health_status: str,
+        last_scanned_at: object | None = None,
+    ) -> bool:
+        """Update health status and last_scanned_at for one source."""
+        ...
+
+    def delete_niche_source(self, source_id: str) -> bool:
+        """Delete one source and return whether it existed."""
+        ...
+
+
+class GapRepository(Protocol):
+    """Persistence boundary for synthesised product gaps."""
+
+    def save_gaps(self, gaps: list[Gap]) -> int:
+        """Persist gaps and return the number saved."""
+        ...
+
+    def get_gap(self, gap_id: str) -> Gap | None:
+        """Load one gap by id."""
+        ...
+
+    def list_gaps(
+        self,
+        niche_id: str,
+        *,
+        unmet_need_type: str | None = None,
+        signal_strength: str | None = None,
+    ) -> list[Gap]:
+        """Load gaps for a niche, optionally filtered."""
+        ...
+
+    def delete_gap(self, gap_id: str) -> bool:
+        """Delete one gap and return whether it existed."""
+        ...
+
+
+class UserNicheRepository(Protocol):
+    """Persistence boundary for per-user niche adoptions."""
+
+    def save_user_niche(self, user_niche: UserNiche) -> bool:
+        """Persist a user niche and return whether it was inserted."""
+        ...
+
+    def get_user_niche(self, user_niche_id: str) -> UserNiche | None:
+        """Load one user niche by id."""
+        ...
+
+    def list_user_niches(self, user_id: str) -> list[UserNiche]:
+        """Load all niches adopted by a user."""
+        ...
+
+    def update_user_niche(self, user_niche: UserNiche) -> bool:
+        """Update an existing user niche and return whether it changed."""
+        ...
+
+    def delete_user_niche(self, user_niche_id: str) -> bool:
+        """Delete one user niche and return whether it existed."""
         ...

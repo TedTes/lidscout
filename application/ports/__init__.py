@@ -7,8 +7,12 @@ from application.ports.repositories import (
     AgentPreferencesRepository,
     ClusterRepository,
     CompetitorRepository,
+    GapRepository,
     MarketRepository,
     MonitoredSourceRepository,
+    NicheCompanyRepository,
+    NicheRepository,
+    NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
@@ -16,6 +20,7 @@ from application.ports.repositories import (
     SignalRepository,
     SourceLocatorRepository,
     SourceHealthRepository,
+    UserNicheRepository,
 )
 
 __all__ = [
@@ -26,8 +31,12 @@ __all__ = [
     "AgentFollowUpRepository",
     "AgentPreferencesRepository",
     "CompetitorRepository",
+    "GapRepository",
     "MarketRepository",
     "MonitoredSourceRepository",
+    "NicheCompanyRepository",
+    "NicheRepository",
+    "NicheSourceRepository",
     "OpportunityRepository",
     "PipelineRunMetricsRepository",
     "PostRepository",
@@ -35,4 +44,5 @@ __all__ = [
     "SignalRepository",
     "SourceLocatorRepository",
     "SourceHealthRepository",
+    "UserNicheRepository",
 ]

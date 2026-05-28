@@ -1,4 +1,11 @@
 """Database infrastructure."""
+from infrastructure.db.niche_repository import (
+    PostgresGapRepository,
+    PostgresNicheCompanyRepository,
+    PostgresNicheRepository,
+    PostgresNicheSourceRepository,
+    PostgresUserNicheRepository,
+)
 from infrastructure.db.repository import (
     InMemoryAgentActivityRepository,
     InMemoryAgentAlertRepository,
@@ -101,4 +108,9 @@ __all__ = [
     "SQLiteSourceHealthRepository",
     "SQLiteSourceLocatorRepository",
     "connect_postgres",
+    "PostgresGapRepository",
+    "PostgresNicheCompanyRepository",
+    "PostgresNicheRepository",
+    "PostgresNicheSourceRepository",
+    "PostgresUserNicheRepository",
 ]
