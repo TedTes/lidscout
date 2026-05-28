@@ -1,5 +1,5 @@
 """Runtime dependency wiring for API routes."""
-from adapters.web import JsonUrlAdapter, StaticUrlAdapter
+from adapters.web import JsonUrlAdapter, RedditAdapter, StaticUrlAdapter
 from api.routes.signals import SignalApiDependencies
 from infrastructure.db import (
     PostgresAgentActivityRepository,
@@ -69,6 +69,7 @@ def build_signal_api_dependencies(
             connection=connection,
         ),
         source_adapters=[
+            *(_reddit_adapter(app_config) or []),
             JsonUrlAdapter(),
             StaticUrlAdapter(),
         ],
@@ -77,6 +78,12 @@ def build_signal_api_dependencies(
         embedding_client=_build_embedding_client(app_config),
         email_client=_build_email_client(app_config),
     )
+
+
+def _reddit_adapter(config: AppConfig) -> list[RedditAdapter]:
+    if config.REDDIT_CLIENT_ID and config.REDDIT_CLIENT_SECRET:
+        return [RedditAdapter(config.REDDIT_CLIENT_ID, config.REDDIT_CLIENT_SECRET)]
+    return []
 
 
 def _is_postgres_url(database_url: str) -> bool:

@@ -93,30 +93,63 @@ class JsonUrlAdapter(BaseUrlAdapter):
         payload: Any,
         default_limit: int,
     ) -> list[RawPost]:
-        records = [
-            record
-            for record in _walk_json_records(payload)
-            if _record_text(record)
-        ]
+        return _normalize_json_payload(source, payload, default_limit)
+
+
+class RedditAdapter:
+    """Fetches Reddit posts via PRAW (Python Reddit API Wrapper).
+
+    PRAW handles OAuth token management, rate limiting, and 429 backoff
+    automatically. Uses read-only client-credentials flow — no user login needed.
+    """
+
+    def __init__(self, client_id: str, client_secret: str):
+        import praw
+        self._reddit = praw.Reddit(
+            client_id=client_id,
+            client_secret=client_secret,
+            user_agent="python:lidscout:v1.0",
+        )
+
+    def can_handle(self, source: SourceInput) -> bool:
+        return "reddit.com" in source.locator
+
+    def fetch_source(self, source: SourceInput, default_limit: int = 25) -> list[RawPost]:
         limit = source.limit or default_limit
-        posts = [
-            _raw_post_from_record(source, record, index)
-            for index, record in enumerate(records[:limit])
-        ]
+        parsed = urlparse(source.locator)
+        path = parsed.path.rstrip("/")
+        params = dict(pair.split("=", 1) for pair in parsed.query.split("&") if "=" in pair)
+        query = params.get("q", "")
 
-        if posts:
-            return posts
-
-        return [
-            RawPost.create(
-                source="web_json",
-                source_id=_source_id(source.locator),
-                title=source.locator,
-                body=str(payload),
-                url=source.locator,
-                metadata=_source_metadata(source, urlparse(source.locator).netloc),
+        if "/search" in path and query:
+            submissions = self._reddit.subreddit("all").search(
+                query, sort="new", limit=limit
             )
-        ]
+        else:
+            # e.g. /r/SimplePractice/new or /r/therapists/new
+            parts = [p for p in path.split("/") if p]
+            subreddit_name = parts[1] if len(parts) >= 2 else "all"
+            subreddit = self._reddit.subreddit(subreddit_name)
+            submissions = subreddit.new(limit=limit)
+
+        posts = [self._to_raw_post(source, submission) for submission in submissions]
+        log_event(logger, "reddit_fetched", locator=safe_url_for_logs(source.locator), count=len(posts))
+        return posts
+
+    def _to_raw_post(self, source: SourceInput, submission: Any) -> RawPost:
+        parsed = urlparse(source.locator)
+        return RawPost.create(
+            source="reddit",
+            source_id=submission.id,
+            title=submission.title,
+            body=submission.selftext or "",
+            author=str(submission.author) if submission.author else None,
+            url=f"https://www.reddit.com{submission.permalink}",
+            created_at=datetime.utcfromtimestamp(submission.created_utc),
+            upvotes=submission.score,
+            comments_count=submission.num_comments,
+            metadata=_source_metadata(source, parsed.netloc),
+        )
 
 
 class RenderedUrlAdapter(BaseUrlAdapter):
@@ -186,6 +219,32 @@ class UrlActivityAdapter:
             if adapter.can_handle(source):
                 return adapter.fetch_source(source, default_limit)
         raise ValueError("source locator is not supported")
+
+
+def _normalize_json_payload(
+    source: SourceInput,
+    payload: Any,
+    default_limit: int,
+    source_label: str = "web_json",
+) -> list[RawPost]:
+    records = [r for r in _walk_json_records(payload) if _record_text(r)]
+    limit = source.limit or default_limit
+    posts = [
+        _raw_post_from_record(source, record, index)
+        for index, record in enumerate(records[:limit])
+    ]
+    if posts:
+        return posts
+    return [
+        RawPost.create(
+            source=source_label,
+            source_id=_source_id(source.locator),
+            title=source.locator,
+            body=str(payload),
+            url=source.locator,
+            metadata=_source_metadata(source, urlparse(source.locator).netloc),
+        )
+    ]
 
 
 def _is_http_url(locator: str) -> bool:

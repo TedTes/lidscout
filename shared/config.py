@@ -47,6 +47,8 @@ class AppConfig:
     API_URL: str
     FRONTEND_URL: str
     REDIS_URL: str | None
+    REDDIT_CLIENT_ID: str | None
+    REDDIT_CLIENT_SECRET: str | None
 
 
 def _csv(value: str) -> list[str]:
@@ -123,4 +125,6 @@ def get_app_config() -> AppConfig:
         API_URL=_env_or_default("API_URL", "http://localhost:8000"),
         FRONTEND_URL=_env_or_default("FRONTEND_URL", "http://localhost:3000"),
         REDIS_URL=_optional_env("REDIS_URL"),
+        REDDIT_CLIENT_ID=_optional_env("REDDIT_CLIENT_ID"),
+        REDDIT_CLIENT_SECRET=_optional_env("REDDIT_CLIENT_SECRET"),
     )

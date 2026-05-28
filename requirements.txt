@@ -14,3 +14,4 @@ email-validator==2.1.1
 google-auth==2.29.0
 celery[redis]==5.6.3
 redis==6.4.0
+praw==7.7.1
