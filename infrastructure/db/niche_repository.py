@@ -296,6 +296,12 @@ class PostgresUserNicheRepository(_PostgresRepository, UserNicheRepository):
         ).fetchall()
         return [_user_niche_from_row(r) for r in rows]
 
+    def list_all_user_niches(self) -> list[UserNiche]:
+        rows = self.connection.execute(
+            "SELECT * FROM user_niches ORDER BY created_at DESC"
+        ).fetchall()
+        return [_user_niche_from_row(r) for r in rows]
+
     def update_user_niche(self, user_niche: UserNiche) -> bool:
         cursor = self.connection.execute(
             """

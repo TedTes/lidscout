@@ -58,10 +58,8 @@ def run_configured_daily_pipeline(
             ),
             agent_activity_repository=runtime_dependencies.agent_activity_repository,
             agent_alert_repository=runtime_dependencies.agent_alert_repository,
-            competitor_repository=runtime_dependencies.competitor_repository,
-            market_repository=runtime_dependencies.market_repository,
-            monitored_source_repository=runtime_dependencies.monitored_source_repository,
-            source_health_repository=runtime_dependencies.source_health_repository,
+            niche_source_repository=runtime_dependencies.niche_source_repository,
+            user_niche_repository=runtime_dependencies.user_niche_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
             llm_client=runtime_dependencies.llm_client,
             relevance_llm_client=runtime_dependencies.relevance_llm_client,
@@ -69,13 +67,13 @@ def run_configured_daily_pipeline(
             email_client=runtime_dependencies.email_client,
             recipient=resolved_recipient,
             source_adapters=runtime_dependencies.source_adapters,
-            market_id=market_id,
+            user_niche_id=market_id,
         )
     )
 
 
 def check_worker_readiness(
-    market_id: str | None = None,
+    user_niche_id: str | None = None,
     dependencies: SignalApiDependencies | None = None,
 ) -> dict[str, object]:
     """Return deploy-time readiness details for the scheduled worker."""
@@ -83,26 +81,27 @@ def check_worker_readiness(
     runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
     _ensure_background_pipeline_dependencies(runtime_dependencies)
 
-    monitored_sources = (
-        runtime_dependencies.monitored_source_repository.list_monitored_sources(
-            enabled=True,
-            market_id=market_id,
-        )
-    )
-    source_locators = []
-    if not monitored_sources:
-        source_locators = (
-            runtime_dependencies.source_locator_repository.list_source_locators(
-                enabled=True,
+    niche_source_count = 0
+    if user_niche_id is not None:
+        user_niche = runtime_dependencies.user_niche_repository.get_user_niche(user_niche_id)
+        if user_niche and user_niche.template_niche_id:
+            niche_source_count = len(
+                runtime_dependencies.niche_source_repository.list_niche_sources(
+                    user_niche.template_niche_id
+                )
             )
+    else:
+        all_niches = runtime_dependencies.user_niche_repository.list_all_user_niches()
+        niche_source_count = sum(
+            len(runtime_dependencies.niche_source_repository.list_niche_sources(un.template_niche_id))
+            for un in all_niches
+            if un.template_niche_id
         )
 
-    source_count = len(monitored_sources) or len(source_locators)
     return {
-        "ready": source_count > 0,
-        "market_id": market_id,
-        "enabled_monitored_source_count": len(monitored_sources),
-        "enabled_source_locator_count": len(source_locators),
+        "ready": niche_source_count > 0,
+        "user_niche_id": user_niche_id,
+        "enabled_niche_source_count": niche_source_count,
         "source_adapter_count": len(runtime_dependencies.source_adapters),
         "has_llm_client": runtime_dependencies.llm_client is not None,
         "has_relevance_llm_client": (
@@ -121,8 +120,8 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError(f"Unknown worker job: {command}")
 
     if command == "check":
-        market_id = args[1] if len(args) > 1 else None
-        result = check_worker_readiness(market_id=market_id)
+        user_niche_id = args[1] if len(args) > 1 else None
+        result = check_worker_readiness(user_niche_id=user_niche_id)
         print(json.dumps(result, sort_keys=True))
         return 0 if result["ready"] else 1
 

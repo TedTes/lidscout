@@ -42,21 +42,20 @@ def run_pipeline_for_market(self, market_id: str) -> dict:
     name="workers.tasks.run_daily_pipeline_all",
 )
 def run_daily_pipeline_all() -> dict:
-    """Coordinator task: enqueue one pipeline run per active market."""
+    """Coordinator task: enqueue one pipeline run per user_niche that has sources."""
     from api.dependencies import build_signal_api_dependencies
 
     deps = build_signal_api_dependencies()
-    markets = deps.market_repository.list_markets()
+    all_niches = deps.user_niche_repository.list_all_user_niches()
     active = [
-        m for m in markets
-        if deps.monitored_source_repository.list_monitored_sources(
-            market_id=m.id, enabled=True
-        )
+        un for un in all_niches
+        if un.template_niche_id is not None
+        and deps.niche_source_repository.list_niche_sources(un.template_niche_id)
     ]
 
-    for market in active:
-        run_pipeline_for_market.delay(market.id)
-        logger.info("enqueued pipeline market_id=%s name=%s", market.id, market.name)
+    for user_niche in active:
+        run_pipeline_for_market.delay(user_niche.id)
+        logger.info("enqueued pipeline user_niche_id=%s job=%s", user_niche.id, user_niche.job)
 
-    logger.info("daily coordinator enqueued %d/%d markets", len(active), len(markets))
-    return {"enqueued": len(active), "total_markets": len(markets)}
+    logger.info("daily coordinator enqueued %d/%d user_niches", len(active), len(all_niches))
+    return {"enqueued": len(active), "total_user_niches": len(all_niches)}

@@ -347,6 +347,10 @@ class UserNicheRepository(Protocol):
         """Load all niches adopted by a user."""
         ...
 
+    def list_all_user_niches(self) -> list[UserNiche]:
+        """Load every user_niche across all users (used by the pipeline coordinator)."""
+        ...
+
     def update_user_niche(self, user_niche: UserNiche) -> bool:
         """Update an existing user niche and return whether it changed."""
         ...

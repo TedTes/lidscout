@@ -407,6 +407,9 @@ class InMemoryUserNicheRepository:
     def list_user_niches(self, user_id: str) -> list:
         return [n for n in self._user_niches.values() if n.user_id == user_id]
 
+    def list_all_user_niches(self) -> list:
+        return list(self._user_niches.values())
+
     def update_user_niche(self, user_niche) -> bool:
         if user_niche.id not in self._user_niches:
             return False
