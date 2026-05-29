@@ -20,7 +20,8 @@ create index if not exists niche_sources_niche_enabled_idx
 
 -- Cumulative health counters per niche_source — mirrors the old source_health
 -- table but keyed to niche_source_id instead of monitored_source_id.
-create table if not exists niche_source_health (
+-- Named niche_source_health_stats to avoid conflict with the niche_source_health enum type.
+create table if not exists niche_source_health_stats (
     niche_source_id          uuid primary key references niche_sources(id) on delete cascade,
     total_runs               integer not null default 0,
     success_count            integer not null default 0,
@@ -38,9 +39,9 @@ create table if not exists niche_source_health (
     last_gap_count           integer not null default 0,
     last_scanned_at          timestamptz,
     updated_at               timestamptz,
-    constraint niche_source_health_last_status_check
+    constraint niche_source_health_stats_last_status_check
         check (last_status in ('unknown', 'healthy', 'failing')),
-    constraint niche_source_health_counts_non_negative check (
+    constraint niche_source_health_stats_counts_non_negative check (
         total_runs >= 0
         and success_count >= 0
         and failure_count >= 0
@@ -56,8 +57,8 @@ create table if not exists niche_source_health (
     )
 );
 
-create index if not exists niche_source_health_status_idx
-    on niche_source_health (last_status);
+create index if not exists niche_source_health_stats_status_idx
+    on niche_source_health_stats (last_status);
 
-create index if not exists niche_source_health_updated_at_idx
-    on niche_source_health (updated_at desc);
+create index if not exists niche_source_health_stats_updated_at_idx
+    on niche_source_health_stats (updated_at desc);
