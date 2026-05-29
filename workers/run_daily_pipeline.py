@@ -122,6 +122,18 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     fetch_result = _fetch_posts(config)
     posts = fetch_result.posts
 
+    source_count = len(fetch_result.details)
+    success_count = sum(1 for d in fetch_result.details if d.error is None)
+    _record_agent_activity(
+        config.agent_activity_repository,
+        user_niche_id=config.user_niche_id,
+        event_type="sources_scanned",
+        title=f"Scanned {success_count} of {source_count} source(s)",
+        detail=f"Fetched {len(posts)} post(s) across {success_count} source(s)."
+        + (f" {source_count - success_count} source(s) failed." if source_count - success_count else ""),
+        metadata={"source_count": source_count, "success_count": success_count, "post_count": len(posts)},
+    )
+
     ingestion_service = IngestionService(config.post_repository)
     ingestion_result = ingestion_service.ingest(posts)
 
@@ -129,11 +141,32 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         posts,
         config.relevance_llm_client,
     )
+    relevant_count = len(relevance_result.posts)
+    filtered_count = relevance_result.rule_filtered_count + relevance_result.llm_filtered_count
+    if filtered_count > 0:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="posts_filtered",
+            title=f"Filtered {filtered_count} irrelevant post(s)",
+            detail=f"{relevant_count} post(s) passed relevance check. {filtered_count} removed as noise.",
+            metadata={"relevant_count": relevant_count, "filtered_count": filtered_count},
+        )
+
     signals, no_signal_count, extraction_failed_count = _extract_signals(
         relevance_result.posts,
         config.llm_client,
     )
     signal_inserted_count = config.signal_repository.save_signals(signals)
+    if signals:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="signals_extracted",
+            title=f"Extracted {len(signals)} signal(s)",
+            detail=f"Found {len(signals)} pain signal(s) from {len(relevance_result.posts)} relevant post(s).",
+            metadata={"signal_count": len(signals), "no_signal_count": no_signal_count},
+        )
 
     scoring_result = ScoringService(config.score_repository).score(signals)
 
@@ -146,6 +179,15 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         embeddings,
     )
     cluster_inserted_count = config.cluster_repository.save_clusters(clusters)
+    if clusters:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="clusters_formed",
+            title=f"Grouped signals into {len(clusters)} theme(s)",
+            detail=f"Clustered {len(clustered_signals)} signal(s) into {len(clusters)} theme(s).",
+            metadata={"cluster_count": len(clusters), "signal_count": len(clustered_signals)},
+        )
 
     opportunity_synthesis_result = _synthesize_opportunities(
         config.opportunity_repository,
@@ -154,6 +196,16 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         signals,
         _synthesis_context(config),
     )
+    if opportunity_synthesis_result.synthesized_count > 0:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="gaps_synthesized",
+            title=f"Identified {opportunity_synthesis_result.synthesized_count} gap(s)",
+            detail=f"Synthesized {opportunity_synthesis_result.synthesized_count} product gap(s) from clustered signals.",
+            metadata={"gap_count": opportunity_synthesis_result.synthesized_count},
+        )
+
     _record_niche_source_health(
         config.niche_source_repository,
         fetch_result.details,
