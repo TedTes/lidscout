@@ -23,6 +23,7 @@ from application.ports import (
     AgentPreferencesRepository,
     ClusterRepository,
     NicheCompanyRepository,
+    NicheRepository,
     NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
@@ -41,7 +42,7 @@ from domain.agent import (
     AgentFollowUp,
     AgentPreferences,
 )
-from domain.niche import NicheCompany, NicheSource, UserNiche
+from domain.niche import Niche, NicheCompany, NicheSource, UserNiche
 from domain.user import User
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
@@ -55,6 +56,7 @@ from infrastructure.db import (
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryNicheCompanyRepository,
+    InMemoryNicheRepository,
     InMemoryNicheSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
@@ -196,6 +198,9 @@ class SignalApiDependencies:
     agent_follow_up_repository: AgentFollowUpRepository = field(
         default_factory=InMemoryAgentFollowUpRepository
     )
+    niche_repository: NicheRepository = field(
+        default_factory=InMemoryNicheRepository
+    )
     niche_company_repository: NicheCompanyRepository = field(
         default_factory=InMemoryNicheCompanyRepository
     )
@@ -325,6 +330,46 @@ async def list_opportunities(
             for o in opportunities
         ]
     }
+
+
+@router.get("/templates")
+async def list_templates(
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+) -> dict[str, Any]:
+    """Return operator-curated niche templates from the catalog."""
+    niches = dependencies.niche_repository.list_niches(status="active")
+    templates = []
+    for niche in niches:
+        companies = dependencies.niche_company_repository.list_niche_companies(niche.id)
+        sources = dependencies.niche_source_repository.list_niche_sources(niche.id)
+        source_families = sorted({s.source_family for s in sources})
+        templates.append(
+            _serialize_niche_template(niche, companies, source_families)
+        )
+    return {"templates": templates}
+
+
+@router.post("/templates/{template_id}/apply")
+async def apply_template(
+    template_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Create a user_niche from a catalog template and return it as a market."""
+    niche = dependencies.niche_repository.get_niche(template_id)
+    if niche is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    user_id = _current_user_id(current_user) or "anonymous"
+    user_niche = UserNiche.create(
+        user_id=user_id,
+        job=niche.job,
+        buyer=niche.buyer,
+        category=niche.category,
+        template_niche_id=niche.id,
+    )
+    dependencies.user_niche_repository.save_user_niche(user_niche)
+    return _serialize_market(user_niche)
 
 
 @router.get("/markets")
@@ -1262,6 +1307,21 @@ def _market_report_title(
     if user_niche is None:
         return None
     return f"{user_niche.job} Market Gap Report"
+
+
+def _serialize_niche_template(
+    niche: Niche,
+    companies: list[NicheCompany],
+    source_families: list[str],
+) -> dict[str, Any]:
+    return {
+        "id": niche.id,
+        "name": niche.job,
+        "description": niche.description or niche.category,
+        "company_count": len(companies),
+        "company_names": [c.name for c in companies],
+        "source_families": source_families,
+    }
 
 
 def _serialize_market(user_niche: UserNiche) -> dict[str, Any]:

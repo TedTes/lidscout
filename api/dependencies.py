@@ -9,6 +9,7 @@ from infrastructure.db import (
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
     PostgresNicheCompanyRepository,
+    PostgresNicheRepository,
     PostgresNicheSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
@@ -56,6 +57,7 @@ def build_signal_api_dependencies(
         agent_follow_up_repository=PostgresAgentFollowUpRepository(
             connection=connection,
         ),
+        niche_repository=PostgresNicheRepository(connection=connection),
         niche_company_repository=PostgresNicheCompanyRepository(connection=connection),
         niche_source_repository=PostgresNicheSourceRepository(connection=connection),
         user_niche_repository=PostgresUserNicheRepository(connection=connection),
