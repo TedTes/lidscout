@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
-import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -17,26 +16,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _bearer = HTTPBearer(auto_error=False)
 _auth_service: AuthService | None = None
-_market_repo: object | None = None
-_competitor_repo: object | None = None
-_source_repo: object | None = None
-_activity_repo: object | None = None
 logger = get_logger(__name__)
 
 
-def configure_auth_service(
-    service: AuthService,
-    market_repo: object | None = None,
-    competitor_repo: object | None = None,
-    source_repo: object | None = None,
-    activity_repo: object | None = None,
-) -> None:
-    global _auth_service, _market_repo, _competitor_repo, _source_repo, _activity_repo
+def configure_auth_service(service: AuthService) -> None:
+    global _auth_service
     _auth_service = service
-    _market_repo = market_repo
-    _competitor_repo = competitor_repo
-    _source_repo = source_repo
-    _activity_repo = activity_repo
 
 
 def _get_auth_service() -> AuthService:
@@ -75,7 +60,6 @@ def register(
         token = auth_service.register(request.email, request.password)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _seed_markets_for_token(token, auth_service)
     return TokenResponse(access_token=token)
 
 
@@ -100,23 +84,6 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse(id=current_user.id, email=current_user.email)
 
 
-def _seed_markets_for_token(token: str, auth_service: AuthService) -> None:
-    if _market_repo is None or _competitor_repo is None or _source_repo is None:
-        return
-    try:
-        from application.onboarding.templates import seed_template_markets
-        user = auth_service.verify_token(token)
-        seed_template_markets(user.id, _market_repo, _competitor_repo, _source_repo, _activity_repo)
-    except Exception as exc:
-        log_event(
-            logger,
-            "default_template_seed_failed",
-            level=logging.ERROR,
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-
-
 @router.post("/google", response_model=TokenResponse)
 def google_login(
     request: GoogleTokenRequest,
@@ -138,5 +105,4 @@ def google_login(
         token = auth_service.google_login(google_id=info["sub"], email=info["email"])
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    _seed_markets_for_token(token, auth_service)
     return TokenResponse(access_token=token)
