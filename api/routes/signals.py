@@ -108,7 +108,7 @@ class NicheCompanyRequest(BaseModel):
 class MarketRequest(BaseModel):
     """HTTP request body for creating a watched market."""
 
-    id: str = Field(min_length=1)
+    id: str | None = None
     name: str = Field(min_length=1)
     description: str | None = None
     target_user: str | None = None
@@ -337,7 +337,7 @@ async def list_templates(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Return operator-curated niche templates from the catalog."""
-    niches = dependencies.niche_repository.list_niches(status="active")
+    niches = dependencies.niche_repository.list_niches()
     templates = []
     for niche in niches:
         companies = dependencies.niche_company_repository.list_niche_companies(niche.id)
@@ -399,7 +399,6 @@ async def create_market(
     user_id = _current_user_id(current_user) or "anonymous"
     try:
         user_niche = UserNiche.create(
-            id=request.id,
             user_id=user_id,
             job=request.name,
             buyer=request.target_user or "general",
