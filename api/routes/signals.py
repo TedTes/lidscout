@@ -1161,6 +1161,44 @@ async def list_pipeline_runs(
     }
 
 
+@router.get("/markets/{market_id}/pipeline/status")
+async def get_market_pipeline_status(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return the pipeline run status for one market derived from activity events."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    events = dependencies.agent_activity_repository.list_agent_activity(
+        user_niche_id=market_id, limit=20
+    )
+    events_sorted = sorted(events, key=lambda e: e.created_at or "", reverse=True)
+    last_event = events_sorted[0] if events_sorted else None
+
+    if last_event is None:
+        status = "pending"
+    elif last_event.event_type == "run_started":
+        status = "running"
+    elif last_event.event_type in {"run_completed", "gaps_synthesized", "clusters_formed",
+                                    "signals_extracted", "sources_scanned", "alert_created"}:
+        status = "done"
+    else:
+        status = "pending"
+
+    has_started = any(e.event_type == "run_started" for e in events)
+    has_completed = any(e.event_type == "run_completed" for e in events)
+    if has_started and not has_completed:
+        status = "running"
+    elif has_completed:
+        status = "done"
+
+    return {
+        "status": status,
+        "last_event_type": last_event.event_type if last_event else None,
+        "last_event_at": last_event.created_at.isoformat() if last_event and last_event.created_at else None,
+    }
+
+
 def _enqueue_pipeline(market_id: str) -> None:
     """Push a pipeline task onto the Celery queue.
 

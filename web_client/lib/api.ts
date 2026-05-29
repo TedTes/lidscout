@@ -628,6 +628,18 @@ class SignalApiService {
     }
   }
 
+  async getMarketPipelineStatus(marketId: string): Promise<{ status: 'pending' | 'running' | 'done'; last_event_type: string | null; last_event_at: string | null }> {
+    try {
+      const response = await api.get(`/markets/${marketId}/pipeline/status`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load pipeline status');
+      }
+      throw error;
+    }
+  }
+
   async getMarketAgentActivity(marketId: string): Promise<AgentActivityResponse> {
     try {
       const response = await api.get<AgentActivityResponse>(
