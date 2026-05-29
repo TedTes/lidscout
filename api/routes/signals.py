@@ -369,6 +369,7 @@ async def apply_template(
         template_niche_id=niche.id,
     )
     dependencies.user_niche_repository.save_user_niche(user_niche)
+    _enqueue_pipeline(user_niche.id)
     return _serialize_market(user_niche)
 
 
