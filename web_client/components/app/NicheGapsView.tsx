@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
@@ -160,6 +160,47 @@ export default function NicheWorkspacePage({ params }: Props) {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketId]);
+
+  const prevPipelineStatusRef = useRef<string | null>(null);
+
+  // Silently refresh only opportunities and clusters — no loading flash, no state reset
+  const refreshData = async () => {
+    try {
+      const [oppsRes, clustersRes] = await Promise.all([
+        signalApi.getOpportunities({ market_id: marketId }),
+        signalApi.getClusters({ market_id: marketId }),
+      ]);
+      setOpportunities(oppsRes.opportunities);
+      setClusters(clustersRes.clusters);
+    } catch {
+      // ignore background errors
+    }
+  };
+
+  // Poll pipeline status only; trigger a data refresh on running → done transition
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await signalApi.getMarketPipelineStatus(marketId);
+        if (cancelled) return;
+        const prev = prevPipelineStatusRef.current;
+        prevPipelineStatusRef.current = res.status;
+        if (prev === 'running' && res.status === 'done') {
+          refreshData();
+        }
+      } catch {
+        // ignore
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 

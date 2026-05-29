@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { ErrorPanel, LoadingPanel, StatRow, relativeTime } from '@/components/ui/DashboardPrimitives';
@@ -11,9 +11,15 @@ type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
 
 const EVENT_META: Record<string, { label: string; dotCls: string; textCls: string }> = {
-  run_started:         { label: 'Run started',          dotCls: 'bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)]', textCls: 'text-violet-400' },
+  run_started:         { label: 'Run started',          dotCls: 'bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)] animate-pulse', textCls: 'text-violet-400' },
+  sources_scanned:     { label: 'Sources scanned',       dotCls: 'bg-sky-400 shadow-[0_0_5px_rgba(56,189,248,0.5)]',    textCls: 'text-sky-400' },
+  posts_filtered:      { label: 'Posts filtered',        dotCls: 'bg-slate-500',                                         textCls: 'text-slate-500' },
+  signals_extracted:   { label: 'Signals extracted',     dotCls: 'bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]',  textCls: 'text-amber-400' },
+  clusters_formed:     { label: 'Themes formed',         dotCls: 'bg-indigo-400 shadow-[0_0_5px_rgba(129,140,248,0.5)]', textCls: 'text-indigo-400' },
+  gaps_synthesized:    { label: 'Gaps identified',       dotCls: 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.5)]', textCls: 'text-emerald-400' },
   run_completed:       { label: 'Run completed',         dotCls: 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.5)]', textCls: 'text-emerald-400' },
   source_failed:       { label: 'Source failed',         dotCls: 'bg-rose-400 shadow-[0_0_5px_rgba(251,113,133,0.5)]',   textCls: 'text-rose-400' },
+  alert_created:       { label: 'Alert created',         dotCls: 'bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]',  textCls: 'text-amber-400' },
   feedback_recorded:   { label: 'Feedback recorded',     dotCls: 'bg-violet-400/60',                                      textCls: 'text-violet-500' },
   preferences_updated: { label: 'Preferences updated',   dotCls: 'bg-slate-500',                                          textCls: 'text-slate-500' },
 };
@@ -75,6 +81,36 @@ export default function NicheActivityPage({ params }: Props) {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketId]);
+
+  const seenIdsRef = useRef<Set<string>>(new Set());
+
+  // Append-only poll — only updates state when there are genuinely new events
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await signalApi.getMarketAgentActivity(marketId);
+        if (cancelled) return;
+        const newItems = res.activity.filter(a => !seenIdsRef.current.has(a.id));
+        if (newItems.length === 0) return;
+        newItems.forEach(a => seenIdsRef.current.add(a.id));
+        setActivity(prev => {
+          const existingIds = new Set(prev.map(a => a.id));
+          const truly = newItems.filter(a => !existingIds.has(a.id));
+          return truly.length > 0 ? [...truly, ...prev] : prev;
+        });
+      } catch {
+        // ignore
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
