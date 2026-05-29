@@ -22,19 +22,17 @@ from application.ports import (
     AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
-    CompetitorRepository,
-    MarketRepository,
-    MonitoredSourceRepository,
+    NicheCompanyRepository,
+    NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
-    SourceHealthRepository,
     SourceLocatorRepository,
+    UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
-from application.source_suggestions import SourceSuggestion, SourceSuggestionService
 from domain.cluster import SignalCluster
 from domain.agent import (
     AgentActivity,
@@ -43,13 +41,12 @@ from domain.agent import (
     AgentFollowUp,
     AgentPreferences,
 )
-from domain.competitor import Competitor
-from domain.market import Market
+from domain.niche import NicheCompany, NicheSource, UserNiche
 from domain.user import User
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceInput
+from domain.source import SourceInput
 from infrastructure.db import (
     InMemoryAgentActivityRepository,
     InMemoryAgentAlertRepository,
@@ -57,16 +54,15 @@ from infrastructure.db import (
     InMemoryAgentFollowUpRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
-    InMemoryCompetitorRepository,
-    InMemoryMarketRepository,
-    InMemoryMonitoredSourceRepository,
+    InMemoryNicheCompanyRepository,
+    InMemoryNicheSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
-    InMemorySourceHealthRepository,
     InMemorySourceLocatorRepository,
+    InMemoryUserNicheRepository,
 )
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -99,15 +95,12 @@ class PipelineRunRequest(BaseModel):
     similarity_threshold: float = Field(default=0.82, ge=0.0, le=1.0)
 
 
-class CompetitorRequest(BaseModel):
-    """HTTP request body for creating a monitored competitor."""
+class NicheCompanyRequest(BaseModel):
+    """HTTP request body for adding a company to a niche."""
 
-    id: str = Field(min_length=1)
+    id: str | None = Field(default=None)
     name: str = Field(min_length=1)
     website: str | None = None
-    category: str | None = None
-    description: str | None = None
-    market_id: str | None = None
 
 
 class MarketRequest(BaseModel):
@@ -165,27 +158,13 @@ class AgentFollowUpRequest(BaseModel):
     cluster_id: str | None = None
 
 
-class MonitoredSourceRequest(BaseModel):
-    """HTTP request body for creating a monitored source."""
+class NicheSourceRequest(BaseModel):
+    """HTTP request body for adding a source to a niche."""
 
     locator: str = Field(min_length=1)
     source_type: str = Field(default="web", min_length=1)
     enabled: bool = True
-    limit: int | None = Field(default=None, ge=1)
-    scan_frequency: str | None = None
-    market_id: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
-
-
-class MonitoredSourceUpdateRequest(BaseModel):
-    """HTTP request body for updating a monitored source."""
-
-    source_type: str | None = Field(default=None, min_length=1)
-    enabled: bool | None = None
-    limit: int | None = Field(default=None, ge=1)
-    scan_frequency: str | None = None
-    market_id: str | None = None
-    options: dict[str, Any] | None = None
 
 
 @dataclass
@@ -217,15 +196,14 @@ class SignalApiDependencies:
     agent_follow_up_repository: AgentFollowUpRepository = field(
         default_factory=InMemoryAgentFollowUpRepository
     )
-    competitor_repository: CompetitorRepository = field(
-        default_factory=InMemoryCompetitorRepository
+    niche_company_repository: NicheCompanyRepository = field(
+        default_factory=InMemoryNicheCompanyRepository
     )
-    market_repository: MarketRepository = field(default_factory=InMemoryMarketRepository)
-    monitored_source_repository: MonitoredSourceRepository = field(
-        default_factory=InMemoryMonitoredSourceRepository
+    niche_source_repository: NicheSourceRepository = field(
+        default_factory=InMemoryNicheSourceRepository
     )
-    source_health_repository: SourceHealthRepository = field(
-        default_factory=InMemorySourceHealthRepository
+    user_niche_repository: UserNicheRepository = field(
+        default_factory=InMemoryUserNicheRepository
     )
     source_locator_repository: SourceLocatorRepository = field(
         default_factory=InMemorySourceLocatorRepository
@@ -261,12 +239,10 @@ async def list_signals(
     """Return persisted extracted signals, optionally filtered by scope."""
     signals = dependencies.signal_repository.list_signals()
     if competitor_id is not None:
-        signals = [s for s in signals if s.competitor_id == competitor_id]
+        signals = [s for s in signals if s.niche_company_id == competitor_id]
     if market_id is not None:
-        signals = [s for s in signals if s.market_id == market_id]
-    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
-    markets_by_id = {m.id: m for m in dependencies.market_repository.list_markets()}
-    return {"signals": [_serialize_signal(s, dependencies, _competitors_by_id=competitors_by_id, _markets_by_id=markets_by_id) for s in signals]}
+        signals = [s for s in signals if s.niche_id == market_id]
+    return {"signals": [_serialize_signal(s) for s in signals]}
 
 
 @router.delete("/signals/{signal_id}")
@@ -299,18 +275,17 @@ async def list_clusters(
         scoped_signal_ids = {
             s.id
             for s in all_signals
-            if (competitor_id is None or s.competitor_id == competitor_id)
-            and (market_id is None or s.market_id == market_id)
+            if (competitor_id is None or s.niche_company_id == competitor_id)
+            and (market_id is None or s.niche_id == market_id)
         }
         clusters = [
             c for c in clusters
             if any(sid in scoped_signal_ids for sid in c.signal_ids)
         ]
     signals_by_id = {s.id: s for s in all_signals}
-    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
     return {
         "clusters": [
-            _serialize_cluster(c, dependencies, market_id=market_id, _signals_by_id=signals_by_id, _competitors_by_id=competitors_by_id)
+            _serialize_cluster(c, dependencies, market_id=market_id, _signals_by_id=signals_by_id)
             for c in clusters
         ]
     }
@@ -329,8 +304,8 @@ async def list_opportunities(
         scoped_signal_ids = {
             s.id
             for s in all_signals
-            if (competitor_id is None or s.competitor_id == competitor_id)
-            and (market_id is None or s.market_id == market_id)
+            if (competitor_id is None or s.niche_company_id == competitor_id)
+            and (market_id is None or s.niche_id == market_id)
         }
         opportunities = [
             o for o in opportunities
@@ -340,14 +315,13 @@ async def list_opportunities(
         opportunities = rank_opportunities_with_feedback(
             opportunities,
             dependencies.agent_feedback_repository.list_agent_feedback(
-                market_id=market_id,
+                user_niche_id=market_id,
             ),
         )
     signals_by_id = {s.id: s for s in all_signals}
-    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
     return {
         "opportunities": [
-            _serialize_opportunity(o, dependencies, market_id=market_id, _signals_by_id=signals_by_id, _competitors_by_id=competitors_by_id)
+            _serialize_opportunity(o, dependencies, market_id=market_id, _signals_by_id=signals_by_id)
             for o in opportunities
         ]
     }
@@ -360,10 +334,12 @@ async def list_markets(
 ) -> dict[str, Any]:
     """Return watched markets or niches for the current user."""
     user_id = _current_user_id(current_user)
+    if user_id is None:
+        return {"markets": []}
     return {
         "markets": [
-            _serialize_market(market)
-            for market in dependencies.market_repository.list_markets(user_id=user_id)
+            _serialize_market(un)
+            for un in dependencies.user_niche_repository.list_user_niches(user_id)
         ]
     }
 
@@ -375,20 +351,20 @@ async def create_market(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a watched market or niche."""
+    user_id = _current_user_id(current_user) or "anonymous"
     try:
-        market = Market.create(
+        user_niche = UserNiche.create(
             id=request.id,
-            name=request.name,
-            description=request.description,
-            target_user=request.target_user,
-            idea_prompt=request.idea_prompt,
-            user_id=_current_user_id(current_user),
+            user_id=user_id,
+            job=request.name,
+            buyer=request.target_user or "general",
+            category=request.description or "general",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    dependencies.market_repository.save_markets([market])
-    return _serialize_market(market)
+    dependencies.user_niche_repository.save_user_niche(user_niche)
+    return _serialize_market(user_niche)
 
 
 @router.get("/markets/{market_id}")
@@ -398,8 +374,8 @@ async def get_market(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return one watched market."""
-    market = _get_owned_market(market_id, dependencies, current_user)
-    return _serialize_market(market)
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    return _serialize_market(user_niche)
 
 
 @router.patch("/markets/{market_id}")
@@ -410,38 +386,34 @@ async def update_market(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update one watched market."""
-    existing = _get_owned_market(market_id, dependencies, current_user)
+    existing = _get_owned_user_niche(market_id, dependencies, current_user)
 
     fields_set = _model_fields_set(request)
     try:
-        market = Market.create(
+        user_niche = UserNiche.create(
             id=existing.id,
-            name=request.name if "name" in fields_set else existing.name,
-            description=(
-                request.description
-                if "description" in fields_set
-                else existing.description
-            ),
-            target_user=(
+            user_id=existing.user_id,
+            job=request.name if "name" in fields_set else existing.job,
+            buyer=(
                 request.target_user
                 if "target_user" in fields_set
-                else existing.target_user
-            ),
-            idea_prompt=(
-                request.idea_prompt
-                if "idea_prompt" in fields_set
-                else existing.idea_prompt
-            ),
-            user_id=existing.user_id,
-            template_id=existing.template_id,
+                else existing.buyer
+            ) or existing.buyer,
+            category=(
+                request.description
+                if "description" in fields_set
+                else existing.category
+            ) or existing.category,
+            status=existing.status,
+            template_niche_id=existing.template_niche_id,
             created_at=existing.created_at,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not dependencies.market_repository.update_market(market):
+    if not dependencies.user_niche_repository.update_user_niche(user_niche):
         raise HTTPException(status_code=404, detail="Market not found")
-    return _serialize_market(market)
+    return _serialize_market(user_niche)
 
 
 @router.delete("/markets/{market_id}")
@@ -451,9 +423,8 @@ async def delete_market(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Delete one watched market."""
-    _get_owned_market(market_id, dependencies, current_user)
-    _delete_market_competitors(market_id, dependencies)
-    if not dependencies.market_repository.delete_market(market_id):
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    if not dependencies.user_niche_repository.delete_user_niche(market_id):
         raise HTTPException(status_code=404, detail="Market not found")
     return {
         "id": market_id,
@@ -467,45 +438,43 @@ async def list_market_competitors(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Return competitors linked to one market."""
-    _get_owned_market(market_id, dependencies, current_user)
-    competitors = [
-        competitor
-        for competitor in dependencies.competitor_repository.list_competitors()
-        if competitor.market_id == market_id
-    ]
-    return {"competitors": [_serialize_competitor(c) for c in competitors]}
+    """Return companies linked to one niche."""
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    niche_id = user_niche.template_niche_id
+    if niche_id is None:
+        return {"competitors": []}
+    companies = dependencies.niche_company_repository.list_niche_companies(niche_id)
+    return {"competitors": [_serialize_niche_company(c) for c in companies]}
 
 
 @router.post("/markets/{market_id}/competitors")
 async def create_market_competitor(
     market_id: str,
-    request: CompetitorRequest,
+    request: NicheCompanyRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Create a monitored competitor scoped to one market."""
-    _get_owned_market(market_id, dependencies, current_user)
-    if request.market_id is not None and request.market_id != market_id:
+    """Add a company to a niche."""
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    niche_id = user_niche.template_niche_id
+    if niche_id is None:
         raise HTTPException(
-            status_code=400,
-            detail="Request market_id must match route market_id",
+            status_code=422,
+            detail="Cannot add companies to a custom market without a template",
         )
 
     try:
-        competitor = Competitor.create(
+        company = NicheCompany.create(
             id=request.id,
+            niche_id=niche_id,
             name=request.name,
             website=request.website,
-            category=request.category,
-            description=request.description,
-            market_id=market_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    dependencies.competitor_repository.save_competitors([competitor])
-    return _serialize_competitor(competitor)
+    dependencies.niche_company_repository.save_niche_companies([company])
+    return _serialize_niche_company(company)
 
 
 @router.get("/markets/{market_id}/sources")
@@ -514,19 +483,14 @@ async def list_market_sources(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Return monitored sources linked to one market."""
-    _get_owned_market(market_id, dependencies, current_user)
-    sources = dependencies.monitored_source_repository.list_monitored_sources(
-        market_id=market_id,
-    )
-    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
-    markets_by_id = {m.id: m for m in dependencies.market_repository.list_markets()}
-    health_by_id = {h.monitored_source_id: h for h in dependencies.source_health_repository.list_source_health()}
+    """Return monitoring sources linked to one niche."""
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    niche_id = user_niche.template_niche_id
+    if niche_id is None:
+        return {"sources": [], "summary": _source_coverage_summary([])}
+    sources = dependencies.niche_source_repository.list_niche_sources(niche_id)
     return {
-        "sources": [
-            _serialize_monitored_source(source, dependencies, _competitors_by_id=competitors_by_id, _markets_by_id=markets_by_id, _health_by_id=health_by_id)
-            for source in sources
-        ],
+        "sources": [_serialize_niche_source(s) for s in sources],
         "summary": _source_coverage_summary(sources),
     }
 
@@ -534,27 +498,33 @@ async def list_market_sources(
 @router.post("/markets/{market_id}/sources")
 async def create_market_source(
     market_id: str,
-    request: MonitoredSourceRequest,
+    request: NicheSourceRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Create a monitored source scoped directly to one market."""
-    _get_owned_market(market_id, dependencies, current_user)
+    """Add a monitoring source to a niche."""
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    niche_id = user_niche.template_niche_id
+    if niche_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot add sources to a custom market without a template",
+        )
+    source_family = str(request.options.get("source_family") or request.source_type or "web")
+    is_gate_free = bool(request.options.get("is_gate_free", True))
     try:
-        source = MonitoredSource.create(
-            market_id=market_id,
+        source = NicheSource.create(
+            niche_id=niche_id,
             locator=request.locator,
             source_type=request.source_type,
-            enabled=request.enabled,
-            limit=request.limit,
-            scan_frequency=request.scan_frequency,
-            options=request.options,
+            source_family=source_family,
+            is_gate_free=is_gate_free,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    dependencies.monitored_source_repository.save_monitored_sources([source])
-    return _serialize_monitored_source(source, dependencies)
+    dependencies.niche_source_repository.save_niche_sources([source])
+    return _serialize_niche_source(source)
 
 
 @router.get("/reports/latest")
@@ -591,42 +561,15 @@ async def get_latest_report(
         opportunities,
         title=_market_report_title(dependencies, market_id),
     )
-    return _serialize_report(report, dependencies, market_id=market_id)
+    return _serialize_report(report, market_id=market_id)
 
 
 @router.get("/competitors")
 async def list_competitors(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return monitored competitors."""
-    return {
-        "competitors": [
-            _serialize_competitor(competitor)
-            for competitor in dependencies.competitor_repository.list_competitors()
-        ]
-    }
-
-
-@router.post("/competitors")
-async def create_competitor(
-    request: CompetitorRequest,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-) -> dict[str, Any]:
-    """Create a monitored competitor."""
-    try:
-        competitor = Competitor.create(
-            id=request.id,
-            name=request.name,
-            website=request.website,
-            category=request.category,
-            description=request.description,
-            market_id=request.market_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    dependencies.competitor_repository.save_competitors([competitor])
-    return _serialize_competitor(competitor)
+    """Return monitored competitors (placeholder — use /markets/{id}/competitors)."""
+    return {"competitors": []}
 
 
 @router.get("/competitors/{competitor_id}/sources")
@@ -634,53 +577,8 @@ async def list_competitor_sources(
     competitor_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return monitored sources for one competitor."""
-    return {
-        "sources": [
-            _serialize_monitored_source(source, dependencies)
-            for source in dependencies.monitored_source_repository.list_monitored_sources(
-                competitor_id=competitor_id,
-            )
-        ]
-    }
-
-
-@router.get("/competitors/{competitor_id}/source-suggestions")
-async def list_competitor_source_suggestions(
-    competitor_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-) -> dict[str, Any]:
-    """Return opinionated default source candidates for one competitor."""
-    competitor = dependencies.competitor_repository.get_competitor(competitor_id)
-    if competitor is None:
-        raise HTTPException(status_code=404, detail="Competitor not found")
-
-    existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
-        competitor_id=competitor_id,
-    )
-    market = (
-        dependencies.market_repository.get_market(competitor.market_id)
-        if competitor.market_id
-        else None
-    )
-    return {
-        "suggestions": [
-            _serialize_source_suggestion(suggestion)
-            for suggestion in SourceSuggestionService().suggest(
-                competitor,
-                existing_sources,
-                market=market,
-                preferences=(
-                    dependencies.agent_preferences_repository.get_agent_preferences(
-                        competitor.market_id
-                    )
-                    if competitor.market_id
-                    else None
-                ),
-                source_health=dependencies.source_health_repository.list_source_health(),
-            )
-        ]
-    }
+    """Return sources for one company (placeholder)."""
+    return {"sources": []}
 
 
 @router.get("/markets/{market_id}/source-suggestions")
@@ -689,33 +587,9 @@ async def list_market_source_suggestions(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Return opinionated default source candidates for one market."""
-    market = _get_owned_market(market_id, dependencies, current_user)
-
-    existing_sources = dependencies.monitored_source_repository.list_monitored_sources(
-        market_id=market_id,
-    )
-    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
-        market_id,
-    )
-    source_health = dependencies.source_health_repository.list_source_health()
-    competitors = [
-        competitor
-        for competitor in dependencies.competitor_repository.list_competitors()
-        if competitor.market_id == market_id
-    ]
-    return {
-        "suggestions": [
-            _serialize_source_suggestion(suggestion)
-            for suggestion in SourceSuggestionService().suggest_for_market(
-                market,
-                existing_sources,
-                competitors=competitors,
-                preferences=preferences,
-                source_health=source_health,
-            )
-        ]
-    }
+    """Return source candidates for one market (placeholder)."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    return {"suggestions": []}
 
 
 @router.get("/markets/{market_id}/agent/cold-start")
@@ -725,30 +599,24 @@ async def get_market_agent_cold_start(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return cold-start setup guidance for one niche research agent."""
-    market = _get_owned_market(market_id, dependencies, current_user)
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    niche_id = user_niche.template_niche_id
 
-    competitors = [
-        competitor
-        for competitor in dependencies.competitor_repository.list_competitors()
-        if competitor.market_id == market_id
-    ]
-    sources = dependencies.monitored_source_repository.list_monitored_sources(
-        market_id=market_id,
+    companies = (
+        dependencies.niche_company_repository.list_niche_companies(niche_id)
+        if niche_id is not None
+        else []
     )
-    suggestions = SourceSuggestionService().suggest_for_market(
-        market,
-        sources,
-        competitors=competitors,
-        preferences=dependencies.agent_preferences_repository.get_agent_preferences(
-            market_id,
-        ),
-        source_health=dependencies.source_health_repository.list_source_health(),
+    sources = (
+        dependencies.niche_source_repository.list_niche_sources(niche_id)
+        if niche_id is not None
+        else []
     )
     plan = AgentColdStartService().build_plan(
-        market=market,
-        competitors=competitors,
-        monitored_sources=sources,
-        source_suggestions=suggestions,
+        user_niche=user_niche,
+        companies=companies,
+        sources=sources,
+        source_suggestions=[],
     )
     return _serialize_agent_cold_start_plan(plan)
 
@@ -760,11 +628,12 @@ async def get_market_agent_brief(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return the editable research brief for one niche agent."""
-    market = _get_owned_market(market_id, dependencies, current_user)
-    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
-        market_id,
-    ) or AgentPreferences.create(market_id=market_id)
-    return _serialize_agent_brief(market, preferences)
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    preferences = (
+        dependencies.agent_preferences_repository.get_agent_preferences(market_id)
+        or AgentPreferences.create(user_niche_id=market_id)
+    )
+    return _serialize_agent_brief(user_niche, preferences)
 
 
 @router.patch("/markets/{market_id}/agent/brief")
@@ -775,45 +644,42 @@ async def update_market_agent_brief(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update the niche research brief used by future agent runs."""
-    existing_market = _get_owned_market(market_id, dependencies, current_user)
+    existing = _get_owned_user_niche(market_id, dependencies, current_user)
 
     fields = _model_fields_set(request)
     try:
-        market = Market.create(
-            id=existing_market.id,
-            name=(
+        user_niche = UserNiche.create(
+            id=existing.id,
+            user_id=existing.user_id,
+            job=(
                 request.niche_name
                 if "niche_name" in fields
-                else existing_market.name
-            ),
-            description=(
-                request.description
-                if "description" in fields
-                else existing_market.description
-            ),
-            target_user=(
+                else existing.job
+            ) or existing.job,
+            buyer=(
                 request.target_user
                 if "target_user" in fields
-                else existing_market.target_user
-            ),
-            idea_prompt=(
-                request.objective
-                if "objective" in fields
-                else existing_market.idea_prompt
-            ),
-            user_id=existing_market.user_id,
-            template_id=existing_market.template_id,
-            created_at=existing_market.created_at,
+                else existing.buyer
+            ) or existing.buyer,
+            category=(
+                request.description
+                if "description" in fields
+                else existing.category
+            ) or existing.category,
+            status=existing.status,
+            template_niche_id=existing.template_niche_id,
+            created_at=existing.created_at,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
-        market_id,
-    ) or AgentPreferences.create(market_id=market_id)
+    preferences = (
+        dependencies.agent_preferences_repository.get_agent_preferences(market_id)
+        or AgentPreferences.create(user_niche_id=market_id)
+    )
     if "extra_instructions" in fields:
         preferences = AgentPreferences.create(
-            market_id=market_id,
+            user_niche_id=market_id,
             preferred_source_families=preferences.preferred_source_families,
             ignored_themes=preferences.ignored_themes,
             ignored_categories=preferences.ignored_categories,
@@ -823,21 +689,20 @@ async def update_market_agent_brief(
         )
         dependencies.agent_preferences_repository.save_agent_preferences(preferences)
 
-    dependencies.market_repository.update_market(market)
+    dependencies.user_niche_repository.update_user_niche(user_niche)
     _record_agent_activity(
         dependencies,
-        market_id=market_id,
+        user_niche_id=market_id,
         event_type="brief_updated",
         title="Research brief updated",
         detail="The agent research brief was updated for future runs.",
         metadata={
-            "niche_name": market.name,
-            "target_user": market.target_user,
-            "objective": market.idea_prompt,
+            "niche_name": user_niche.job,
+            "target_user": user_niche.buyer,
             "has_extra_instructions": bool(preferences.extra_instructions),
         },
     )
-    return _serialize_agent_brief(market, preferences)
+    return _serialize_agent_brief(user_niche, preferences)
 
 
 @router.get("/markets/{market_id}/agent/preferences")
@@ -847,12 +712,11 @@ async def get_market_agent_preferences(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return persisted preferences for one niche research agent."""
-    _get_owned_market(market_id, dependencies, current_user)
-    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
-        market_id,
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    preferences = (
+        dependencies.agent_preferences_repository.get_agent_preferences(market_id)
+        or AgentPreferences.create(user_niche_id=market_id)
     )
-    if preferences is None:
-        preferences = AgentPreferences.create(market_id=market_id)
     return _serialize_agent_preferences(preferences)
 
 
@@ -864,14 +728,15 @@ async def update_market_agent_preferences(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update persisted preferences for one niche research agent."""
-    _get_owned_market(market_id, dependencies, current_user)
-    existing = dependencies.agent_preferences_repository.get_agent_preferences(
-        market_id,
-    ) or AgentPreferences.create(market_id=market_id)
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    existing = (
+        dependencies.agent_preferences_repository.get_agent_preferences(market_id)
+        or AgentPreferences.create(user_niche_id=market_id)
+    )
     fields = _model_fields_set(request)
     try:
         preferences = AgentPreferences.create(
-            market_id=market_id,
+            user_niche_id=market_id,
             preferred_source_families=(
                 request.preferred_source_families
                 if "preferred_source_families" in fields
@@ -905,7 +770,7 @@ async def update_market_agent_preferences(
     dependencies.agent_preferences_repository.save_agent_preferences(preferences)
     _record_agent_activity(
         dependencies,
-        market_id=market_id,
+        user_niche_id=market_id,
         event_type="preferences_updated",
         title="Agent preferences updated",
         detail="Research preferences were updated for this niche.",
@@ -926,9 +791,9 @@ async def list_market_agent_feedback(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return feedback events for one niche research agent."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     feedback = dependencies.agent_feedback_repository.list_agent_feedback(
-        market_id=market_id,
+        user_niche_id=market_id,
     )
     return {"feedback": [_serialize_agent_feedback(item) for item in feedback]}
 
@@ -941,13 +806,13 @@ async def create_opportunity_feedback(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Record user feedback on one synthesized gap."""
-    _get_owned_market(request.market_id, dependencies, current_user)
+    _get_owned_user_niche(request.market_id, dependencies, current_user)
     if dependencies.opportunity_repository.get_opportunity(opportunity_id) is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
 
     try:
         feedback = AgentFeedback.create(
-            market_id=request.market_id,
+            user_niche_id=request.market_id,
             opportunity_id=opportunity_id,
             action=request.action,
             reason=request.reason,
@@ -958,7 +823,7 @@ async def create_opportunity_feedback(
     dependencies.agent_feedback_repository.save_agent_feedback(feedback)
     _record_agent_activity(
         dependencies,
-        market_id=request.market_id,
+        user_niche_id=request.market_id,
         event_type="feedback_recorded",
         title="Gap feedback recorded",
         detail=f"Feedback marked this gap as {feedback.action}.",
@@ -980,10 +845,10 @@ async def list_market_agent_activity(
     event_type: str | None = None,
 ) -> dict[str, Any]:
     """Return recent user-visible activity for one niche research agent."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 100)
     activity = dependencies.agent_activity_repository.list_agent_activity(
-        market_id=market_id,
+        user_niche_id=market_id,
         event_type=event_type,
         limit=bounded_limit,
     )
@@ -998,10 +863,10 @@ async def list_market_agent_runs(
     limit: int = 10,
 ) -> dict[str, Any]:
     """Return recent run-memory events for one niche agent."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 50)
     activity = dependencies.agent_activity_repository.list_agent_activity(
-        market_id=market_id,
+        user_niche_id=market_id,
         limit=100,
     )
     runs = [
@@ -1021,10 +886,10 @@ async def list_market_agent_alerts(
     limit: int = 25,
 ) -> dict[str, Any]:
     """Return proactive threshold alerts for one niche agent."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 100)
     alerts = dependencies.agent_alert_repository.list_agent_alerts(
-        market_id=market_id,
+        user_niche_id=market_id,
         status=status,
         limit=bounded_limit,
     )
@@ -1039,9 +904,9 @@ async def acknowledge_market_agent_alert(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Mark one proactive alert as acknowledged."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     alert = dependencies.agent_alert_repository.get_agent_alert(alert_id)
-    if alert is None or alert.market_id != market_id:
+    if alert is None or alert.user_niche_id != market_id:
         raise HTTPException(status_code=404, detail="Alert not found")
     acknowledged = dependencies.agent_alert_repository.acknowledge_agent_alert(
         alert_id,
@@ -1060,10 +925,10 @@ async def list_market_agent_follow_ups(
     limit: int = 25,
 ) -> dict[str, Any]:
     """Return stored follow-up questions for one niche agent."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     bounded_limit = min(max(limit, 1), 100)
     follow_ups = dependencies.agent_follow_up_repository.list_agent_follow_ups(
-        market_id=market_id,
+        user_niche_id=market_id,
         status=status,
         limit=bounded_limit,
     )
@@ -1078,7 +943,7 @@ async def create_market_agent_follow_up(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Store a follow-up question or instruction for future agent work."""
-    _get_owned_market(market_id, dependencies, current_user)
+    _get_owned_user_niche(market_id, dependencies, current_user)
     if (
         request.opportunity_id is not None
         and dependencies.opportunity_repository.get_opportunity(request.opportunity_id)
@@ -1093,7 +958,7 @@ async def create_market_agent_follow_up(
 
     try:
         follow_up = AgentFollowUp.create(
-            market_id=market_id,
+            user_niche_id=market_id,
             question=request.question,
             opportunity_id=request.opportunity_id,
             cluster_id=request.cluster_id,
@@ -1104,7 +969,7 @@ async def create_market_agent_follow_up(
     dependencies.agent_follow_up_repository.save_agent_follow_up(follow_up)
     _record_agent_activity(
         dependencies,
-        market_id=market_id,
+        user_niche_id=market_id,
         event_type="follow_up_recorded",
         title="Follow-up recorded",
         detail=follow_up.question,
@@ -1124,23 +989,24 @@ async def get_market_agent_memory(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return a compact summary of persisted agent memory for one niche."""
-    market = _get_owned_market(market_id, dependencies, current_user)
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
     preferences = dependencies.agent_preferences_repository.get_agent_preferences(
         market_id,
-    ) or AgentPreferences.create(market_id=market_id)
+    ) or AgentPreferences.create(user_niche_id=market_id)
     feedback = dependencies.agent_feedback_repository.list_agent_feedback(
-        market_id=market_id,
+        user_niche_id=market_id,
     )
-    sources = dependencies.monitored_source_repository.list_monitored_sources(
-        market_id=market_id,
+    niche_id = user_niche.template_niche_id
+    sources = (
+        dependencies.niche_source_repository.list_niche_sources(niche_id)
+        if niche_id is not None
+        else []
     )
-    source_health = dependencies.source_health_repository.list_source_health()
     summary = build_agent_memory_summary(
-        market=market,
+        user_niche=user_niche,
         preferences=preferences,
         feedback=feedback,
         sources=sources,
-        source_health=source_health,
     )
     return {
         "market_id": summary.market_id,
@@ -1158,73 +1024,24 @@ async def list_sources(
     enabled: bool | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return monitored sources across competitors."""
-    sources = dependencies.monitored_source_repository.list_monitored_sources(
-        competitor_id=competitor_id,
-        market_id=market_id,
-        enabled=enabled,
-    )
-    competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
-    markets_by_id = {m.id: m for m in dependencies.market_repository.list_markets()}
-    health_by_id = {h.monitored_source_id: h for h in dependencies.source_health_repository.list_source_health()}
+    """Return monitored sources (placeholder — use /markets/{id}/sources)."""
     return {
-        "sources": [
-            _serialize_monitored_source(source, dependencies, _competitors_by_id=competitors_by_id, _markets_by_id=markets_by_id, _health_by_id=health_by_id)
-            for source in sources
-        ],
-        "summary": _source_coverage_summary(sources),
+        "sources": [],
+        "summary": _source_coverage_summary([]),
     }
 
 
 @router.post("/competitors/{competitor_id}/sources")
 async def create_competitor_source(
     competitor_id: str,
-    request: MonitoredSourceRequest,
+    request: NicheSourceRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Create a monitored source for one competitor."""
-    competitor = dependencies.competitor_repository.get_competitor(competitor_id)
-    if competitor is None:
-        raise HTTPException(status_code=404, detail="Competitor not found")
-
-    try:
-        source = MonitoredSource.create(
-            competitor_id=competitor_id,
-            market_id=request.market_id or competitor.market_id,
-            locator=request.locator,
-            source_type=request.source_type,
-            enabled=request.enabled,
-            limit=request.limit,
-            scan_frequency=request.scan_frequency,
-            options=request.options,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    dependencies.monitored_source_repository.save_monitored_sources([source])
-    return _serialize_monitored_source(source, dependencies)
-
-
-@router.patch("/sources/{source_id}")
-async def update_source(
-    source_id: str,
-    request: MonitoredSourceUpdateRequest,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-) -> dict[str, Any]:
-    """Update one monitored source."""
-    existing = dependencies.monitored_source_repository.get_monitored_source(source_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail="Source not found")
-
-    try:
-        source = _apply_source_update(existing, request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if not dependencies.monitored_source_repository.update_monitored_source(source):
-        raise HTTPException(status_code=404, detail="Source not found")
-
-    return _serialize_monitored_source(source, dependencies)
+    """Create a source for one company (use /markets/{market_id}/sources instead)."""
+    raise HTTPException(
+        status_code=422,
+        detail="Use POST /markets/{market_id}/sources instead",
+    )
 
 
 @router.post("/pipeline/run")
@@ -1247,10 +1064,8 @@ async def run_pipeline(
             agent_preferences_repository=dependencies.agent_preferences_repository,
             agent_activity_repository=dependencies.agent_activity_repository,
             agent_alert_repository=dependencies.agent_alert_repository,
-            competitor_repository=dependencies.competitor_repository,
-            market_repository=dependencies.market_repository,
-            monitored_source_repository=dependencies.monitored_source_repository,
-            source_health_repository=dependencies.source_health_repository,
+            niche_source_repository=dependencies.niche_source_repository,
+            user_niche_repository=dependencies.user_niche_repository,
             source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
             relevance_llm_client=dependencies.relevance_llm_client,
@@ -1266,7 +1081,7 @@ async def run_pipeline(
                 )
                 for source in request.sources
             ],
-            market_id=request.market_id,
+            user_niche_id=request.market_id,
             default_limit=request.default_limit,
             similarity_threshold=request.similarity_threshold,
         )
@@ -1353,70 +1168,24 @@ def _ensure_pipeline_dependencies(
         )
 
 
-def _apply_source_update(
-    source: MonitoredSource,
-    request: MonitoredSourceUpdateRequest,
-) -> MonitoredSource:
-    fields = request.model_fields_set
-    options = request.options if "options" in fields else source.options
-    return MonitoredSource.create(
-        id=source.id,
-        competitor_id=source.competitor_id,
-        market_id=(
-            request.market_id
-            if "market_id" in fields
-            else source.market_id
-        ),
-        locator=source.locator,
-        source_type=(
-            request.source_type if "source_type" in fields else source.source_type
-        ),
-        enabled=request.enabled if "enabled" in fields else source.enabled,
-        limit=request.limit if "limit" in fields else source.limit,
-        scan_frequency=(
-            request.scan_frequency
-            if "scan_frequency" in fields
-            else source.scan_frequency
-        ),
-        last_scanned_at=source.last_scanned_at,
-        last_error=source.last_error,
-        options=options or {},
-    )
-
-
-def _ensure_market_exists(
-    market_id: str,
-    dependencies: SignalApiDependencies,
-) -> None:
-    if dependencies.market_repository.get_market(market_id) is None:
-        raise HTTPException(status_code=404, detail="Market not found")
-
-
 def _current_user_id(current_user: User | Any) -> str | None:
     return current_user.id if isinstance(current_user, User) else None
 
 
-def _get_owned_market(
+def _get_owned_user_niche(
     market_id: str,
     dependencies: SignalApiDependencies,
     current_user: User | Any,
-) -> Market:
-    market = dependencies.market_repository.get_market(market_id)
+) -> UserNiche:
+    user_niche = dependencies.user_niche_repository.get_user_niche(market_id)
     user_id = _current_user_id(current_user)
-    if market is None or (
+    if user_niche is None or (
         user_id is not None
-        and market.user_id is not None
-        and str(market.user_id) != str(user_id)
+        and user_niche.user_id is not None
+        and str(user_niche.user_id) != str(user_id)
     ):
         raise HTTPException(status_code=404, detail="Market not found")
-    return market
-
-
-def _delete_market_competitors(
-    market_id: str,
-    dependencies: SignalApiDependencies,
-) -> None:
-    dependencies.competitor_repository.delete_competitors_by_market(market_id)
+    return user_niche
 
 
 def _scoped_signal_ids(
@@ -1428,8 +1197,8 @@ def _scoped_signal_ids(
     return {
         signal.id
         for signal in dependencies.signal_repository.list_signals()
-        if (competitor_id is None or signal.competitor_id == competitor_id)
-        and (market_id is None or signal.market_id == market_id)
+        if (competitor_id is None or signal.niche_company_id == competitor_id)
+        and (market_id is None or signal.niche_id == market_id)
     }
 
 
@@ -1439,7 +1208,6 @@ def _company_breadth_for_signal_ids(
     *,
     market_id: str | None = None,
     _signals_by_id: dict | None = None,
-    _competitors_by_id: dict | None = None,
 ) -> dict[str, Any]:
     signal_id_set = set(signal_ids)
     if _signals_by_id is not None:
@@ -1447,51 +1215,41 @@ def _company_breadth_for_signal_ids(
     else:
         signals = [s for s in dependencies.signal_repository.list_signals() if s.id in signal_id_set]
     company_ids = sorted(
-        {signal.competitor_id for signal in signals if signal.competitor_id is not None}
+        {signal.niche_company_id for signal in signals if signal.niche_company_id is not None}
     )
-    if _competitors_by_id is None:
-        _competitors_by_id = {c.id: c for c in dependencies.competitor_repository.list_competitors()}
-    company_names = [
-        _competitors_by_id[cid].name for cid in company_ids if cid in _competitors_by_id
-    ]
-    resolved_market_id = market_id or _single_market_id(signals)
+    resolved_market_id = market_id or _single_niche_id(signals)
     market_company_count = (
-        _market_company_count(dependencies, resolved_market_id, _competitors_by_id=_competitors_by_id)
+        _market_company_count(dependencies, resolved_market_id)
         if resolved_market_id is not None
         else None
     )
-
     return {
         "company_ids": company_ids,
-        "company_names": company_names,
+        "company_names": [],
         "company_count": len(company_ids),
         "market_company_count": market_company_count,
     }
 
 
-def _single_market_id(signals: list[Signal]) -> str | None:
-    market_ids = {
-        signal.market_id
-        for signal in signals
-        if signal.market_id is not None
-    }
-    if len(market_ids) != 1:
+def _single_niche_id(signals: list[Signal]) -> str | None:
+    niche_ids = {signal.niche_id for signal in signals if signal.niche_id is not None}
+    if len(niche_ids) != 1:
         return None
-    return next(iter(market_ids))
+    return next(iter(niche_ids))
 
 
 def _market_company_count(
     dependencies: SignalApiDependencies,
-    market_id: str,
-    *,
-    _competitors_by_id: dict | None = None,
+    user_niche_id: str,
 ) -> int:
-    competitors = (
-        _competitors_by_id.values()
-        if _competitors_by_id is not None
-        else dependencies.competitor_repository.list_competitors()
+    user_niche = dependencies.user_niche_repository.get_user_niche(user_niche_id)
+    if user_niche is None or user_niche.template_niche_id is None:
+        return 0
+    return len(
+        dependencies.niche_company_repository.list_niche_companies(
+            user_niche.template_niche_id
+        )
     )
-    return sum(1 for c in competitors if c.market_id == market_id)
 
 
 def _market_report_title(
@@ -1500,20 +1258,20 @@ def _market_report_title(
 ) -> str | None:
     if market_id is None:
         return None
-    market = dependencies.market_repository.get_market(market_id)
-    if market is None:
+    user_niche = dependencies.user_niche_repository.get_user_niche(market_id)
+    if user_niche is None:
         return None
-    return f"{market.name} Market Gap Report"
+    return f"{user_niche.job} Market Gap Report"
 
 
-def _serialize_market(market: Market) -> dict[str, Any]:
+def _serialize_market(user_niche: UserNiche) -> dict[str, Any]:
     return {
-        "id": market.id,
-        "name": market.name,
-        "description": market.description,
-        "target_user": market.target_user,
-        "idea_prompt": market.idea_prompt,
-        "created_at": market.created_at.isoformat() if market.created_at else None,
+        "id": user_niche.id,
+        "name": user_niche.job,
+        "description": user_niche.category,
+        "target_user": user_niche.buyer,
+        "idea_prompt": None,
+        "created_at": user_niche.created_at.isoformat() if user_niche.created_at else None,
     }
 
 
@@ -1521,27 +1279,8 @@ def _serialize_signal(
     signal: Signal,
     dependencies: SignalApiDependencies | None = None,
     *,
-    _competitors_by_id: dict | None = None,
-    _markets_by_id: dict | None = None,
+    _signals_by_id: dict | None = None,
 ) -> dict[str, Any]:
-    if signal.competitor_id is not None:
-        if _competitors_by_id is not None:
-            competitor = _competitors_by_id.get(signal.competitor_id)
-        elif dependencies is not None:
-            competitor = dependencies.competitor_repository.get_competitor(signal.competitor_id)
-        else:
-            competitor = None
-    else:
-        competitor = None
-    if signal.market_id is not None:
-        if _markets_by_id is not None:
-            market = _markets_by_id.get(signal.market_id)
-        elif dependencies is not None:
-            market = dependencies.market_repository.get_market(signal.market_id)
-        else:
-            market = None
-    else:
-        market = None
     return {
         "id": signal.id,
         "post_id": signal.post_id,
@@ -1554,115 +1293,57 @@ def _serialize_signal(
         "willingness_to_pay": signal.willingness_to_pay,
         "category": signal.category,
         "confidence": signal.confidence,
-        "competitor_id": signal.competitor_id,
-        "competitor_name": competitor.name if competitor else None,
-        "market_id": signal.market_id,
-        "market_name": market.name if market else None,
+        "competitor_id": signal.niche_company_id,
+        "competitor_name": None,
+        "market_id": signal.niche_id,
+        "market_name": None,
         "evidence_url": signal.evidence_url,
         "evidence_text": signal.evidence_text,
         "detected_at": signal.detected_at.isoformat() if signal.detected_at else None,
     }
 
 
-def _serialize_competitor(competitor: Competitor) -> dict[str, Any]:
+def _serialize_niche_company(company: NicheCompany) -> dict[str, Any]:
     return {
-        "id": competitor.id,
-        "name": competitor.name,
-        "website": competitor.website,
-        "category": competitor.category,
-        "description": competitor.description,
-        "market_id": competitor.market_id,
-        "created_at": competitor.created_at.isoformat() if competitor.created_at else None,
+        "id": company.id,
+        "name": company.name,
+        "website": company.website,
+        "category": None,
+        "description": None,
+        "market_id": company.niche_id,
+        "created_at": company.created_at.isoformat() if company.created_at else None,
     }
 
 
-def _serialize_monitored_source(
-    source: MonitoredSource,
-    dependencies: SignalApiDependencies | None = None,
-    *,
-    _competitors_by_id: dict | None = None,
-    _markets_by_id: dict | None = None,
-    _health_by_id: dict | None = None,
-) -> dict[str, Any]:
-    if source.competitor_id is not None:
-        if _competitors_by_id is not None:
-            competitor = _competitors_by_id.get(source.competitor_id)
-        elif dependencies is not None:
-            competitor = dependencies.competitor_repository.get_competitor(source.competitor_id)
-        else:
-            competitor = None
-    else:
-        competitor = None
-    if source.market_id is not None:
-        if _markets_by_id is not None:
-            market = _markets_by_id.get(source.market_id)
-        elif dependencies is not None:
-            market = dependencies.market_repository.get_market(source.market_id)
-        else:
-            market = None
-    else:
-        market = None
-    if _health_by_id is not None:
-        health = _health_by_id.get(source.id)
-    elif dependencies is not None:
-        health = dependencies.source_health_repository.get_source_health(source.id)
-    else:
-        health = None
+def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
     return {
         "id": source.id,
-        "competitor_id": source.competitor_id,
-        "competitor_name": competitor.name if competitor else None,
-        "market_id": source.market_id,
-        "market_name": market.name if market else None,
+        "competitor_id": source.company_id,
+        "competitor_name": None,
+        "market_id": source.niche_id,
+        "market_name": None,
         "locator": source.locator,
         "source_type": source.source_type,
-        "source_family": _source_family(source),
-        "enabled": source.enabled,
-        "limit": source.limit,
-        "scan_frequency": source.scan_frequency,
+        "source_family": source.source_family,
+        "enabled": source.health_status != "paused",
+        "limit": None,
+        "scan_frequency": None,
         "last_scanned_at": (
             source.last_scanned_at.isoformat() if source.last_scanned_at else None
         ),
-        "last_error": source.last_error,
-        "health": _serialize_source_health(health) if health else None,
-        "options": source.options,
+        "last_error": None,
+        "health": None,
+        "options": {},
     }
 
 
-def _serialize_source_health(health: Any) -> dict[str, Any]:
-    return {
-        "total_runs": health.total_runs,
-        "success_count": health.success_count,
-        "failure_count": health.failure_count,
-        "consecutive_failures": health.consecutive_failures,
-        "posts_fetched_count": health.posts_fetched_count,
-        "relevant_posts_count": health.relevant_posts_count,
-        "extracted_signals_count": health.extracted_signals_count,
-        "opportunity_count": health.opportunity_count,
-        "last_status": health.last_status,
-        "last_error": health.last_error,
-        "last_fetched_count": health.last_fetched_count,
-        "last_relevant_count": health.last_relevant_count,
-        "last_extracted_count": health.last_extracted_count,
-        "last_opportunity_count": health.last_opportunity_count,
-        "fetch_success_rate": health.fetch_success_rate,
-        "relevance_yield_rate": health.relevance_yield_rate,
-        "signal_yield_rate": health.signal_yield_rate,
-        "last_scanned_at": (
-            health.last_scanned_at.isoformat() if health.last_scanned_at else None
-        ),
-        "updated_at": health.updated_at.isoformat() if health.updated_at else None,
-    }
-
-
-def _source_coverage_summary(sources: list[MonitoredSource]) -> dict[str, Any]:
+def _source_coverage_summary(sources: list[NicheSource]) -> dict[str, Any]:
     by_family: dict[str, dict[str, Any]] = {}
     company_ids: set[str] = set()
     active_count = 0
-    error_count = 0
 
     for source in sources:
-        family = _source_family(source) or "unknown"
+        family = source.source_family or "unknown"
         entry = by_family.setdefault(
             family,
             {
@@ -1674,20 +1355,17 @@ def _source_coverage_summary(sources: list[MonitoredSource]) -> dict[str, Any]:
             },
         )
         entry["source_count"] += 1
-        if source.enabled:
+        if source.health_status != "paused":
             active_count += 1
             entry["active_count"] += 1
-        if source.last_error:
-            error_count += 1
-            entry["error_count"] += 1
-        if source.competitor_id:
-            company_ids.add(source.competitor_id)
+        if source.company_id:
+            company_ids.add(source.company_id)
 
     for family, entry in by_family.items():
         entry_company_ids = {
-            source.competitor_id
+            source.company_id
             for source in sources
-            if source.competitor_id and (_source_family(source) or "unknown") == family
+            if source.company_id and (source.source_family or "unknown") == family
         }
         entry["company_count"] = len(entry_company_ids)
 
@@ -1695,38 +1373,12 @@ def _source_coverage_summary(sources: list[MonitoredSource]) -> dict[str, Any]:
         "source_count": len(sources),
         "active_count": active_count,
         "disabled_count": len(sources) - active_count,
-        "error_count": error_count,
+        "error_count": 0,
         "company_count": len(company_ids),
         "by_family": sorted(
             by_family.values(),
             key=lambda item: (-item["source_count"], item["source_family"]),
         ),
-    }
-
-
-def _source_family(source: MonitoredSource) -> str | None:
-    family = source.options.get("source_family")
-    return family if isinstance(family, str) and family else None
-
-
-def _serialize_source_suggestion(suggestion: SourceSuggestion) -> dict[str, Any]:
-    return {
-        "locator": suggestion.locator,
-        "source_type": suggestion.source_type,
-        "label": suggestion.label,
-        "rationale": suggestion.rationale,
-        "source_family": suggestion.source_family,
-        "competitor_id": suggestion.competitor_id,
-        "competitor_name": suggestion.competitor_name,
-        "market_id": suggestion.market_id,
-        "market_name": suggestion.market_name,
-        "limit": suggestion.limit,
-        "options": suggestion.options,
-        "template_id": suggestion.template_id,
-        "already_monitored": suggestion.already_monitored,
-        "rank_score": suggestion.rank_score,
-        "validation_status": suggestion.validation_status,
-        "validation_error": suggestion.validation_error,
     }
 
 
@@ -1751,7 +1403,7 @@ def _serialize_agent_cold_start_plan(plan: AgentColdStartPlan) -> dict[str, Any]
 
 def _serialize_agent_preferences(preferences: AgentPreferences) -> dict[str, Any]:
     return {
-        "market_id": preferences.market_id,
+        "market_id": preferences.user_niche_id,
         "preferred_source_families": preferences.preferred_source_families,
         "ignored_themes": preferences.ignored_themes,
         "ignored_categories": preferences.ignored_categories,
@@ -1769,7 +1421,7 @@ def _serialize_agent_preferences(preferences: AgentPreferences) -> dict[str, Any
 def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
     return {
         "id": feedback.id,
-        "market_id": feedback.market_id,
+        "market_id": feedback.user_niche_id,
         "opportunity_id": feedback.opportunity_id,
         "action": feedback.action,
         "reason": feedback.reason,
@@ -1780,7 +1432,7 @@ def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
 def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
     return {
         "id": activity.id,
-        "market_id": activity.market_id,
+        "market_id": activity.user_niche_id,
         "event_type": activity.event_type,
         "title": activity.title,
         "detail": activity.detail,
@@ -1794,7 +1446,7 @@ def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
 def _serialize_agent_alert(alert: AgentAlert) -> dict[str, Any]:
     return {
         "id": alert.id,
-        "market_id": alert.market_id,
+        "market_id": alert.user_niche_id,
         "alert_type": alert.alert_type,
         "title": alert.title,
         "severity": alert.severity,
@@ -1811,7 +1463,7 @@ def _serialize_agent_alert(alert: AgentAlert) -> dict[str, Any]:
 def _serialize_agent_follow_up(follow_up: AgentFollowUp) -> dict[str, Any]:
     return {
         "id": follow_up.id,
-        "market_id": follow_up.market_id,
+        "market_id": follow_up.user_niche_id,
         "question": follow_up.question,
         "opportunity_id": follow_up.opportunity_id,
         "cluster_id": follow_up.cluster_id,
@@ -1828,15 +1480,15 @@ def _serialize_agent_follow_up(follow_up: AgentFollowUp) -> dict[str, Any]:
 
 
 def _serialize_agent_brief(
-    market: Market,
+    user_niche: UserNiche,
     preferences: AgentPreferences,
 ) -> dict[str, Any]:
     return {
-        "market_id": market.id,
-        "niche_name": market.name,
-        "description": market.description,
-        "target_user": market.target_user,
-        "objective": market.idea_prompt,
+        "market_id": user_niche.id,
+        "niche_name": user_niche.job,
+        "description": user_niche.category,
+        "target_user": user_niche.buyer,
+        "objective": None,
         "extra_instructions": preferences.extra_instructions,
     }
 
@@ -1844,7 +1496,7 @@ def _serialize_agent_brief(
 def _record_agent_activity(
     dependencies: SignalApiDependencies,
     *,
-    market_id: str,
+    user_niche_id: str,
     event_type: str,
     title: str,
     detail: str | None = None,
@@ -1852,7 +1504,7 @@ def _record_agent_activity(
 ) -> None:
     dependencies.agent_activity_repository.save_agent_activity(
         AgentActivity.create(
-            market_id=market_id,
+            user_niche_id=user_niche_id,
             event_type=event_type,
             title=title,
             detail=detail,
@@ -1867,7 +1519,6 @@ def _serialize_cluster(
     *,
     market_id: str | None = None,
     _signals_by_id: dict | None = None,
-    _competitors_by_id: dict | None = None,
 ) -> dict[str, Any]:
     serialized = {
         "id": cluster.id,
@@ -1885,7 +1536,6 @@ def _serialize_cluster(
                 cluster.signal_ids,
                 market_id=market_id,
                 _signals_by_id=_signals_by_id,
-                _competitors_by_id=_competitors_by_id,
             )
         )
     return serialized
@@ -1897,7 +1547,6 @@ def _serialize_opportunity(
     *,
     market_id: str | None = None,
     _signals_by_id: dict | None = None,
-    _competitors_by_id: dict | None = None,
 ) -> dict[str, Any]:
     serialized = {
         "id": opportunity.id,
@@ -1918,7 +1567,6 @@ def _serialize_opportunity(
                 opportunity.evidence_signal_ids,
                 market_id=market_id,
                 _signals_by_id=_signals_by_id,
-                _competitors_by_id=_competitors_by_id,
             )
         )
     return serialized

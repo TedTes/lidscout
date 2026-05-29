@@ -26,16 +26,14 @@ from application.ports import (
     AgentAlertRepository,
     AgentPreferencesRepository,
     ClusterRepository,
-    CompetitorRepository,
-    MarketRepository,
-    MonitoredSourceRepository,
+    NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
-    SourceHealthRepository,
     SourceLocatorRepository,
+    UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
@@ -45,7 +43,8 @@ from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceHealth, SourceInput
+from domain.niche import NicheSource, UserNiche
+from domain.source import SourceInput
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
 
@@ -68,14 +67,12 @@ class PipelineConfig:
     agent_preferences_repository: AgentPreferencesRepository | None = None
     agent_activity_repository: AgentActivityRepository | None = None
     agent_alert_repository: AgentAlertRepository | None = None
-    competitor_repository: CompetitorRepository | None = None
-    monitored_source_repository: MonitoredSourceRepository | None = None
-    source_health_repository: SourceHealthRepository | None = None
-    market_repository: MarketRepository | None = None
+    niche_source_repository: NicheSourceRepository | None = None
+    user_niche_repository: UserNicheRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     sources: list[SourceInput] = field(default_factory=list)
-    market_id: str | None = None
+    user_niche_id: str | None = None
     default_limit: int = 25
     similarity_threshold: float = 0.82
 
@@ -117,7 +114,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     """Run the full daily signal detection workflow."""
     _record_agent_activity(
         config.agent_activity_repository,
-        market_id=config.market_id,
+        user_niche_id=config.user_niche_id,
         event_type="run_started",
         title="Agent scan started",
         detail="The research agent started a scheduled scan.",
@@ -157,13 +154,9 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         signals,
         _synthesis_context(config),
     )
-    _record_source_health(
-        config.source_health_repository,
+    _record_niche_source_health(
+        config.niche_source_repository,
         fetch_result.details,
-        posts,
-        relevance_result.posts,
-        signals,
-        opportunity_synthesis_result.opportunities,
     )
 
     report = ReportingService().generate(
@@ -232,20 +225,20 @@ def _synthesize_opportunities(
 def _synthesis_context(
     config: PipelineConfig,
 ) -> OpportunitySynthesisContext | None:
-    if config.market_id is None or config.market_repository is None:
+    if config.user_niche_id is None or config.user_niche_repository is None:
         return None
-    market = config.market_repository.get_market(config.market_id)
-    if market is None:
+    user_niche = config.user_niche_repository.get_user_niche(config.user_niche_id)
+    if user_niche is None:
         return None
     preferences = (
-        config.agent_preferences_repository.get_agent_preferences(config.market_id)
+        config.agent_preferences_repository.get_agent_preferences(config.user_niche_id)
         if config.agent_preferences_repository is not None
         else None
     )
     return OpportunitySynthesisContext(
-        niche_name=market.name,
-        target_user=market.target_user,
-        objective=market.idea_prompt,
+        niche_name=user_niche.job,
+        target_user=user_niche.buyer,
+        objective=None,
         extra_instructions=preferences.extra_instructions if preferences else None,
         ignored_themes=preferences.ignored_themes if preferences else [],
         ignored_categories=preferences.ignored_categories if preferences else [],
@@ -294,17 +287,17 @@ def _save_pipeline_run_metrics(
 def _record_agent_activity(
     activity_repository: AgentActivityRepository | None,
     *,
-    market_id: str | None,
+    user_niche_id: str | None,
     event_type: str,
     title: str,
     detail: str | None = None,
     metadata: dict[str, object] | None = None,
 ) -> None:
-    if activity_repository is None or market_id is None:
+    if activity_repository is None or user_niche_id is None:
         return
     activity_repository.save_agent_activity(
         AgentActivity.create(
-            market_id=market_id,
+            user_niche_id=user_niche_id,
             event_type=event_type,
             title=title,
             detail=detail,
@@ -319,7 +312,7 @@ def _record_pipeline_activity(
 ) -> None:
     _record_agent_activity(
         config.agent_activity_repository,
-        market_id=config.market_id,
+        user_niche_id=config.user_niche_id,
         event_type="run_completed",
         title="Agent scan completed",
         detail=(
@@ -348,10 +341,10 @@ def _record_threshold_alerts(
     clusters: list[SignalCluster],
     opportunities: list[Opportunity],
 ) -> None:
-    if config.agent_alert_repository is None or config.market_id is None:
+    if config.agent_alert_repository is None or config.user_niche_id is None:
         return
     alerts = generate_threshold_alerts(
-        market_id=config.market_id,
+        user_niche_id=config.user_niche_id,
         clusters=clusters,
         opportunities=opportunities,
     )
@@ -361,7 +354,7 @@ def _record_threshold_alerts(
             continue
         _record_agent_activity(
             config.agent_activity_repository,
-            market_id=config.market_id,
+            user_niche_id=config.user_niche_id,
             event_type="alert_created",
             title="Threshold alert created",
             detail=alert.title,
@@ -378,12 +371,11 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     failed_count = 0
     details: list[SourceFetchDetail] = []
     sources = config.sources or _configured_sources(
-        config.monitored_source_repository,
+        config.niche_source_repository,
         config.source_locator_repository,
-        config.competitor_repository,
-        config.market_repository,
+        config.user_niche_repository,
         config.agent_preferences_repository,
-        config.market_id,
+        config.user_niche_id,
     )
 
     if sources:
@@ -394,25 +386,19 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
         posts.extend(source_result.posts)
         failed_count += source_result.failed_count
         details.extend(source_result.details)
-        _update_monitored_source_scan_statuses(
-            config.monitored_source_repository,
-            source_result.details,
-        )
         for detail in source_result.details:
             if detail.error is None:
                 continue
             _record_agent_activity(
                 config.agent_activity_repository,
-                market_id=config.market_id,
+                user_niche_id=config.user_niche_id,
                 event_type="source_failed",
                 title="Source fetch failed",
                 detail=detail.error,
                 metadata={
                     "locator": detail.source.locator,
                     "source_type": detail.source.options.get("source_type"),
-                    "monitored_source_id": detail.source.options.get(
-                        "monitored_source_id"
-                    ),
+                    "niche_source_id": detail.source.options.get("niche_source_id"),
                     "fetched_count": detail.fetched_count,
                 },
             )
@@ -424,100 +410,22 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     )
 
 
-def _record_source_health(
-    source_health_repository: SourceHealthRepository | None,
-    details: list[SourceFetchDetail],
-    posts: list[RawPost],
-    relevant_posts: list[RawPost],
-    signals: list[Signal],
-    opportunities: list[object],
-) -> None:
-    if source_health_repository is None:
-        return
-
-    post_source_ids = {
-        post.id: source_id
-        for post in posts
-        if isinstance((source_id := post.metadata.get("monitored_source_id")), str)
-    }
-    relevant_counts: dict[str, int] = {}
-    for post in relevant_posts:
-        source_id = post_source_ids.get(post.id)
-        if source_id is None:
-            continue
-        relevant_counts[source_id] = relevant_counts.get(source_id, 0) + 1
-
-    signal_source_ids = {
-        signal.id: source_id
-        for signal in signals
-        if (source_id := post_source_ids.get(signal.post_id)) is not None
-    }
-    extracted_counts: dict[str, int] = {}
-    for source_id in signal_source_ids.values():
-        extracted_counts[source_id] = extracted_counts.get(source_id, 0) + 1
-
-    opportunity_counts: dict[str, int] = {}
-    for opportunity in opportunities:
-        evidence_signal_ids = getattr(opportunity, "evidence_signal_ids", [])
-        source_ids = {
-            signal_source_ids[signal_id]
-            for signal_id in evidence_signal_ids
-            if signal_id in signal_source_ids
-        }
-        for source_id in source_ids:
-            opportunity_counts[source_id] = opportunity_counts.get(source_id, 0) + 1
-
-    scanned_at = datetime.now(tz=UTC)
-    for detail in details:
-        source_id = detail.source.options.get("monitored_source_id")
-        if not isinstance(source_id, str):
-            continue
-
-        existing = source_health_repository.get_source_health(source_id)
-        health = existing or SourceHealth.create(monitored_source_id=source_id)
-        source_health_repository.save_source_health(
-            health.record_run(
-                fetched_count=detail.fetched_count,
-                relevant_count=relevant_counts.get(source_id, 0),
-                extracted_count=extracted_counts.get(source_id, 0),
-                opportunity_count=opportunity_counts.get(source_id, 0),
-                error=detail.error,
-                scanned_at=scanned_at,
-            )
-        )
-
-
-def _update_monitored_source_scan_statuses(
-    monitored_source_repository: MonitoredSourceRepository | None,
+def _record_niche_source_health(
+    niche_source_repository: NicheSourceRepository | None,
     details: list[SourceFetchDetail],
 ) -> None:
-    if monitored_source_repository is None:
+    if niche_source_repository is None:
         return
-
     scanned_at = datetime.now(tz=UTC)
     for detail in details:
-        source_id = detail.source.options.get("monitored_source_id")
+        source_id = detail.source.options.get("niche_source_id")
         if not isinstance(source_id, str):
             continue
-
-        existing = monitored_source_repository.get_monitored_source(source_id)
-        if existing is None:
-            continue
-
-        monitored_source_repository.update_monitored_source(
-            MonitoredSource.create(
-                id=existing.id,
-                locator=existing.locator,
-                source_type=existing.source_type,
-                competitor_id=existing.competitor_id,
-                market_id=existing.market_id,
-                enabled=existing.enabled,
-                limit=existing.limit,
-                scan_frequency=existing.scan_frequency,
-                last_scanned_at=scanned_at,
-                last_error=detail.error,
-                options=existing.options,
-            )
+        health_status = "failing" if detail.error else "active"
+        niche_source_repository.update_niche_source_health(
+            source_id,
+            health_status,
+            scanned_at,
         )
 
 
@@ -567,36 +475,40 @@ def _filter_relevant_posts(
 
 
 def _configured_sources(
-    monitored_source_repository: MonitoredSourceRepository | None,
+    niche_source_repository: NicheSourceRepository | None,
     source_locator_repository: SourceLocatorRepository | None,
-    competitor_repository: CompetitorRepository | None,
-    market_repository: MarketRepository | None,
+    user_niche_repository: UserNicheRepository | None,
     agent_preferences_repository: AgentPreferencesRepository | None,
-    market_id: str | None,
+    user_niche_id: str | None,
 ) -> list[SourceInput]:
-    if monitored_source_repository is not None:
-        configured_monitored_sources = (
-            monitored_source_repository.list_monitored_sources(
-                enabled=True,
-                market_id=market_id,
-            )
-        )
-        monitored_sources = _apply_agent_source_preferences(
-            configured_monitored_sources,
-            agent_preferences_repository,
-            market_id,
-        )
-        monitored_source_inputs = [
-            _monitored_source_input(
-                source,
-                competitor_repository,
-                market_repository,
-                agent_preferences_repository,
-            )
-            for source in monitored_sources
-        ]
-        if configured_monitored_sources:
-            return monitored_source_inputs
+    if niche_source_repository is not None and user_niche_id is not None:
+        niche_id = None
+        if user_niche_repository is not None:
+            user_niche = user_niche_repository.get_user_niche(user_niche_id)
+            if user_niche is not None:
+                niche_id = user_niche.template_niche_id
+        if niche_id is not None:
+            niche_sources = niche_source_repository.list_niche_sources(niche_id)
+            if niche_sources:
+                filtered = _apply_agent_source_preferences(
+                    niche_sources,
+                    agent_preferences_repository,
+                    user_niche_id,
+                )
+                user_niche_obj = (
+                    user_niche_repository.get_user_niche(user_niche_id)
+                    if user_niche_repository is not None
+                    else None
+                )
+                preferences = (
+                    agent_preferences_repository.get_agent_preferences(user_niche_id)
+                    if agent_preferences_repository is not None
+                    else None
+                )
+                return [
+                    _niche_source_input(s, user_niche_obj, preferences)
+                    for s in filtered
+                ]
     if source_locator_repository is None:
         return []
     return [
@@ -605,76 +517,41 @@ def _configured_sources(
     ]
 
 
-def _monitored_source_input(
-    source: MonitoredSource,
-    competitor_repository: CompetitorRepository | None,
-    market_repository: MarketRepository | None,
-    agent_preferences_repository: AgentPreferencesRepository | None,
+def _niche_source_input(
+    source: NicheSource,
+    user_niche: UserNiche | None,
+    preferences: object | None,
 ) -> SourceInput:
-    source_input = source.to_source_input()
-    options = dict(source_input.options)
-
-    competitor = None
-    if competitor_repository is not None:
-        competitor_id = source.competitor_id
-        if competitor_id is not None:
-            competitor = competitor_repository.get_competitor(competitor_id)
-
-    if competitor is not None:
-        options["competitor_name"] = competitor.name
-        if competitor.website:
-            options["competitor_website"] = competitor.website
-            domain = _domain_from_url(competitor.website)
-            if domain:
-                options["competitor_domain"] = domain
-        if competitor.category:
-            options["competitor_category"] = competitor.category
-        if competitor.market_id and "market_id" not in options:
-            options["market_id"] = competitor.market_id
-
-    market_id = options.get("market_id")
-    if isinstance(market_id, str) and market_repository is not None:
-        market = market_repository.get_market(market_id)
-        if market is not None:
-            options["market_name"] = market.name
-            if market.target_user:
-                options["market_target_user"] = market.target_user
-            if market.idea_prompt:
-                options["market_idea_prompt"] = market.idea_prompt
-            if agent_preferences_repository is not None:
-                preferences = agent_preferences_repository.get_agent_preferences(
-                    market.id,
-                )
-                if preferences is not None:
-                    if preferences.extra_instructions:
-                        options["agent_extra_instructions"] = (
-                            preferences.extra_instructions
-                        )
-                    if preferences.ignored_themes:
-                        options["agent_ignored_themes"] = ", ".join(
-                            preferences.ignored_themes
-                        )
-                    if preferences.ignored_categories:
-                        options["agent_ignored_categories"] = ", ".join(
-                            preferences.ignored_categories
-                        )
-
-    return SourceInput.create(
-        locator=source_input.locator,
-        limit=source_input.limit,
-        options=options,
-    )
+    options: dict = {
+        "niche_source_id": source.id,
+        "source_type": source.source_type,
+        "source_family": source.source_family,
+        "niche_id": source.niche_id,
+    }
+    if source.company_id:
+        options["niche_company_id"] = source.company_id
+    if user_niche is not None:
+        options["niche_name"] = user_niche.job
+        options["target_user"] = user_niche.buyer
+    if preferences is not None:
+        if getattr(preferences, "extra_instructions", None):
+            options["agent_extra_instructions"] = preferences.extra_instructions  # type: ignore[union-attr]
+        if getattr(preferences, "ignored_themes", None):
+            options["agent_ignored_themes"] = ", ".join(preferences.ignored_themes)  # type: ignore[union-attr]
+        if getattr(preferences, "ignored_categories", None):
+            options["agent_ignored_categories"] = ", ".join(preferences.ignored_categories)  # type: ignore[union-attr]
+    return SourceInput.create(locator=source.locator, options=options)
 
 
 def _apply_agent_source_preferences(
-    sources: list[MonitoredSource],
+    sources: list[NicheSource],
     agent_preferences_repository: AgentPreferencesRepository | None,
-    market_id: str | None,
-) -> list[MonitoredSource]:
-    if agent_preferences_repository is None or market_id is None:
+    user_niche_id: str | None,
+) -> list[NicheSource]:
+    if agent_preferences_repository is None or user_niche_id is None:
         return sources
 
-    preferences = agent_preferences_repository.get_agent_preferences(market_id)
+    preferences = agent_preferences_repository.get_agent_preferences(user_niche_id)
     if preferences is None:
         return sources
 
@@ -692,7 +569,7 @@ def _apply_agent_source_preferences(
     return sorted(
         filtered_sources,
         key=lambda source: priority.get(
-            str(source.options.get("source_family") or "").strip(),
+            source.source_family.strip(),
             len(priority),
         ),
     )
@@ -706,12 +583,12 @@ def _domain_from_url(url: str) -> str | None:
 
 
 def _market_report_title(config: PipelineConfig) -> str | None:
-    if config.market_id is None or config.market_repository is None:
+    if config.user_niche_id is None or config.user_niche_repository is None:
         return None
-    market = config.market_repository.get_market(config.market_id)
-    if market is None:
+    user_niche = config.user_niche_repository.get_user_niche(config.user_niche_id)
+    if user_niche is None:
         return None
-    return f"{market.name} Market Gap Report"
+    return f"{user_niche.job} Market Gap Report"
 
 
 def _extract_signals(

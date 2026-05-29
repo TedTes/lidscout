@@ -41,20 +41,15 @@ app.include_router(signals_router)
 async def configure_runtime_dependencies() -> None:
     """Configure runtime dependencies for API route handlers."""
     from shared.config import get_app_config
-    from infrastructure.db.repository import connect_postgres
+    from infrastructure.db import connect_postgres
     app_config = get_app_config()
-    from infrastructure.db import PostgresAgentActivityRepository, PostgresCompetitorRepository, PostgresMarketRepository, PostgresMonitoredSourceRepository
     connection = connect_postgres(app_config.DATABASE_URL)
     configure_auth_service(
         AuthService(
             user_repository=PostgresUserRepository(connection=connection),
             secret=app_config.JWT_SECRET,
             expiry_minutes=app_config.JWT_EXPIRY_MINUTES,
-        ),
-        market_repo=PostgresMarketRepository(connection=connection),
-        competitor_repo=PostgresCompetitorRepository(connection=connection),
-        source_repo=PostgresMonitoredSourceRepository(connection=connection),
-        activity_repo=PostgresAgentActivityRepository(connection=connection),
+        )
     )
     configure_signal_api_dependencies(build_signal_api_dependencies())
 

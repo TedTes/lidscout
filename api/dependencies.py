@@ -8,16 +8,15 @@ from infrastructure.db import (
     PostgresAgentFollowUpRepository,
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
-    PostgresCompetitorRepository,
-    PostgresMarketRepository,
-    PostgresMonitoredSourceRepository,
+    PostgresNicheCompanyRepository,
+    PostgresNicheSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
-    PostgresSourceHealthRepository,
     PostgresSourceLocatorRepository,
+    PostgresUserNicheRepository,
     connect_postgres,
 )
 from infrastructure.email import EmailClient, ResendEmailNotifier
@@ -57,14 +56,9 @@ def build_signal_api_dependencies(
         agent_follow_up_repository=PostgresAgentFollowUpRepository(
             connection=connection,
         ),
-        competitor_repository=PostgresCompetitorRepository(connection=connection),
-        market_repository=PostgresMarketRepository(connection=connection),
-        monitored_source_repository=PostgresMonitoredSourceRepository(
-            connection=connection,
-        ),
-        source_health_repository=PostgresSourceHealthRepository(
-            connection=connection,
-        ),
+        niche_company_repository=PostgresNicheCompanyRepository(connection=connection),
+        niche_source_repository=PostgresNicheSourceRepository(connection=connection),
+        user_niche_repository=PostgresUserNicheRepository(connection=connection),
         source_locator_repository=PostgresSourceLocatorRepository(
             connection=connection,
         ),

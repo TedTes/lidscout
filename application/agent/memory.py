@@ -2,8 +2,7 @@
 from dataclasses import dataclass
 
 from domain.agent import AgentFeedback, AgentPreferences
-from domain.market import Market
-from domain.source import MonitoredSource, SourceHealth
+from domain.niche import NicheSource, UserNiche
 
 
 @dataclass(frozen=True)
@@ -19,29 +18,15 @@ class AgentMemorySummary:
 
 def build_agent_memory_summary(
     *,
-    market: Market,
+    user_niche: UserNiche,
     preferences: AgentPreferences,
     feedback: list[AgentFeedback],
-    sources: list[MonitoredSource],
-    source_health: list[SourceHealth],
+    sources: list[NicheSource] | None = None,
 ) -> AgentMemorySummary:
     """Build a compact memory summary from persisted agent state."""
-    health_by_source_id = {
-        health.monitored_source_id: health
-        for health in source_health
-    }
-    healthy_sources = [
-        source
-        for source in sources
-        if health_by_source_id.get(source.id) is not None
-        and health_by_source_id[source.id].last_status == "healthy"
-    ]
-    failing_sources = [
-        source
-        for source in sources
-        if health_by_source_id.get(source.id) is not None
-        and health_by_source_id[source.id].last_status == "failing"
-    ]
+    sources = sources or []
+    healthy_sources = [s for s in sources if s.health_status == "active"]
+    failing_sources = [s for s in sources if s.health_status == "failing"]
     saved_count = sum(1 for item in feedback if item.action == "save")
     dismissed_count = sum(1 for item in feedback if item.action == "dismiss")
 
@@ -92,12 +77,13 @@ def build_agent_memory_summary(
     if not feedback_notes:
         feedback_notes.append("No gap feedback recorded yet.")
 
+    niche_label = user_niche.job
     headline = (
-        f"The agent is tracking {market.name} with {len(sources)} source(s) "
+        f"The agent is tracking {niche_label} with {len(sources)} source(s) "
         f"and {len(feedback)} feedback event(s)."
     )
     return AgentMemorySummary(
-        market_id=market.id,
+        market_id=user_niche.id,
         headline=headline,
         learned_preferences=learned_preferences,
         source_notes=source_notes,

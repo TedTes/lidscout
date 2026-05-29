@@ -6,7 +6,7 @@ from domain.opportunity import Opportunity
 
 def generate_threshold_alerts(
     *,
-    market_id: str,
+    user_niche_id: str,
     clusters: list[SignalCluster],
     opportunities: list[Opportunity],
     theme_score_threshold: float = 8.0,
@@ -23,8 +23,8 @@ def generate_threshold_alerts(
             continue
         alerts.append(
             AgentAlert.create(
-                id=f"agent-alert-{market_id}-theme-{cluster.id}",
-                market_id=market_id,
+                id=f"agent-alert-{user_niche_id}-theme-{cluster.id}",
+                user_niche_id=user_niche_id,
                 alert_type="theme_threshold",
                 title=f"{cluster.theme} crossed a signal threshold",
                 severity="warning" if cluster.average_score >= theme_score_threshold else "info",
@@ -46,8 +46,8 @@ def generate_threshold_alerts(
             continue
         alerts.append(
             AgentAlert.create(
-                id=f"agent-alert-{market_id}-gap-{opportunity.id}",
-                market_id=market_id,
+                id=f"agent-alert-{user_niche_id}-gap-{opportunity.id}",
+                user_niche_id=user_niche_id,
                 alert_type="gap_threshold",
                 title=f"High-confidence gap: {opportunity.title}",
                 severity="warning",

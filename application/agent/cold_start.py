@@ -1,9 +1,8 @@
 """Cold-start planning for a niche research agent."""
 from dataclasses import dataclass
 
-from domain.competitor import Competitor
-from domain.market import Market
-from domain.source import MonitoredSource, SourceCandidate
+from domain.niche import NicheCompany, NicheSource, UserNiche
+from domain.source import SourceCandidate
 
 
 @dataclass(frozen=True)
@@ -37,35 +36,31 @@ class AgentColdStartService:
     def build_plan(
         self,
         *,
-        market: Market,
-        competitors: list[Competitor],
-        monitored_sources: list[MonitoredSource],
+        user_niche: UserNiche,
+        companies: list[NicheCompany],
+        sources: list[NicheSource],
         source_suggestions: list[SourceCandidate],
     ) -> AgentColdStartPlan:
         """Return the next setup actions for one niche."""
-        active_sources = [source for source in monitored_sources if source.enabled]
+        active_sources = [s for s in sources if s.health_status != "paused"]
         suggested_new_sources = [
             suggestion
             for suggestion in source_suggestions
             if not suggestion.already_monitored
         ]
         brief = AgentResearchBrief(
-            market_id=market.id,
-            niche_name=market.name,
-            target_user=(
-                market.target_user
-                or "product teams and founders evaluating this niche"
-            ),
+            market_id=user_niche.id,
+            niche_name=user_niche.job,
+            target_user=user_niche.buyer,
             objective=(
-                market.idea_prompt
-                or f"Find recurring public complaints and product gaps in {market.name}."
+                f"Find recurring public complaints and product gaps for {user_niche.job}."
             ),
-            company_count=len(competitors),
+            company_count=len(companies),
             source_family_priorities=_source_family_priorities(source_suggestions),
         )
         next_actions = _next_actions(
-            market=market,
-            company_count=len(competitors),
+            user_niche=user_niche,
+            company_count=len(companies),
             active_source_count=len(active_sources),
             suggested_new_source_count=len(suggested_new_sources),
         )
@@ -75,10 +70,10 @@ class AgentColdStartService:
             else "setup_needed"
         )
         return AgentColdStartPlan(
-            market_id=market.id,
+            market_id=user_niche.id,
             status=status,
             brief=brief,
-            monitored_source_count=len(monitored_sources),
+            monitored_source_count=len(sources),
             active_source_count=len(active_sources),
             suggested_source_count=len(suggested_new_sources),
             next_actions=next_actions,
@@ -102,14 +97,12 @@ def _source_family_priorities(suggestions: list[SourceCandidate]) -> list[str]:
 
 def _next_actions(
     *,
-    market: Market,
+    user_niche: UserNiche,
     company_count: int,
     active_source_count: int,
     suggested_new_source_count: int,
 ) -> list[str]:
     actions: list[str] = []
-    if market.target_user is None and market.idea_prompt is None:
-        actions.append("refine_research_brief")
     if company_count == 0:
         actions.append("add_companies")
     if active_source_count == 0:

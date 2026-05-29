@@ -10,7 +10,7 @@ Urgency = Literal["low", "medium", "high"]
 
 @dataclass(frozen=True)
 class Signal:
-    """Market or pain signal extracted from a raw post."""
+    """Pain signal extracted from a raw post, scoped to a niche and company."""
 
     id: str
     post_id: str
@@ -23,8 +23,8 @@ class Signal:
     willingness_to_pay: bool | None
     category: str | None
     confidence: float
-    competitor_id: str | None = None
-    market_id: str | None = None
+    niche_company_id: str | None = None
+    niche_id: str | None = None
     evidence_url: str | None = None
     evidence_text: str | None = None
     detected_at: datetime | None = None
@@ -44,8 +44,8 @@ class Signal:
         willingness_to_pay: bool | None = None,
         category: str | None = None,
         confidence: float = 0.0,
-        competitor_id: str | None = None,
-        market_id: str | None = None,
+        niche_company_id: str | None = None,
+        niche_id: str | None = None,
         evidence_url: str | None = None,
         evidence_text: str | None = None,
         detected_at: datetime | None = None,
@@ -80,8 +80,8 @@ class Signal:
             willingness_to_pay=willingness_to_pay,
             category=cls._clean_optional(category),
             confidence=confidence,
-            competitor_id=cls._clean_optional(competitor_id),
-            market_id=cls._clean_optional(market_id),
+            niche_company_id=cls._clean_optional(niche_company_id),
+            niche_id=cls._clean_optional(niche_id),
             evidence_url=cls._clean_optional(evidence_url),
             evidence_text=cls._clean_optional(evidence_text),
             detected_at=detected_at,

@@ -15,15 +15,11 @@ from application.ports import (
     AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
-    CompetitorRepository,
-    MarketRepository,
-    MonitoredSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
-    SourceHealthRepository,
     SourceLocatorRepository,
 )
 from domain.agent import (
@@ -34,14 +30,12 @@ from domain.agent import (
     AgentPreferences,
 )
 from domain.cluster import SignalCluster
-from domain.competitor import Competitor
-from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceHealth, SourceLocator
+from domain.source import SourceLocator
 
 
 @dataclass
@@ -165,54 +159,20 @@ class InMemoryOpportunityRepository(OpportunityRepository):
 
 
 @dataclass
-class InMemoryMarketRepository(MarketRepository):
-    """In-memory market repository."""
-
-    markets: dict[str, Market] = field(default_factory=dict)
-
-    def save_markets(self, markets: list[Market]) -> int:
-        inserted_count = 0
-        for market in markets:
-            if market.id in self.markets:
-                continue
-            self.markets[market.id] = market
-            inserted_count += 1
-        return inserted_count
-
-    def get_market(self, market_id: str) -> Market | None:
-        return self.markets.get(market_id)
-
-    def list_markets(self, user_id: str | None = None) -> list[Market]:
-        markets = list(self.markets.values())
-        if user_id is not None:
-            markets = [m for m in markets if m.user_id == user_id]
-        return markets
-
-    def update_market(self, market: Market) -> bool:
-        if market.id not in self.markets:
-            return False
-        self.markets[market.id] = market
-        return True
-
-    def delete_market(self, market_id: str) -> bool:
-        return self.markets.pop(market_id, None) is not None
-
-
-@dataclass
 class InMemoryAgentPreferencesRepository(AgentPreferencesRepository):
     """In-memory agent preferences repository."""
 
-    preferences_by_market: dict[str, AgentPreferences] = field(default_factory=dict)
+    preferences_by_user_niche: dict[str, AgentPreferences] = field(default_factory=dict)
 
     def save_agent_preferences(self, preferences: AgentPreferences) -> bool:
-        self.preferences_by_market[preferences.market_id] = preferences
+        self.preferences_by_user_niche[preferences.user_niche_id] = preferences
         return True
 
-    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
-        return self.preferences_by_market.get(market_id)
+    def get_agent_preferences(self, user_niche_id: str) -> AgentPreferences | None:
+        return self.preferences_by_user_niche.get(user_niche_id)
 
-    def delete_agent_preferences(self, market_id: str) -> bool:
-        return self.preferences_by_market.pop(market_id, None) is not None
+    def delete_agent_preferences(self, user_niche_id: str) -> bool:
+        return self.preferences_by_user_niche.pop(user_niche_id, None) is not None
 
 
 @dataclass
@@ -228,13 +188,13 @@ class InMemoryAgentFeedbackRepository(AgentFeedbackRepository):
     def list_agent_feedback(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         opportunity_id: str | None = None,
         action: str | None = None,
     ) -> list[AgentFeedback]:
         feedback = list(self.feedback_by_id.values())
-        if market_id is not None:
-            feedback = [item for item in feedback if item.market_id == market_id]
+        if user_niche_id is not None:
+            feedback = [item for item in feedback if item.user_niche_id == user_niche_id]
         if opportunity_id is not None:
             feedback = [
                 item for item in feedback if item.opportunity_id == opportunity_id
@@ -259,13 +219,13 @@ class InMemoryAgentActivityRepository(AgentActivityRepository):
     def list_agent_activity(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         event_type: str | None = None,
         limit: int | None = None,
     ) -> list[AgentActivity]:
         activity = list(self.activity_by_id.values())
-        if market_id is not None:
-            activity = [item for item in activity if item.market_id == market_id]
+        if user_niche_id is not None:
+            activity = [item for item in activity if item.user_niche_id == user_niche_id]
         if event_type is not None:
             activity = [item for item in activity if item.event_type == event_type]
         activity = sorted(
@@ -294,13 +254,13 @@ class InMemoryAgentAlertRepository(AgentAlertRepository):
     def list_agent_alerts(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentAlert]:
         alerts = list(self.alerts_by_id.values())
-        if market_id is not None:
-            alerts = [item for item in alerts if item.market_id == market_id]
+        if user_niche_id is not None:
+            alerts = [item for item in alerts if item.user_niche_id == user_niche_id]
         if status is not None:
             alerts = [item for item in alerts if item.status == status]
         alerts = sorted(
@@ -334,14 +294,14 @@ class InMemoryAgentFollowUpRepository(AgentFollowUpRepository):
     def list_agent_follow_ups(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentFollowUp]:
         follow_ups = list(self.follow_ups_by_id.values())
-        if market_id is not None:
+        if user_niche_id is not None:
             follow_ups = [
-                item for item in follow_ups if item.market_id == market_id
+                item for item in follow_ups if item.user_niche_id == user_niche_id
             ]
         if status is not None:
             follow_ups = [item for item in follow_ups if item.status == status]
@@ -395,109 +355,118 @@ class InMemorySourceLocatorRepository(SourceLocatorRepository):
 
 
 @dataclass
-class InMemoryCompetitorRepository(CompetitorRepository):
-    """In-memory competitor repository."""
+class InMemoryNicheRepository:
+    """In-memory niche repository."""
 
-    competitors: dict[str, Competitor] = field(default_factory=dict)
+    _niches: dict = field(default_factory=dict)
 
-    def save_competitors(self, competitors: list[Competitor]) -> int:
-        inserted_count = 0
-        for competitor in competitors:
-            if competitor.id in self.competitors:
-                continue
-            self.competitors[competitor.id] = competitor
-            inserted_count += 1
-        return inserted_count
+    def save_niches(self, niches: list) -> int:
+        count = 0
+        for niche in niches:
+            if niche.id not in self._niches:
+                self._niches[niche.id] = niche
+                count += 1
+        return count
 
-    def get_competitor(self, competitor_id: str) -> Competitor | None:
-        return self.competitors.get(competitor_id)
+    def get_niche(self, niche_id: str):
+        return self._niches.get(niche_id)
 
-    def list_competitors(self) -> list[Competitor]:
-        return list(self.competitors.values())
+    def list_niches(self, *, category=None, status=None) -> list:
+        niches = list(self._niches.values())
+        if category is not None:
+            niches = [n for n in niches if n.category == category]
+        if status is not None:
+            niches = [n for n in niches if n.status == status]
+        return niches
 
-    def delete_competitors_by_market(self, market_id: str) -> int:
-        competitor_ids = [
-            competitor_id
-            for competitor_id, competitor in self.competitors.items()
-            if competitor.market_id == market_id
-        ]
-        for competitor_id in competitor_ids:
-            self.competitors.pop(competitor_id, None)
-        return len(competitor_ids)
+    def update_niche(self, niche) -> bool:
+        if niche.id not in self._niches:
+            return False
+        self._niches[niche.id] = niche
+        return True
+
+    def delete_niche(self, niche_id: str) -> bool:
+        return self._niches.pop(niche_id, None) is not None
 
 
 @dataclass
-class InMemoryMonitoredSourceRepository(MonitoredSourceRepository):
-    """In-memory monitored source repository."""
+class InMemoryUserNicheRepository:
+    """In-memory user niche repository."""
 
-    monitored_sources: dict[str, MonitoredSource] = field(default_factory=dict)
+    _user_niches: dict = field(default_factory=dict)
 
-    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
-        inserted_count = 0
-        for source in sources:
-            if source.id in self.monitored_sources:
-                continue
-            self.monitored_sources[source.id] = source
-            inserted_count += 1
-        return inserted_count
-
-    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
-        return self.monitored_sources.get(source_id)
-
-    def update_monitored_source(self, source: MonitoredSource) -> bool:
-        if source.id not in self.monitored_sources:
+    def save_user_niche(self, user_niche) -> bool:
+        if user_niche.id in self._user_niches:
             return False
-        self.monitored_sources[source.id] = source
+        self._user_niches[user_niche.id] = user_niche
         return True
 
-    def list_monitored_sources(
-        self,
-        *,
-        competitor_id: str | None = None,
-        market_id: str | None = None,
-        enabled: bool | None = None,
-    ) -> list[MonitoredSource]:
-        sources = list(self.monitored_sources.values())
-        if competitor_id is not None:
-            sources = [source for source in sources if source.competitor_id == competitor_id]
-        if market_id is not None:
-            sources = [source for source in sources if source.market_id == market_id]
-        if enabled is not None:
-            sources = [source for source in sources if source.enabled == enabled]
+    def get_user_niche(self, user_niche_id: str):
+        return self._user_niches.get(user_niche_id)
+
+    def list_user_niches(self, user_id: str) -> list:
+        return [n for n in self._user_niches.values() if n.user_id == user_id]
+
+    def update_user_niche(self, user_niche) -> bool:
+        if user_niche.id not in self._user_niches:
+            return False
+        self._user_niches[user_niche.id] = user_niche
+        return True
+
+    def delete_user_niche(self, user_niche_id: str) -> bool:
+        return self._user_niches.pop(user_niche_id, None) is not None
+
+
+@dataclass
+class InMemoryNicheCompanyRepository:
+    """In-memory niche company repository."""
+
+    _companies: dict = field(default_factory=dict)
+
+    def save_niche_companies(self, companies: list) -> int:
+        count = 0
+        for company in companies:
+            if company.id not in self._companies:
+                self._companies[company.id] = company
+                count += 1
+        return count
+
+    def list_niche_companies(self, niche_id: str) -> list:
+        return [c for c in self._companies.values() if c.niche_id == niche_id]
+
+    def delete_niche_company(self, company_id: str) -> bool:
+        return self._companies.pop(company_id, None) is not None
+
+
+@dataclass
+class InMemoryNicheSourceRepository:
+    """In-memory niche source repository."""
+
+    _sources: dict = field(default_factory=dict)
+
+    def save_niche_sources(self, sources: list) -> int:
+        count = 0
+        for source in sources:
+            if source.id not in self._sources:
+                self._sources[source.id] = source
+                count += 1
+        return count
+
+    def list_niche_sources(self, niche_id: str, *, is_gate_free=None, buyer_voice_verified=None) -> list:
+        sources = [s for s in self._sources.values() if s.niche_id == niche_id]
+        if is_gate_free is not None:
+            sources = [s for s in sources if s.is_gate_free == is_gate_free]
+        if buyer_voice_verified is not None:
+            sources = [s for s in sources if s.buyer_voice_verified == buyer_voice_verified]
         return sources
 
-
-@dataclass
-class InMemorySourceHealthRepository(SourceHealthRepository):
-    """In-memory monitored source health repository."""
-
-    source_health: dict[str, SourceHealth] = field(default_factory=dict)
-
-    def save_source_health(self, health: SourceHealth) -> bool:
-        self.source_health[health.monitored_source_id] = health
+    def update_niche_source_health(self, source_id: str, health_status: str, last_scanned_at=None) -> bool:
+        if source_id not in self._sources:
+            return False
         return True
 
-    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
-        return self.source_health.get(monitored_source_id)
-
-    def list_source_health(
-        self,
-        *,
-        monitored_source_id: str | None = None,
-        status: str | None = None,
-    ) -> list[SourceHealth]:
-        snapshots = list(self.source_health.values())
-        if monitored_source_id is not None:
-            snapshots = [
-                health
-                for health in snapshots
-                if health.monitored_source_id == monitored_source_id
-            ]
-        if status is not None:
-            snapshots = [
-                health for health in snapshots if health.last_status == status
-            ]
-        return sorted(snapshots, key=lambda health: health.monitored_source_id)
+    def delete_niche_source(self, source_id: str) -> bool:
+        return self._sources.pop(source_id, None) is not None
 
 
 class _SQLiteRepository:
@@ -596,8 +565,8 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                 willingness_to_pay INTEGER,
                 category TEXT,
                 confidence REAL NOT NULL,
-                competitor_id TEXT,
-                market_id TEXT,
+                niche_company_id TEXT,
+                niche_id TEXT,
                 evidence_url TEXT,
                 evidence_text TEXT,
                 detected_at TEXT
@@ -614,7 +583,7 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                 INSERT OR IGNORE INTO signals (
                     id, post_id, pain, user_type, job_to_be_done,
                     current_workaround, urgency, severity, willingness_to_pay,
-                    category, confidence, competitor_id, market_id,
+                    category, confidence, niche_company_id, niche_id,
                     evidence_url, evidence_text, detected_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -630,8 +599,8 @@ class SQLiteSignalRepository(_SQLiteRepository, SignalRepository):
                     _bool_to_int(signal.willingness_to_pay),
                     signal.category,
                     signal.confidence,
-                    signal.competitor_id,
-                    signal.market_id,
+                    signal.niche_company_id,
+                    signal.niche_id,
                     signal.evidence_url,
                     signal.evidence_text,
                     _datetime_to_text(signal.detected_at),
@@ -868,105 +837,6 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
         return [_opportunity_from_row(row) for row in rows]
 
 
-class SQLiteMarketRepository(_SQLiteRepository, MarketRepository):
-    """SQLite-backed market repository."""
-
-    def _initialize_schema(self) -> None:
-        self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS markets (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT,
-                target_user TEXT,
-                idea_prompt TEXT,
-                user_id TEXT,
-                template_id TEXT,
-                created_at TEXT
-            )
-            """
-        )
-        for statement in (
-            "ALTER TABLE markets ADD COLUMN user_id TEXT",
-            "ALTER TABLE markets ADD COLUMN template_id TEXT",
-        ):
-            try:
-                self.connection.execute(statement)
-            except sqlite3.OperationalError as exc:
-                if "duplicate column name" not in str(exc):
-                    raise
-        self.connection.commit()
-
-    def save_markets(self, markets: list[Market]) -> int:
-        inserted_count = 0
-        for market in markets:
-            cursor = self.connection.execute(
-                """
-                INSERT OR IGNORE INTO markets (
-                    id, name, description, target_user, idea_prompt, user_id, template_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    market.id,
-                    market.name,
-                    market.description,
-                    market.target_user,
-                    market.idea_prompt,
-                    market.user_id,
-                    market.template_id,
-                    _datetime_to_text(market.created_at),
-                ),
-            )
-            inserted_count += cursor.rowcount
-        self.connection.commit()
-        return inserted_count
-
-    def get_market(self, market_id: str) -> Market | None:
-        row = self.connection.execute(
-            "SELECT * FROM markets WHERE id = ?",
-            (market_id,),
-        ).fetchone()
-        return _market_from_row(row) if row else None
-
-    def list_markets(self, user_id: str | None = None) -> list[Market]:
-        if user_id is not None:
-            rows = self.connection.execute(
-                "SELECT * FROM markets WHERE user_id = ? ORDER BY name", (user_id,)
-            ).fetchall()
-        else:
-            rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
-        return [_market_from_row(row) for row in rows]
-
-    def update_market(self, market: Market) -> bool:
-        cursor = self.connection.execute(
-            """
-            UPDATE markets
-            SET name = ?,
-                description = ?,
-                target_user = ?,
-                idea_prompt = ?
-            WHERE id = ?
-            """,
-            (
-                market.name,
-                market.description,
-                market.target_user,
-                market.idea_prompt,
-                market.id,
-            ),
-        )
-        self.connection.commit()
-        return cursor.rowcount > 0
-
-    def delete_market(self, market_id: str) -> bool:
-        cursor = self.connection.execute(
-            "DELETE FROM markets WHERE id = ?",
-            (market_id,),
-        )
-        self.connection.commit()
-        return cursor.rowcount > 0
-
-
 class SQLiteAgentPreferencesRepository(_SQLiteRepository, AgentPreferencesRepository):
     """SQLite-backed agent preferences repository."""
 
@@ -974,7 +844,7 @@ class SQLiteAgentPreferencesRepository(_SQLiteRepository, AgentPreferencesReposi
         self.connection.execute(
             """
             CREATE TABLE IF NOT EXISTS agent_preferences (
-                market_id TEXT PRIMARY KEY,
+                user_niche_id TEXT PRIMARY KEY,
                 preferred_source_families TEXT NOT NULL,
                 ignored_themes TEXT NOT NULL,
                 ignored_categories TEXT NOT NULL,
@@ -991,11 +861,11 @@ class SQLiteAgentPreferencesRepository(_SQLiteRepository, AgentPreferencesReposi
         self.connection.execute(
             """
             INSERT INTO agent_preferences (
-                market_id, preferred_source_families, ignored_themes,
+                user_niche_id, preferred_source_families, ignored_themes,
                 ignored_categories, muted_source_ids, extra_instructions,
                 created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(market_id) DO UPDATE SET
+            ON CONFLICT(user_niche_id) DO UPDATE SET
                 preferred_source_families = excluded.preferred_source_families,
                 ignored_themes = excluded.ignored_themes,
                 ignored_categories = excluded.ignored_categories,
@@ -1008,17 +878,17 @@ class SQLiteAgentPreferencesRepository(_SQLiteRepository, AgentPreferencesReposi
         self.connection.commit()
         return True
 
-    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
+    def get_agent_preferences(self, user_niche_id: str) -> AgentPreferences | None:
         row = self.connection.execute(
-            "SELECT * FROM agent_preferences WHERE market_id = ?",
-            (market_id,),
+            "SELECT * FROM agent_preferences WHERE user_niche_id = ?",
+            (user_niche_id,),
         ).fetchone()
         return _agent_preferences_from_row(row) if row else None
 
-    def delete_agent_preferences(self, market_id: str) -> bool:
+    def delete_agent_preferences(self, user_niche_id: str) -> bool:
         cursor = self.connection.execute(
-            "DELETE FROM agent_preferences WHERE market_id = ?",
-            (market_id,),
+            "DELETE FROM agent_preferences WHERE user_niche_id = ?",
+            (user_niche_id,),
         )
         self.connection.commit()
         return cursor.rowcount > 0
@@ -1032,7 +902,7 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
             """
             CREATE TABLE IF NOT EXISTS agent_feedback (
                 id TEXT PRIMARY KEY,
-                market_id TEXT NOT NULL,
+                user_niche_id TEXT NOT NULL,
                 opportunity_id TEXT NOT NULL,
                 action TEXT NOT NULL,
                 reason TEXT,
@@ -1046,7 +916,7 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
         cursor = self.connection.execute(
             """
             INSERT OR IGNORE INTO agent_feedback (
-                id, market_id, opportunity_id, action, reason, created_at
+                id, user_niche_id, opportunity_id, action, reason, created_at
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,
             _agent_feedback_values(feedback, sqlite=True),
@@ -1057,16 +927,16 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
     def list_agent_feedback(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         opportunity_id: str | None = None,
         action: str | None = None,
     ) -> list[AgentFeedback]:
         query = "SELECT * FROM agent_feedback"
         clauses: list[str] = []
         params: list[str] = []
-        if market_id is not None:
-            clauses.append("market_id = ?")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = ?")
+            params.append(user_niche_id)
         if opportunity_id is not None:
             clauses.append("opportunity_id = ?")
             params.append(opportunity_id)
@@ -1088,7 +958,7 @@ class SQLiteAgentActivityRepository(_SQLiteRepository, AgentActivityRepository):
             """
             CREATE TABLE IF NOT EXISTS agent_activity (
                 id TEXT PRIMARY KEY,
-                market_id TEXT NOT NULL,
+                user_niche_id TEXT NOT NULL,
                 event_type TEXT NOT NULL,
                 title TEXT NOT NULL,
                 detail TEXT,
@@ -1103,7 +973,7 @@ class SQLiteAgentActivityRepository(_SQLiteRepository, AgentActivityRepository):
         cursor = self.connection.execute(
             """
             INSERT OR IGNORE INTO agent_activity (
-                id, market_id, event_type, title, detail, metadata, created_at
+                id, user_niche_id, event_type, title, detail, metadata, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             _agent_activity_values(activity, sqlite=True),
@@ -1114,16 +984,16 @@ class SQLiteAgentActivityRepository(_SQLiteRepository, AgentActivityRepository):
     def list_agent_activity(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         event_type: str | None = None,
         limit: int | None = None,
     ) -> list[AgentActivity]:
         query = "SELECT * FROM agent_activity"
         clauses: list[str] = []
         params: list[str | int] = []
-        if market_id is not None:
-            clauses.append("market_id = ?")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = ?")
+            params.append(user_niche_id)
         if event_type is not None:
             clauses.append("event_type = ?")
             params.append(event_type)
@@ -1145,7 +1015,7 @@ class SQLiteAgentAlertRepository(_SQLiteRepository, AgentAlertRepository):
             """
             CREATE TABLE IF NOT EXISTS agent_alerts (
                 id TEXT PRIMARY KEY,
-                market_id TEXT NOT NULL,
+                user_niche_id TEXT NOT NULL,
                 alert_type TEXT NOT NULL,
                 title TEXT NOT NULL,
                 severity TEXT NOT NULL,
@@ -1163,7 +1033,7 @@ class SQLiteAgentAlertRepository(_SQLiteRepository, AgentAlertRepository):
         cursor = self.connection.execute(
             """
             INSERT OR IGNORE INTO agent_alerts (
-                id, market_id, alert_type, title, severity, status, detail,
+                id, user_niche_id, alert_type, title, severity, status, detail,
                 metadata, created_at, acknowledged_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -1182,16 +1052,16 @@ class SQLiteAgentAlertRepository(_SQLiteRepository, AgentAlertRepository):
     def list_agent_alerts(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentAlert]:
         query = "SELECT * FROM agent_alerts"
         clauses: list[str] = []
         params: list[str | int] = []
-        if market_id is not None:
-            clauses.append("market_id = ?")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = ?")
+            params.append(user_niche_id)
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
@@ -1233,7 +1103,7 @@ class SQLiteAgentFollowUpRepository(_SQLiteRepository, AgentFollowUpRepository):
             """
             CREATE TABLE IF NOT EXISTS agent_follow_ups (
                 id TEXT PRIMARY KEY,
-                market_id TEXT NOT NULL,
+                user_niche_id TEXT NOT NULL,
                 question TEXT NOT NULL,
                 opportunity_id TEXT,
                 cluster_id TEXT,
@@ -1251,7 +1121,7 @@ class SQLiteAgentFollowUpRepository(_SQLiteRepository, AgentFollowUpRepository):
         cursor = self.connection.execute(
             """
             INSERT OR IGNORE INTO agent_follow_ups (
-                id, market_id, question, opportunity_id, cluster_id, status,
+                id, user_niche_id, question, opportunity_id, cluster_id, status,
                 response, metadata, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -1263,16 +1133,16 @@ class SQLiteAgentFollowUpRepository(_SQLiteRepository, AgentFollowUpRepository):
     def list_agent_follow_ups(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentFollowUp]:
         query = "SELECT * FROM agent_follow_ups"
         clauses: list[str] = []
         params: list[str | int] = []
-        if market_id is not None:
-            clauses.append("market_id = ?")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = ?")
+            params.append(user_niche_id)
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
@@ -1408,276 +1278,6 @@ class SQLiteSourceLocatorRepository(_SQLiteRepository, SourceLocatorRepository):
         return [_source_locator_from_row(row) for row in rows]
 
 
-class SQLiteCompetitorRepository(_SQLiteRepository, CompetitorRepository):
-    """SQLite-backed competitor repository."""
-
-    def _initialize_schema(self) -> None:
-        self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS competitors (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                website TEXT,
-                category TEXT,
-                description TEXT,
-                market_id TEXT,
-                created_at TEXT
-            )
-            """
-        )
-        self.connection.commit()
-
-    def save_competitors(self, competitors: list[Competitor]) -> int:
-        inserted_count = 0
-        for competitor in competitors:
-            cursor = self.connection.execute(
-                """
-                INSERT OR IGNORE INTO competitors (
-                    id, name, website, category, description, market_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    competitor.id,
-                    competitor.name,
-                    competitor.website,
-                    competitor.category,
-                    competitor.description,
-                    competitor.market_id,
-                    _datetime_to_text(competitor.created_at),
-                ),
-            )
-            inserted_count += cursor.rowcount
-        self.connection.commit()
-        return inserted_count
-
-    def get_competitor(self, competitor_id: str) -> Competitor | None:
-        row = self.connection.execute(
-            "SELECT * FROM competitors WHERE id = ?",
-            (competitor_id,),
-        ).fetchone()
-        return _competitor_from_row(row) if row else None
-
-    def list_competitors(self) -> list[Competitor]:
-        rows = self.connection.execute("SELECT * FROM competitors ORDER BY name").fetchall()
-        return [_competitor_from_row(row) for row in rows]
-
-    def delete_competitors_by_market(self, market_id: str) -> int:
-        cursor = self.connection.execute(
-            "DELETE FROM competitors WHERE market_id = ?",
-            (market_id,),
-        )
-        self.connection.commit()
-        return cursor.rowcount
-
-
-class SQLiteMonitoredSourceRepository(_SQLiteRepository, MonitoredSourceRepository):
-    """SQLite-backed monitored source repository."""
-
-    def _initialize_schema(self) -> None:
-        self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS monitored_sources (
-                id TEXT PRIMARY KEY,
-                competitor_id TEXT,
-                market_id TEXT,
-                locator TEXT NOT NULL UNIQUE,
-                source_type TEXT NOT NULL,
-                enabled INTEGER NOT NULL,
-                limit_value INTEGER,
-                scan_frequency TEXT,
-                last_scanned_at TEXT,
-                last_error TEXT,
-                options TEXT NOT NULL
-            )
-            """
-        )
-        self.connection.commit()
-
-    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
-        inserted_count = 0
-        for source in sources:
-            cursor = self.connection.execute(
-                """
-                INSERT OR IGNORE INTO monitored_sources (
-                    id, competitor_id, market_id, locator, source_type, enabled,
-                    limit_value, scan_frequency, last_scanned_at, last_error, options
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    source.id,
-                    source.competitor_id,
-                    source.market_id,
-                    source.locator,
-                    source.source_type,
-                    _bool_to_int(source.enabled),
-                    source.limit,
-                    source.scan_frequency,
-                    _datetime_to_text(source.last_scanned_at),
-                    source.last_error,
-                    _to_json(source.options),
-                ),
-            )
-            inserted_count += cursor.rowcount
-        self.connection.commit()
-        return inserted_count
-
-    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
-        row = self.connection.execute(
-            "SELECT * FROM monitored_sources WHERE id = ?",
-            (source_id,),
-        ).fetchone()
-        return _monitored_source_from_row(row) if row else None
-
-    def update_monitored_source(self, source: MonitoredSource) -> bool:
-        cursor = self.connection.execute(
-            """
-            UPDATE monitored_sources
-            SET
-                source_type = ?,
-                competitor_id = ?,
-                market_id = ?,
-                enabled = ?,
-                limit_value = ?,
-                scan_frequency = ?,
-                last_scanned_at = ?,
-                last_error = ?,
-                options = ?
-            WHERE id = ?
-            """,
-            (
-                source.source_type,
-                source.competitor_id,
-                source.market_id,
-                _bool_to_int(source.enabled),
-                source.limit,
-                source.scan_frequency,
-                _datetime_to_text(source.last_scanned_at),
-                source.last_error,
-                _to_json(source.options),
-                source.id,
-            ),
-        )
-        self.connection.commit()
-        return cursor.rowcount > 0
-
-    def list_monitored_sources(
-        self,
-        *,
-        competitor_id: str | None = None,
-        market_id: str | None = None,
-        enabled: bool | None = None,
-    ) -> list[MonitoredSource]:
-        query = "SELECT * FROM monitored_sources"
-        clauses = []
-        params = []
-        if competitor_id is not None:
-            clauses.append("competitor_id = ?")
-            params.append(competitor_id)
-        if market_id is not None:
-            clauses.append("market_id = ?")
-            params.append(market_id)
-        if enabled is not None:
-            clauses.append("enabled = ?")
-            params.append(_bool_to_int(enabled))
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id"
-        rows = self.connection.execute(query, tuple(params)).fetchall()
-        return [_monitored_source_from_row(row) for row in rows]
-
-
-class SQLiteSourceHealthRepository(_SQLiteRepository, SourceHealthRepository):
-    """SQLite-backed monitored source health repository."""
-
-    def _initialize_schema(self) -> None:
-        self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS source_health (
-                monitored_source_id TEXT PRIMARY KEY,
-                total_runs INTEGER NOT NULL,
-                success_count INTEGER NOT NULL,
-                failure_count INTEGER NOT NULL,
-                consecutive_failures INTEGER NOT NULL,
-                posts_fetched_count INTEGER NOT NULL,
-                relevant_posts_count INTEGER NOT NULL,
-                extracted_signals_count INTEGER NOT NULL,
-                opportunity_count INTEGER NOT NULL,
-                last_status TEXT NOT NULL,
-                last_error TEXT,
-                last_fetched_count INTEGER NOT NULL,
-                last_relevant_count INTEGER NOT NULL,
-                last_extracted_count INTEGER NOT NULL,
-                last_opportunity_count INTEGER NOT NULL,
-                last_scanned_at TEXT,
-                updated_at TEXT
-            )
-            """
-        )
-        self.connection.commit()
-
-    def save_source_health(self, health: SourceHealth) -> bool:
-        cursor = self.connection.execute(
-            """
-            INSERT INTO source_health (
-                monitored_source_id, total_runs, success_count, failure_count,
-                consecutive_failures, posts_fetched_count, relevant_posts_count,
-                extracted_signals_count, opportunity_count, last_status,
-                last_error, last_fetched_count, last_relevant_count,
-                last_extracted_count, last_opportunity_count, last_scanned_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(monitored_source_id) DO UPDATE SET
-                total_runs = excluded.total_runs,
-                success_count = excluded.success_count,
-                failure_count = excluded.failure_count,
-                consecutive_failures = excluded.consecutive_failures,
-                posts_fetched_count = excluded.posts_fetched_count,
-                relevant_posts_count = excluded.relevant_posts_count,
-                extracted_signals_count = excluded.extracted_signals_count,
-                opportunity_count = excluded.opportunity_count,
-                last_status = excluded.last_status,
-                last_error = excluded.last_error,
-                last_fetched_count = excluded.last_fetched_count,
-                last_relevant_count = excluded.last_relevant_count,
-                last_extracted_count = excluded.last_extracted_count,
-                last_opportunity_count = excluded.last_opportunity_count,
-                last_scanned_at = excluded.last_scanned_at,
-                updated_at = excluded.updated_at
-            """,
-            _source_health_values(health, sqlite=True),
-        )
-        self.connection.commit()
-        return cursor.rowcount > 0
-
-    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
-        row = self.connection.execute(
-            "SELECT * FROM source_health WHERE monitored_source_id = ?",
-            (monitored_source_id,),
-        ).fetchone()
-        return _source_health_from_row(row) if row else None
-
-    def list_source_health(
-        self,
-        *,
-        monitored_source_id: str | None = None,
-        status: str | None = None,
-    ) -> list[SourceHealth]:
-        query = "SELECT * FROM source_health"
-        clauses = []
-        params = []
-        if monitored_source_id is not None:
-            clauses.append("monitored_source_id = ?")
-            params.append(monitored_source_id)
-        if status is not None:
-            clauses.append("last_status = ?")
-            params.append(status)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY monitored_source_id"
-        rows = self.connection.execute(query, tuple(params)).fetchall()
-        return [_source_health_from_row(row) for row in rows]
-
-
 class _PostgresRepository:
     """Shared Postgres connection handling."""
 
@@ -1786,8 +1386,8 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
             """
             SELECT
                 s.*,
-                e.competitor_id,
-                e.market_id,
+                e.niche_company_id,
+                e.niche_id,
                 e.evidence_url,
                 e.evidence_text,
                 e.detected_at
@@ -1816,8 +1416,8 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
             """
             SELECT
                 s.*,
-                e.competitor_id,
-                e.market_id,
+                e.niche_company_id,
+                e.niche_id,
                 e.evidence_url,
                 e.evidence_text,
                 e.detected_at
@@ -1831,8 +1431,8 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
     def _save_signal_evidence(self, signal: Signal) -> None:
         if not any(
             [
-                signal.competitor_id,
-                signal.market_id,
+                signal.niche_company_id,
+                signal.niche_id,
                 signal.evidence_url,
                 signal.evidence_text,
                 signal.detected_at,
@@ -1843,12 +1443,12 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
         self.connection.execute(
             """
             INSERT INTO signal_evidence (
-                signal_id, competitor_id, market_id, evidence_url,
+                signal_id, niche_company_id, niche_id, evidence_url,
                 evidence_text, detected_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s)
             ON CONFLICT (signal_id) DO UPDATE SET
-                competitor_id = EXCLUDED.competitor_id,
-                market_id = EXCLUDED.market_id,
+                niche_company_id = EXCLUDED.niche_company_id,
+                niche_id = EXCLUDED.niche_id,
                 evidence_url = EXCLUDED.evidence_url,
                 evidence_text = EXCLUDED.evidence_text,
                 detected_at = EXCLUDED.detected_at,
@@ -1856,8 +1456,8 @@ class PostgresSignalRepository(_PostgresRepository, SignalRepository):
             """,
             (
                 signal.id,
-                signal.competitor_id,
-                signal.market_id,
+                signal.niche_company_id,
+                signal.niche_id,
                 signal.evidence_url,
                 signal.evidence_text,
                 signal.detected_at or datetime.now(tz=UTC),
@@ -2024,80 +1624,6 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
         return [_opportunity_from_row(row) for row in rows]
 
 
-class PostgresMarketRepository(_PostgresRepository, MarketRepository):
-    """Postgres-backed market repository."""
-
-    def save_markets(self, markets: list[Market]) -> int:
-        inserted_count = 0
-        for market in markets:
-            cursor = self.connection.execute(
-                """
-                INSERT INTO markets (
-                    id, name, description, target_user, idea_prompt, user_id, template_id, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
-                """,
-                (
-                    market.id,
-                    market.name,
-                    market.description,
-                    market.target_user,
-                    market.idea_prompt,
-                    market.user_id,
-                    market.template_id,
-                    market.created_at,
-                ),
-            )
-            inserted_count += _rowcount(cursor)
-        self.connection.commit()
-        return inserted_count
-
-    def get_market(self, market_id: str) -> Market | None:
-        row = self.connection.execute(
-            "SELECT * FROM markets WHERE id = %s",
-            (market_id,),
-        ).fetchone()
-        return _market_from_row(row) if row else None
-
-    def list_markets(self, user_id: str | None = None) -> list[Market]:
-        if user_id is not None:
-            rows = self.connection.execute(
-                "SELECT * FROM markets WHERE user_id = %s ORDER BY name", (user_id,)
-            ).fetchall()
-        else:
-            rows = self.connection.execute("SELECT * FROM markets ORDER BY name").fetchall()
-        return [_market_from_row(row) for row in rows]
-
-    def update_market(self, market: Market) -> bool:
-        cursor = self.connection.execute(
-            """
-            UPDATE markets
-            SET name = %s,
-                description = %s,
-                target_user = %s,
-                idea_prompt = %s
-            WHERE id = %s
-            """,
-            (
-                market.name,
-                market.description,
-                market.target_user,
-                market.idea_prompt,
-                market.id,
-            ),
-        )
-        self.connection.commit()
-        return _rowcount(cursor) > 0
-
-    def delete_market(self, market_id: str) -> bool:
-        cursor = self.connection.execute(
-            "DELETE FROM markets WHERE id = %s",
-            (market_id,),
-        )
-        self.connection.commit()
-        return _rowcount(cursor) > 0
-
-
 class PostgresAgentPreferencesRepository(
     _PostgresRepository,
     AgentPreferencesRepository,
@@ -2108,11 +1634,11 @@ class PostgresAgentPreferencesRepository(
         self.connection.execute(
             """
             INSERT INTO agent_preferences (
-                market_id, preferred_source_families, ignored_themes,
+                user_niche_id, preferred_source_families, ignored_themes,
                 ignored_categories, muted_source_ids, extra_instructions,
                 created_at, updated_at
-            ) VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
-            ON CONFLICT (market_id) DO UPDATE SET
+            ) VALUES (%s::uuid, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+            ON CONFLICT (user_niche_id) DO UPDATE SET
                 preferred_source_families = EXCLUDED.preferred_source_families,
                 ignored_themes = EXCLUDED.ignored_themes,
                 ignored_categories = EXCLUDED.ignored_categories,
@@ -2125,17 +1651,17 @@ class PostgresAgentPreferencesRepository(
         self.connection.commit()
         return True
 
-    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
+    def get_agent_preferences(self, user_niche_id: str) -> AgentPreferences | None:
         row = self.connection.execute(
-            "SELECT * FROM agent_preferences WHERE market_id = %s",
-            (market_id,),
+            "SELECT * FROM agent_preferences WHERE user_niche_id = %s",
+            (user_niche_id,),
         ).fetchone()
         return _agent_preferences_from_row(row) if row else None
 
-    def delete_agent_preferences(self, market_id: str) -> bool:
+    def delete_agent_preferences(self, user_niche_id: str) -> bool:
         cursor = self.connection.execute(
-            "DELETE FROM agent_preferences WHERE market_id = %s",
-            (market_id,),
+            "DELETE FROM agent_preferences WHERE user_niche_id = %s",
+            (user_niche_id,),
         )
         self.connection.commit()
         return _rowcount(cursor) > 0
@@ -2148,8 +1674,8 @@ class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackReposito
         cursor = self.connection.execute(
             """
             INSERT INTO agent_feedback (
-                id, market_id, opportunity_id, action, reason, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+                id, user_niche_id, opportunity_id, action, reason, created_at
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
             """,
             _agent_feedback_values(feedback, sqlite=False),
@@ -2160,16 +1686,16 @@ class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackReposito
     def list_agent_feedback(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         opportunity_id: str | None = None,
         action: str | None = None,
     ) -> list[AgentFeedback]:
         query = "SELECT * FROM agent_feedback"
         clauses: list[str] = []
         params: list[str] = []
-        if market_id is not None:
-            clauses.append("market_id = %s")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = %s")
+            params.append(user_niche_id)
         if opportunity_id is not None:
             clauses.append("opportunity_id = %s")
             params.append(opportunity_id)
@@ -2190,8 +1716,8 @@ class PostgresAgentActivityRepository(_PostgresRepository, AgentActivityReposito
         cursor = self.connection.execute(
             """
             INSERT INTO agent_activity (
-                id, market_id, event_type, title, detail, metadata, created_at
-            ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+                id, user_niche_id, event_type, title, detail, metadata, created_at
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s::jsonb, %s)
             ON CONFLICT (id) DO NOTHING
             """,
             _agent_activity_values(activity, sqlite=False),
@@ -2202,16 +1728,16 @@ class PostgresAgentActivityRepository(_PostgresRepository, AgentActivityReposito
     def list_agent_activity(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         event_type: str | None = None,
         limit: int | None = None,
     ) -> list[AgentActivity]:
         query = "SELECT * FROM agent_activity"
         clauses: list[str] = []
         params: list[str | int] = []
-        if market_id is not None:
-            clauses.append("market_id = %s")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = %s")
+            params.append(user_niche_id)
         if event_type is not None:
             clauses.append("event_type = %s")
             params.append(event_type)
@@ -2232,9 +1758,9 @@ class PostgresAgentAlertRepository(_PostgresRepository, AgentAlertRepository):
         cursor = self.connection.execute(
             """
             INSERT INTO agent_alerts (
-                id, market_id, alert_type, title, severity, status, detail,
+                id, user_niche_id, alert_type, title, severity, status, detail,
                 metadata, created_at, acknowledged_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             ON CONFLICT (id) DO NOTHING
             """,
             _agent_alert_values(alert, sqlite=False),
@@ -2252,16 +1778,16 @@ class PostgresAgentAlertRepository(_PostgresRepository, AgentAlertRepository):
     def list_agent_alerts(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentAlert]:
         query = "SELECT * FROM agent_alerts"
         clauses: list[str] = []
         params: list[str | int] = []
-        if market_id is not None:
-            clauses.append("market_id = %s")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = %s")
+            params.append(user_niche_id)
         if status is not None:
             clauses.append("status = %s")
             params.append(status)
@@ -2298,9 +1824,9 @@ class PostgresAgentFollowUpRepository(_PostgresRepository, AgentFollowUpReposito
         cursor = self.connection.execute(
             """
             INSERT INTO agent_follow_ups (
-                id, market_id, question, opportunity_id, cluster_id, status,
+                id, user_niche_id, question, opportunity_id, cluster_id, status,
                 response, metadata, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
             ON CONFLICT (id) DO NOTHING
             """,
             _agent_follow_up_values(follow_up, sqlite=False),
@@ -2311,16 +1837,16 @@ class PostgresAgentFollowUpRepository(_PostgresRepository, AgentFollowUpReposito
     def list_agent_follow_ups(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentFollowUp]:
         query = "SELECT * FROM agent_follow_ups"
         clauses: list[str] = []
         params: list[str | int] = []
-        if market_id is not None:
-            clauses.append("market_id = %s")
-            params.append(market_id)
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = %s")
+            params.append(user_niche_id)
         if status is not None:
             clauses.append("status = %s")
             params.append(status)
@@ -2415,217 +1941,6 @@ class PostgresSourceLocatorRepository(_PostgresRepository, SourceLocatorReposito
         return [_source_locator_from_row(row) for row in rows]
 
 
-class PostgresCompetitorRepository(_PostgresRepository, CompetitorRepository):
-    """Postgres-backed competitor repository."""
-
-    def save_competitors(self, competitors: list[Competitor]) -> int:
-        inserted_count = 0
-        for competitor in competitors:
-            cursor = self.connection.execute(
-                """
-                INSERT INTO competitors (
-                    id, name, website, category, description, market_id, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
-                """,
-                (
-                    competitor.id,
-                    competitor.name,
-                    competitor.website,
-                    competitor.category,
-                    competitor.description,
-                    competitor.market_id,
-                    competitor.created_at,
-                ),
-            )
-            inserted_count += _rowcount(cursor)
-        self.connection.commit()
-        return inserted_count
-
-    def get_competitor(self, competitor_id: str) -> Competitor | None:
-        row = self.connection.execute(
-            "SELECT * FROM competitors WHERE id = %s",
-            (competitor_id,),
-        ).fetchone()
-        return _competitor_from_row(row) if row else None
-
-    def list_competitors(self) -> list[Competitor]:
-        rows = self.connection.execute("SELECT * FROM competitors ORDER BY name").fetchall()
-        return [_competitor_from_row(row) for row in rows]
-
-    def delete_competitors_by_market(self, market_id: str) -> int:
-        cursor = self.connection.execute(
-            "DELETE FROM competitors WHERE market_id = %s",
-            (market_id,),
-        )
-        self.connection.commit()
-        return _rowcount(cursor)
-
-
-class PostgresMonitoredSourceRepository(_PostgresRepository, MonitoredSourceRepository):
-    """Postgres-backed monitored source repository."""
-
-    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
-        inserted_count = 0
-        for source in sources:
-            cursor = self.connection.execute(
-                """
-                INSERT INTO monitored_sources (
-                    id, competitor_id, market_id, locator, source_type, enabled,
-                    limit_value, scan_frequency, last_scanned_at, last_error, options
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                ON CONFLICT (id) DO NOTHING
-                """,
-                (
-                    source.id,
-                    source.competitor_id,
-                    source.market_id,
-                    source.locator,
-                    source.source_type,
-                    source.enabled,
-                    source.limit,
-                    source.scan_frequency,
-                    source.last_scanned_at,
-                    source.last_error,
-                    _to_json(source.options),
-                ),
-            )
-            inserted_count += _rowcount(cursor)
-        self.connection.commit()
-        return inserted_count
-
-    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
-        row = self.connection.execute(
-            "SELECT * FROM monitored_sources WHERE id = %s",
-            (source_id,),
-        ).fetchone()
-        return _monitored_source_from_row(row) if row else None
-
-    def update_monitored_source(self, source: MonitoredSource) -> bool:
-        cursor = self.connection.execute(
-            """
-            UPDATE monitored_sources
-            SET
-                source_type = %s,
-                competitor_id = %s,
-                market_id = %s,
-                enabled = %s,
-                limit_value = %s,
-                scan_frequency = %s,
-                last_scanned_at = %s,
-                last_error = %s,
-                options = %s::jsonb,
-                updated_at = now()
-            WHERE id = %s
-            """,
-            (
-                source.source_type,
-                source.competitor_id,
-                source.market_id,
-                source.enabled,
-                source.limit,
-                source.scan_frequency,
-                source.last_scanned_at,
-                source.last_error,
-                _to_json(source.options),
-                source.id,
-            ),
-        )
-        self.connection.commit()
-        return _rowcount(cursor) > 0
-
-    def list_monitored_sources(
-        self,
-        *,
-        competitor_id: str | None = None,
-        market_id: str | None = None,
-        enabled: bool | None = None,
-    ) -> list[MonitoredSource]:
-        query = "SELECT * FROM monitored_sources"
-        clauses = []
-        params = []
-        if competitor_id is not None:
-            clauses.append("competitor_id = %s")
-            params.append(competitor_id)
-        if market_id is not None:
-            clauses.append("market_id = %s")
-            params.append(market_id)
-        if enabled is not None:
-            clauses.append("enabled = %s")
-            params.append(enabled)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id"
-        rows = self.connection.execute(query, tuple(params)).fetchall()
-        return [_monitored_source_from_row(row) for row in rows]
-
-
-class PostgresSourceHealthRepository(_PostgresRepository, SourceHealthRepository):
-    """Postgres-backed monitored source health repository."""
-
-    def save_source_health(self, health: SourceHealth) -> bool:
-        cursor = self.connection.execute(
-            """
-            INSERT INTO source_health (
-                monitored_source_id, total_runs, success_count, failure_count,
-                consecutive_failures, posts_fetched_count, relevant_posts_count,
-                extracted_signals_count, opportunity_count, last_status,
-                last_error, last_fetched_count, last_relevant_count,
-                last_extracted_count, last_opportunity_count, last_scanned_at,
-                updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (monitored_source_id) DO UPDATE SET
-                total_runs = EXCLUDED.total_runs,
-                success_count = EXCLUDED.success_count,
-                failure_count = EXCLUDED.failure_count,
-                consecutive_failures = EXCLUDED.consecutive_failures,
-                posts_fetched_count = EXCLUDED.posts_fetched_count,
-                relevant_posts_count = EXCLUDED.relevant_posts_count,
-                extracted_signals_count = EXCLUDED.extracted_signals_count,
-                opportunity_count = EXCLUDED.opportunity_count,
-                last_status = EXCLUDED.last_status,
-                last_error = EXCLUDED.last_error,
-                last_fetched_count = EXCLUDED.last_fetched_count,
-                last_relevant_count = EXCLUDED.last_relevant_count,
-                last_extracted_count = EXCLUDED.last_extracted_count,
-                last_opportunity_count = EXCLUDED.last_opportunity_count,
-                last_scanned_at = EXCLUDED.last_scanned_at,
-                updated_at = EXCLUDED.updated_at
-            """,
-            _source_health_values(health, sqlite=False),
-        )
-        self.connection.commit()
-        return _rowcount(cursor) > 0
-
-    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
-        row = self.connection.execute(
-            "SELECT * FROM source_health WHERE monitored_source_id = %s",
-            (monitored_source_id,),
-        ).fetchone()
-        return _source_health_from_row(row) if row else None
-
-    def list_source_health(
-        self,
-        *,
-        monitored_source_id: str | None = None,
-        status: str | None = None,
-    ) -> list[SourceHealth]:
-        query = "SELECT * FROM source_health"
-        clauses = []
-        params = []
-        if monitored_source_id is not None:
-            clauses.append("monitored_source_id = %s")
-            params.append(monitored_source_id)
-        if status is not None:
-            clauses.append("last_status = %s")
-            params.append(status)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY monitored_source_id"
-        rows = self.connection.execute(query, tuple(params)).fetchall()
-        return [_source_health_from_row(row) for row in rows]
-
-
 def connect_postgres(database_url: str) -> Any:
     """Create a Postgres connection for repository wiring."""
     return _connect_postgres(database_url)
@@ -2712,8 +2027,8 @@ def _signal_from_row(row: sqlite3.Row) -> Signal:
         willingness_to_pay=_bool_from_int(row["willingness_to_pay"]),
         category=row["category"],
         confidence=_float(row["confidence"]),
-        competitor_id=_row_get(row, "competitor_id"),
-        market_id=_row_get(row, "market_id"),
+        niche_company_id=_row_get(row, "niche_company_id"),
+        niche_id=_row_get(row, "niche_id"),
         evidence_url=_row_get(row, "evidence_url"),
         evidence_text=_row_get(row, "evidence_text"),
         detected_at=_datetime_from_text(_row_get(row, "detected_at")),
@@ -2759,27 +2074,13 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
     )
 
 
-def _market_from_row(row: sqlite3.Row) -> Market:
-    keys = row.keys()
-    return Market.create(
-        id=row["id"],
-        name=row["name"],
-        description=row["description"],
-        target_user=row["target_user"],
-        idea_prompt=row["idea_prompt"],
-        user_id=row["user_id"] if "user_id" in keys else None,
-        template_id=row["template_id"] if "template_id" in keys else None,
-        created_at=_datetime_from_text(row["created_at"]),
-    )
-
-
 def _agent_preferences_values(
     preferences: AgentPreferences,
     *,
     sqlite: bool,
 ) -> tuple:
     return (
-        preferences.market_id,
+        preferences.user_niche_id,
         _to_json(preferences.preferred_source_families),
         _to_json(preferences.ignored_themes),
         _to_json(preferences.ignored_categories),
@@ -2792,7 +2093,7 @@ def _agent_preferences_values(
 
 def _agent_preferences_from_row(row: sqlite3.Row) -> AgentPreferences:
     return AgentPreferences.create(
-        market_id=row["market_id"],
+        user_niche_id=row["user_niche_id"],
         preferred_source_families=_from_json(row["preferred_source_families"]),
         ignored_themes=_from_json(row["ignored_themes"]),
         ignored_categories=_from_json(row["ignored_categories"]),
@@ -2806,7 +2107,7 @@ def _agent_preferences_from_row(row: sqlite3.Row) -> AgentPreferences:
 def _agent_feedback_values(feedback: AgentFeedback, *, sqlite: bool) -> tuple:
     return (
         feedback.id,
-        feedback.market_id,
+        feedback.user_niche_id,
         feedback.opportunity_id,
         feedback.action,
         feedback.reason,
@@ -2817,7 +2118,7 @@ def _agent_feedback_values(feedback: AgentFeedback, *, sqlite: bool) -> tuple:
 def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
     return AgentFeedback.create(
         id=row["id"],
-        market_id=row["market_id"],
+        user_niche_id=row["user_niche_id"],
         opportunity_id=row["opportunity_id"],
         action=row["action"],
         reason=row["reason"],
@@ -2828,7 +2129,7 @@ def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
 def _agent_activity_values(activity: AgentActivity, *, sqlite: bool) -> tuple:
     return (
         activity.id,
-        activity.market_id,
+        activity.user_niche_id,
         activity.event_type,
         activity.title,
         activity.detail,
@@ -2840,7 +2141,7 @@ def _agent_activity_values(activity: AgentActivity, *, sqlite: bool) -> tuple:
 def _agent_activity_from_row(row: sqlite3.Row) -> AgentActivity:
     return AgentActivity.create(
         id=row["id"],
-        market_id=row["market_id"],
+        user_niche_id=row["user_niche_id"],
         event_type=row["event_type"],
         title=row["title"],
         detail=row["detail"],
@@ -2852,7 +2153,7 @@ def _agent_activity_from_row(row: sqlite3.Row) -> AgentActivity:
 def _agent_alert_values(alert: AgentAlert, *, sqlite: bool) -> tuple:
     return (
         alert.id,
-        alert.market_id,
+        alert.user_niche_id,
         alert.alert_type,
         alert.title,
         alert.severity,
@@ -2871,7 +2172,7 @@ def _agent_alert_values(alert: AgentAlert, *, sqlite: bool) -> tuple:
 def _agent_alert_from_row(row: sqlite3.Row) -> AgentAlert:
     return AgentAlert.create(
         id=row["id"],
-        market_id=row["market_id"],
+        user_niche_id=row["user_niche_id"],
         alert_type=row["alert_type"],
         title=row["title"],
         severity=row["severity"],
@@ -2886,7 +2187,7 @@ def _agent_alert_from_row(row: sqlite3.Row) -> AgentAlert:
 def _agent_follow_up_values(follow_up: AgentFollowUp, *, sqlite: bool) -> tuple:
     return (
         follow_up.id,
-        follow_up.market_id,
+        follow_up.user_niche_id,
         follow_up.question,
         follow_up.opportunity_id,
         follow_up.cluster_id,
@@ -2909,7 +2210,7 @@ def _agent_follow_up_values(follow_up: AgentFollowUp, *, sqlite: bool) -> tuple:
 def _agent_follow_up_from_row(row: sqlite3.Row) -> AgentFollowUp:
     return AgentFollowUp.create(
         id=row["id"],
-        market_id=row["market_id"],
+        user_niche_id=row["user_niche_id"],
         question=row["question"],
         opportunity_id=row["opportunity_id"],
         cluster_id=row["cluster_id"],
@@ -2917,50 +2218,6 @@ def _agent_follow_up_from_row(row: sqlite3.Row) -> AgentFollowUp:
         response=row["response"],
         metadata=_from_json(row["metadata"]),
         created_at=_datetime_from_text(row["created_at"]),
-        updated_at=_datetime_from_text(row["updated_at"]),
-    )
-
-
-def _source_health_values(health: SourceHealth, *, sqlite: bool) -> tuple:
-    return (
-        health.monitored_source_id,
-        health.total_runs,
-        health.success_count,
-        health.failure_count,
-        health.consecutive_failures,
-        health.posts_fetched_count,
-        health.relevant_posts_count,
-        health.extracted_signals_count,
-        health.opportunity_count,
-        health.last_status,
-        health.last_error,
-        health.last_fetched_count,
-        health.last_relevant_count,
-        health.last_extracted_count,
-        health.last_opportunity_count,
-        _datetime_to_text(health.last_scanned_at) if sqlite else health.last_scanned_at,
-        _datetime_to_text(health.updated_at) if sqlite else health.updated_at,
-    )
-
-
-def _source_health_from_row(row: sqlite3.Row) -> SourceHealth:
-    return SourceHealth.create(
-        monitored_source_id=row["monitored_source_id"],
-        total_runs=row["total_runs"],
-        success_count=row["success_count"],
-        failure_count=row["failure_count"],
-        consecutive_failures=row["consecutive_failures"],
-        posts_fetched_count=row["posts_fetched_count"],
-        relevant_posts_count=row["relevant_posts_count"],
-        extracted_signals_count=row["extracted_signals_count"],
-        opportunity_count=row["opportunity_count"],
-        last_status=row["last_status"],
-        last_error=row["last_error"],
-        last_fetched_count=row["last_fetched_count"],
-        last_relevant_count=row["last_relevant_count"],
-        last_extracted_count=row["last_extracted_count"],
-        last_opportunity_count=row["last_opportunity_count"],
-        last_scanned_at=_datetime_from_text(row["last_scanned_at"]),
         updated_at=_datetime_from_text(row["updated_at"]),
     )
 
@@ -3031,34 +2288,6 @@ def _source_locator_from_row(row: sqlite3.Row) -> SourceLocator:
         locator=row["locator"],
         enabled=bool(row["enabled"]),
         limit=row["limit_value"],
-        options=_from_json(row["options"]),
-    )
-
-
-def _competitor_from_row(row: sqlite3.Row) -> Competitor:
-    return Competitor.create(
-        id=row["id"],
-        name=row["name"],
-        website=row["website"],
-        category=row["category"],
-        description=row["description"],
-        market_id=_row_get(row, "market_id"),
-        created_at=_datetime_from_text(row["created_at"]),
-    )
-
-
-def _monitored_source_from_row(row: sqlite3.Row) -> MonitoredSource:
-    return MonitoredSource.create(
-        id=row["id"],
-        competitor_id=row["competitor_id"],
-        market_id=_row_get(row, "market_id"),
-        locator=row["locator"],
-        source_type=row["source_type"],
-        enabled=bool(row["enabled"]),
-        limit=row["limit_value"],
-        scan_frequency=row["scan_frequency"],
-        last_scanned_at=_datetime_from_text(row["last_scanned_at"]),
-        last_error=row["last_error"],
         options=_from_json(row["options"]),
     )
 

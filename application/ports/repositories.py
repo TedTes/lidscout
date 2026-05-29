@@ -10,14 +10,12 @@ from domain.agent import (
     AgentPreferences,
 )
 from domain.cluster import SignalCluster
-from domain.competitor import Competitor
-from domain.market import Market
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceHealth, SourceLocator
+from domain.source import SourceLocator
 
 
 class PostRepository(Protocol):
@@ -108,30 +106,6 @@ class OpportunityRepository(Protocol):
         ...
 
 
-class MarketRepository(Protocol):
-    """Persistence boundary for watched markets or niches."""
-
-    def save_markets(self, markets: list[Market]) -> int:
-        """Persist markets and return the number saved."""
-        ...
-
-    def get_market(self, market_id: str) -> Market | None:
-        """Load one market by id."""
-        ...
-
-    def list_markets(self, user_id: str | None = None) -> list[Market]:
-        """Load all persisted markets, optionally filtered by owner."""
-        ...
-
-    def update_market(self, market: Market) -> bool:
-        """Update an existing market and return whether it changed."""
-        ...
-
-    def delete_market(self, market_id: str) -> bool:
-        """Delete one market and return whether it existed."""
-        ...
-
-
 class AgentPreferencesRepository(Protocol):
     """Persistence boundary for per-niche agent preferences."""
 
@@ -139,12 +113,12 @@ class AgentPreferencesRepository(Protocol):
         """Persist agent preferences and return whether they changed."""
         ...
 
-    def get_agent_preferences(self, market_id: str) -> AgentPreferences | None:
-        """Load agent preferences for one market."""
+    def get_agent_preferences(self, user_niche_id: str) -> AgentPreferences | None:
+        """Load agent preferences for one user niche."""
         ...
 
-    def delete_agent_preferences(self, market_id: str) -> bool:
-        """Delete agent preferences for one market."""
+    def delete_agent_preferences(self, user_niche_id: str) -> bool:
+        """Delete agent preferences for one user niche."""
         ...
 
 
@@ -158,7 +132,7 @@ class AgentFeedbackRepository(Protocol):
     def list_agent_feedback(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         opportunity_id: str | None = None,
         action: str | None = None,
     ) -> list[AgentFeedback]:
@@ -176,7 +150,7 @@ class AgentActivityRepository(Protocol):
     def list_agent_activity(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         event_type: str | None = None,
         limit: int | None = None,
     ) -> list[AgentActivity]:
@@ -198,7 +172,7 @@ class AgentAlertRepository(Protocol):
     def list_agent_alerts(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentAlert]:
@@ -220,7 +194,7 @@ class AgentFollowUpRepository(Protocol):
     def list_agent_follow_ups(
         self,
         *,
-        market_id: str | None = None,
+        user_niche_id: str | None = None,
         status: str | None = None,
         limit: int | None = None,
     ) -> list[AgentFollowUp]:
@@ -253,73 +227,6 @@ class SourceLocatorRepository(Protocol):
 
     def list_source_locators(self, enabled: bool | None = None) -> list[SourceLocator]:
         """Load source locators, optionally filtered by enabled state."""
-        ...
-
-
-class CompetitorRepository(Protocol):
-    """Persistence boundary for monitored competitors."""
-
-    def save_competitors(self, competitors: list[Competitor]) -> int:
-        """Persist competitors and return the number saved."""
-        ...
-
-    def get_competitor(self, competitor_id: str) -> Competitor | None:
-        """Load one competitor by id."""
-        ...
-
-    def list_competitors(self) -> list[Competitor]:
-        """Load all persisted competitors."""
-        ...
-
-    def delete_competitors_by_market(self, market_id: str) -> int:
-        """Delete competitors scoped to one market and return the count."""
-        ...
-
-
-class MonitoredSourceRepository(Protocol):
-    """Persistence boundary for competitor-linked monitored sources."""
-
-    def save_monitored_sources(self, sources: list[MonitoredSource]) -> int:
-        """Persist monitored sources and return the number saved."""
-        ...
-
-    def get_monitored_source(self, source_id: str) -> MonitoredSource | None:
-        """Load one monitored source by id."""
-        ...
-
-    def update_monitored_source(self, source: MonitoredSource) -> bool:
-        """Replace one monitored source and return whether it existed."""
-        ...
-
-    def list_monitored_sources(
-        self,
-        *,
-        competitor_id: str | None = None,
-        market_id: str | None = None,
-        enabled: bool | None = None,
-    ) -> list[MonitoredSource]:
-        """Load monitored sources, optionally filtered by scope and enabled state."""
-        ...
-
-
-class SourceHealthRepository(Protocol):
-    """Persistence boundary for monitored source health snapshots."""
-
-    def save_source_health(self, health: SourceHealth) -> bool:
-        """Persist one source health snapshot."""
-        ...
-
-    def get_source_health(self, monitored_source_id: str) -> SourceHealth | None:
-        """Load source health for one monitored source."""
-        ...
-
-    def list_source_health(
-        self,
-        *,
-        monitored_source_id: str | None = None,
-        status: str | None = None,
-    ) -> list[SourceHealth]:
-        """Load source health snapshots, optionally filtered."""
         ...
 
 

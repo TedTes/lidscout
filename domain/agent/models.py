@@ -34,7 +34,7 @@ AgentFollowUpStatus = Literal["queued", "answered", "dismissed"]
 class AgentPreferences:
     """Persistent per-niche preferences that steer future agent runs."""
 
-    market_id: str
+    user_niche_id: str
     preferred_source_families: list[str] = field(default_factory=list)
     ignored_themes: list[str] = field(default_factory=list)
     ignored_categories: list[str] = field(default_factory=list)
@@ -47,7 +47,7 @@ class AgentPreferences:
     def create(
         cls,
         *,
-        market_id: str,
+        user_niche_id: str,
         preferred_source_families: list[str] | None = None,
         ignored_themes: list[str] | None = None,
         ignored_categories: list[str] | None = None,
@@ -57,13 +57,13 @@ class AgentPreferences:
         updated_at: datetime | None = None,
     ) -> "AgentPreferences":
         """Create validated agent preferences."""
-        normalized_market_id = market_id.strip()
-        if not normalized_market_id:
-            raise ValueError("market_id is required")
+        normalized_id = user_niche_id.strip()
+        if not normalized_id:
+            raise ValueError("user_niche_id is required")
 
         created = created_at or datetime.now(tz=UTC)
         return cls(
-            market_id=normalized_market_id,
+            user_niche_id=normalized_id,
             preferred_source_families=_clean_list(preferred_source_families or []),
             ignored_themes=_clean_list(ignored_themes or []),
             ignored_categories=_clean_list(ignored_categories or []),
@@ -79,7 +79,7 @@ class AgentFeedback:
     """A user feedback event that can steer future agent behavior."""
 
     id: str
-    market_id: str
+    user_niche_id: str
     opportunity_id: str
     action: AgentFeedbackAction
     reason: str | None = None
@@ -89,7 +89,7 @@ class AgentFeedback:
     def create(
         cls,
         *,
-        market_id: str,
+        user_niche_id: str,
         opportunity_id: str,
         action: str,
         id: str | None = None,
@@ -98,14 +98,14 @@ class AgentFeedback:
     ) -> "AgentFeedback":
         """Create validated agent feedback."""
         feedback_id = (id or f"agent-feedback-{uuid4().hex}").strip()
-        normalized_market_id = market_id.strip()
+        normalized_user_niche_id = user_niche_id.strip()
         normalized_opportunity_id = opportunity_id.strip()
         normalized_action = action.strip().lower()
 
         if not feedback_id:
             raise ValueError("id is required")
-        if not normalized_market_id:
-            raise ValueError("market_id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
         if not normalized_opportunity_id:
             raise ValueError("opportunity_id is required")
         if normalized_action not in {
@@ -118,7 +118,7 @@ class AgentFeedback:
 
         return cls(
             id=feedback_id,
-            market_id=normalized_market_id,
+            user_niche_id=normalized_user_niche_id,
             opportunity_id=normalized_opportunity_id,
             action=normalized_action,  # type: ignore[arg-type]
             reason=_clean_optional(reason),
@@ -131,7 +131,7 @@ class AgentActivity:
     """One user-visible event from a niche research agent."""
 
     id: str
-    market_id: str
+    user_niche_id: str
     event_type: AgentActivityType
     title: str
     detail: str | None = None
@@ -142,7 +142,7 @@ class AgentActivity:
     def create(
         cls,
         *,
-        market_id: str,
+        user_niche_id: str,
         event_type: str,
         title: str,
         id: str | None = None,
@@ -152,14 +152,14 @@ class AgentActivity:
     ) -> "AgentActivity":
         """Create a validated agent activity event."""
         activity_id = (id or f"agent-activity-{uuid4().hex}").strip()
-        normalized_market_id = market_id.strip()
+        normalized_user_niche_id = user_niche_id.strip()
         normalized_event_type = event_type.strip().lower()
         normalized_title = title.strip()
 
         if not activity_id:
             raise ValueError("id is required")
-        if not normalized_market_id:
-            raise ValueError("market_id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
         if normalized_event_type not in {
             "run_started",
             "run_completed",
@@ -176,7 +176,7 @@ class AgentActivity:
 
         return cls(
             id=activity_id,
-            market_id=normalized_market_id,
+            user_niche_id=normalized_user_niche_id,
             event_type=normalized_event_type,  # type: ignore[arg-type]
             title=normalized_title,
             detail=_clean_optional(detail),
@@ -190,7 +190,7 @@ class AgentAlert:
     """One proactive agent alert for a niche."""
 
     id: str
-    market_id: str
+    user_niche_id: str
     alert_type: str
     title: str
     severity: AgentAlertSeverity = "info"
@@ -204,7 +204,7 @@ class AgentAlert:
     def create(
         cls,
         *,
-        market_id: str,
+        user_niche_id: str,
         alert_type: str,
         title: str,
         id: str | None = None,
@@ -217,7 +217,7 @@ class AgentAlert:
     ) -> "AgentAlert":
         """Create a validated proactive alert."""
         alert_id = (id or f"agent-alert-{uuid4().hex}").strip()
-        normalized_market_id = market_id.strip()
+        normalized_user_niche_id = user_niche_id.strip()
         normalized_alert_type = alert_type.strip().lower()
         normalized_title = title.strip()
         normalized_severity = severity.strip().lower()
@@ -225,8 +225,8 @@ class AgentAlert:
 
         if not alert_id:
             raise ValueError("id is required")
-        if not normalized_market_id:
-            raise ValueError("market_id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
         if not normalized_alert_type:
             raise ValueError("alert_type is required")
         if not normalized_title:
@@ -239,7 +239,7 @@ class AgentAlert:
         created = created_at or datetime.now(tz=UTC)
         return cls(
             id=alert_id,
-            market_id=normalized_market_id,
+            user_niche_id=normalized_user_niche_id,
             alert_type=normalized_alert_type,
             title=normalized_title,
             severity=normalized_severity,  # type: ignore[arg-type]
@@ -258,7 +258,7 @@ class AgentAlert:
         """Return an acknowledged copy of this alert."""
         return AgentAlert.create(
             id=self.id,
-            market_id=self.market_id,
+            user_niche_id=self.user_niche_id,
             alert_type=self.alert_type,
             title=self.title,
             severity=self.severity,
@@ -275,7 +275,7 @@ class AgentFollowUp:
     """A user follow-up question or research instruction for the agent."""
 
     id: str
-    market_id: str
+    user_niche_id: str
     question: str
     opportunity_id: str | None = None
     cluster_id: str | None = None
@@ -289,7 +289,7 @@ class AgentFollowUp:
     def create(
         cls,
         *,
-        market_id: str,
+        user_niche_id: str,
         question: str,
         id: str | None = None,
         opportunity_id: str | None = None,
@@ -302,14 +302,14 @@ class AgentFollowUp:
     ) -> "AgentFollowUp":
         """Create a validated follow-up intent."""
         follow_up_id = (id or f"agent-follow-up-{uuid4().hex}").strip()
-        normalized_market_id = market_id.strip()
+        normalized_user_niche_id = user_niche_id.strip()
         normalized_question = question.strip()
         normalized_status = status.strip().lower()
 
         if not follow_up_id:
             raise ValueError("id is required")
-        if not normalized_market_id:
-            raise ValueError("market_id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
         if not normalized_question:
             raise ValueError("question is required")
         if normalized_status not in {"queued", "answered", "dismissed"}:
@@ -318,7 +318,7 @@ class AgentFollowUp:
         created = created_at or datetime.now(tz=UTC)
         return cls(
             id=follow_up_id,
-            market_id=normalized_market_id,
+            user_niche_id=normalized_user_niche_id,
             question=normalized_question,
             opportunity_id=_clean_optional(opportunity_id),
             cluster_id=_clean_optional(cluster_id),
