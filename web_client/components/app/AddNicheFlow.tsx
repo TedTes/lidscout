@@ -4,10 +4,6 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { signalApi } from '@/lib/api';
 import { Market } from '@/lib/types/signals';
 
-// ── Static template metadata ───────────────────────────────────────────────────
-// Mirrors niche_templates.py — display-only data embedded here to avoid an
-// extra API round-trip on every drawer open.
-
 interface TemplateCard {
   id: string;
   name: string;
@@ -15,65 +11,6 @@ interface TemplateCard {
   companies: string[];
   sourceFamilies: string[];
 }
-
-const TEMPLATES: TemplateCard[] = [
-  {
-    id: 'ai-coding-tools',
-    name: 'AI Coding Tools',
-    description: 'Pain signals from developers using AI coding assistants — Cursor, Windsurf, GitHub Copilot, and peers.',
-    companies: ['Cursor', 'Windsurf', 'Continue', 'Aider', 'Replit', 'GitHub Copilot', 'Sourcegraph Cody', 'Bolt', 'Lovable', 'v0'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'nocode-lowcode-tools',
-    name: 'No-Code / Low-Code Tools',
-    description: 'Frustrations from non-technical builders using Webflow, Bubble, Zapier, Make, and peers.',
-    companies: ['Webflow', 'Bubble', 'Zapier', 'Make', 'Airtable', 'Retool', 'Softr', 'FlutterFlow', 'Glide', 'Framer'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'ai-writing-tools',
-    name: 'AI Writing Tools',
-    description: 'Pain patterns from writers and marketers using AI writing assistants — Jasper, Copy.ai, Writesonic, and peers.',
-    companies: ['Jasper', 'Copy.ai', 'Writesonic', 'Rytr', 'Notion AI', 'Sudowrite', 'Lex', 'Hypotenuse AI'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'legal-practice-management',
-    name: 'Legal Practice Management',
-    description: 'Pain from law firms and solo practitioners using practice management software — Clio, MyCase, Filevine, and peers.',
-    companies: ['Clio', 'MyCase', 'Filevine', 'PracticePanther', 'Smokeball', 'LeanLaw', 'Rocket Matter'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'healthcare-practice-management',
-    name: 'Healthcare Practice Management',
-    description: 'Pain from mental health practitioners and medical practices using EHR software — SimplePractice, Jane, and peers.',
-    companies: ['SimplePractice', 'Jane App', 'TheraNest', 'TherapyNotes', 'Healthie', 'Tebra', 'Kareo'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'sales-engagement-revops',
-    name: 'Sales Engagement & Revenue Ops',
-    description: 'Pain from sales teams using outbound tools and revenue intelligence platforms — Outreach, Salesloft, Apollo, Gong.',
-    companies: ['Outreach', 'Salesloft', 'Apollo', 'Gong', 'Clari', 'Lemlist', 'Reply.io', 'Mixmax'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'customer-support-helpdesk',
-    name: 'Customer Support & Helpdesk',
-    description: 'Pain from support teams using helpdesk platforms — Zendesk, Intercom, Front, Help Scout, Freshdesk, and peers.',
-    companies: ['Zendesk', 'Intercom', 'Front', 'Help Scout', 'Freshdesk', 'Plain', 'Pylon', 'Crisp'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-  {
-    id: 'modern-data-stack',
-    name: 'Modern Data Stack',
-    description: 'Pain from data engineers using the modern data stack — Snowflake, dbt, Fivetran, Airbyte, Metabase, and peers.',
-    companies: ['Snowflake', 'dbt Labs', 'Fivetran', 'Airbyte', 'Metabase', 'Hex', 'Hightouch', 'Dagster'],
-    sourceFamilies: ['social', 'technical_forum', 'reviews'],
-  },
-];
 
 // ── Shared styles ──────────────────────────────────────────────────────────────
 
@@ -382,7 +319,7 @@ type Props = {
 export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
   const [step, setStep] = useState<Step>('pick');
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateCard | null>(null);
-  const [templates, setTemplates] = useState<TemplateCard[]>(TEMPLATES);
+  const [templates, setTemplates] = useState<TemplateCard[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -401,7 +338,7 @@ export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
             sourceFamilies: template.source_families,
           })));
         })
-        .catch(() => setTemplates(TEMPLATES))
+        .catch(() => setTemplates([]))
         .finally(() => setTemplatesLoading(false));
     }
   }, [isOpen]);
