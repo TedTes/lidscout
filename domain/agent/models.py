@@ -9,6 +9,11 @@ from uuid import uuid4
 AgentActivityType = Literal[
     "run_started",
     "run_completed",
+    "sources_scanned",
+    "posts_filtered",
+    "signals_extracted",
+    "clusters_formed",
+    "gaps_synthesized",
     "source_failed",
     "feedback_recorded",
     "preferences_updated",
@@ -163,6 +168,11 @@ class AgentActivity:
         if normalized_event_type not in {
             "run_started",
             "run_completed",
+            "sources_scanned",
+            "posts_filtered",
+            "signals_extracted",
+            "clusters_formed",
+            "gaps_synthesized",
             "source_failed",
             "feedback_recorded",
             "preferences_updated",
