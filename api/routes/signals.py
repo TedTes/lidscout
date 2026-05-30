@@ -1200,30 +1200,25 @@ async def get_market_pipeline_status(
 
 
 def _enqueue_pipeline(market_id: str) -> None:
-    """Push a pipeline task onto the Celery queue.
+    """Push a pipeline task onto the Celery queue via the configured broker.
 
-    Logs a warning and continues if Redis is unavailable — the daily
-    Beat schedule will pick up the market on its next run.
+    Uses celery_app.send_task (by name) so the API process doesn't need a
+    bound task instance — avoiding the @shared_task / no-current-app trap.
+    Logs a warning and continues if Redis is unavailable.
     """
     try:
-        from workers.tasks import run_pipeline_for_market
-        import redis as redis_lib
-        run_pipeline_for_market.delay(market_id)
-        log_event(logger, "pipeline_enqueued", market_id=market_id)
-    except redis_lib.exceptions.ConnectionError as exc:
-        log_event(
-            logger,
-            "pipeline_enqueue_skipped",
-            level=logging.WARNING,
-            market_id=market_id,
-            reason="Redis unavailable",
-            error=str(exc),
+        from workers.celery_app import celery_app
+        celery_app.send_task(
+            "workers.tasks.run_pipeline_for_market",
+            args=[market_id],
         )
+        log_event(logger, "pipeline_enqueued", market_id=market_id)
     except Exception as exc:
+        level = logging.WARNING if "connect" in str(exc).lower() else logging.ERROR
         log_event(
             logger,
             "pipeline_enqueue_failed",
-            level=logging.ERROR,
+            level=level,
             market_id=market_id,
             error_type=type(exc).__name__,
             error=str(exc),
