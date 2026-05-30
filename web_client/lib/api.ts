@@ -15,8 +15,8 @@ import {
   AgentMemorySummary,
   AgentPreferences,
   AgentPreferencesUpdateRequest,
-  Competitor,
-  CompetitorsResponse,
+  NicheCompany,
+  CompaniesResponse,
   ClustersResponse,
   Market,
   MarketsResponse,
@@ -343,40 +343,40 @@ class SignalApiService {
     }
   }
 
-  async getCompetitors(): Promise<CompetitorsResponse> {
+  async getCompanies(): Promise<CompaniesResponse> {
     try {
-      const response = await api.get<CompetitorsResponse>('/competitors');
+      const response = await api.get<CompaniesResponse>('/companies');
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load competitors');
+        throw new Error(error.response?.data?.detail || 'Failed to load companies');
       }
       throw error;
     }
   }
 
-  async createCompetitor(request: {
+  async createCompany(request: {
     id: string;
     name: string;
     website?: string | null;
     category?: string | null;
     description?: string | null;
     market_id?: string | null;
-  }): Promise<Competitor> {
+  }): Promise<NicheCompany> {
     try {
-      const response = await api.post<Competitor>('/competitors', request);
+      const response = await api.post<NicheCompany>('/companies', request);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to create competitor');
+        throw new Error(error.response?.data?.detail || 'Failed to create company');
       }
       throw error;
     }
   }
 
-  async getMarketCompetitors(marketId: string): Promise<CompetitorsResponse> {
+  async getMarketCompanies(marketId: string): Promise<CompaniesResponse> {
     try {
-      const response = await api.get<CompetitorsResponse>(`/markets/${marketId}/competitors`);
+      const response = await api.get<CompaniesResponse>(`/markets/${marketId}/companies`);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -386,7 +386,7 @@ class SignalApiService {
     }
   }
 
-  async createMarketCompetitor(
+  async createMarketCompany(
     marketId: string,
     request: {
       id: string;
@@ -395,10 +395,10 @@ class SignalApiService {
       category?: string | null;
       description?: string | null;
     }
-  ): Promise<Competitor> {
+  ): Promise<NicheCompany> {
     try {
-      const response = await api.post<Competitor>(
-        `/markets/${marketId}/competitors`,
+      const response = await api.post<NicheCompany>(
+        `/markets/${marketId}/companies`,
         request
       );
       return response.data;
@@ -410,10 +410,10 @@ class SignalApiService {
     }
   }
 
-  async getCompetitorSources(competitorId: string): Promise<MonitoredSourcesResponse> {
+  async getCompanySources(companyId: string): Promise<MonitoredSourcesResponse> {
     try {
       const response = await api.get<MonitoredSourcesResponse>(
-        `/competitors/${competitorId}/sources`
+        `/companies/${companyId}/sources`
       );
       return response.data;
     } catch (error) {
@@ -424,12 +424,12 @@ class SignalApiService {
     }
   }
 
-  async getCompetitorSourceSuggestions(
-    competitorId: string
+  async getCompanySourceSuggestions(
+    companyId: string
   ): Promise<SourceSuggestionsResponse> {
     try {
       const response = await api.get<SourceSuggestionsResponse>(
-        `/competitors/${competitorId}/source-suggestions`
+        `/companies/${companyId}/source-suggestions`
       );
       return response.data;
     } catch (error) {
@@ -457,7 +457,7 @@ class SignalApiService {
   }
 
   async getSources(params?: {
-    competitor_id?: string;
+    company_id?: string;
     market_id?: string;
     enabled?: boolean;
   }): Promise<MonitoredSourcesResponse> {
@@ -472,8 +472,8 @@ class SignalApiService {
     }
   }
 
-  async createCompetitorSource(
-    competitorId: string,
+  async createCompanySource(
+    companyId: string,
     request: {
       locator: string;
       source_type?: string;
@@ -486,7 +486,7 @@ class SignalApiService {
   ): Promise<MonitoredSource> {
     try {
       const response = await api.post<MonitoredSource>(
-        `/competitors/${competitorId}/sources`,
+        `/companies/${companyId}/sources`,
         request
       );
       return response.data;
@@ -514,7 +514,7 @@ class SignalApiService {
   }
 
   async getSignals(params?: {
-    competitor_id?: string;
+    company_id?: string;
     market_id?: string;
   }): Promise<SignalsResponse> {
     try {
@@ -584,7 +584,7 @@ class SignalApiService {
   }
 
   async getClusters(params?: {
-    competitor_id?: string;
+    company_id?: string;
     market_id?: string;
   }): Promise<ClustersResponse> {
     try {
@@ -599,7 +599,7 @@ class SignalApiService {
   }
 
   async getOpportunities(params?: {
-    competitor_id?: string;
+    company_id?: string;
     market_id?: string;
   }): Promise<OpportunitiesResponse> {
     try {
@@ -614,7 +614,7 @@ class SignalApiService {
   }
 
   async getLatestReport(params?: {
-    competitor_id?: string;
+    company_id?: string;
     market_id?: string;
   }): Promise<MarketSignalReport> {
     try {

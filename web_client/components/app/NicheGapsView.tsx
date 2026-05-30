@@ -10,7 +10,7 @@ import { signalApi } from '@/lib/api';
 import {
   AgentColdStartPlan,
   AgentFeedbackAction,
-  Competitor,
+  NicheCompany,
   Market,
   MonitoredSource,
   Opportunity,
@@ -94,7 +94,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
-  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [competitors, setCompetitors] = useState<NicheCompany[]>([]);
   const [sources, setSources] = useState<MonitoredSource[]>([]);
   const [nextScanAt, setNextScanAt] = useState<string | null>(null);
   const [showBrief, setShowBrief] = useState(false);
@@ -123,7 +123,7 @@ export default function NicheWorkspacePage({ params }: Props) {
         signalApi.getClusters({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
-        signalApi.getMarketCompetitors(marketId).catch(() => null),
+        signalApi.getMarketCompanies(marketId).catch(() => null),
         signalApi.getMarketSources(marketId).catch(() => null),
         signalApi.getPipelineSchedule().catch(() => null),
       ]);
@@ -131,7 +131,7 @@ export default function NicheWorkspacePage({ params }: Props) {
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
       setColdStart(coldStartRes);
-      setCompetitors(competitorsRes?.competitors ?? []);
+      setCompetitors(competitorsRes?.companies ?? []);
       setSources(sourcesRes?.sources ?? []);
       setNextScanAt(scheduleRes?.next_run_at ?? null);
       setShowBrief(coldStartRes !== null && coldStartRes.status === 'setup_needed');
@@ -164,6 +164,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   }, [marketId]);
 
   const prevPipelineStatusRef = useRef<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Silently refresh only opportunities and clusters — no loading flash, no state reset
   const refreshData = async () => {
@@ -191,15 +192,16 @@ export default function NicheWorkspacePage({ params }: Props) {
         if (prev === 'running' && res.status === 'done') {
           refreshData();
         }
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 404) clearInterval(intervalRef.current ?? undefined);
       }
     };
     poll();
-    const interval = setInterval(poll, 15000);
+    intervalRef.current = setInterval(poll, 15000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(intervalRef.current ?? undefined);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);

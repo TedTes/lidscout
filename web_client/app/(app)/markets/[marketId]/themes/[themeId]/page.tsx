@@ -126,7 +126,7 @@ export default function NicheThemeDetailPage({ params }: Props) {
                       <UrgencyBadge urgency={signal.urgency} />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {signal.competitor_name && <Chip label={signal.competitor_name} />}
+                      {signal.company_name && <Chip label={signal.company_name} />}
                       {signal.category && <Chip label={signal.category} />}
                       {signal.user_type && <Chip label={signal.user_type} />}
                     </div>

@@ -267,8 +267,8 @@ def _cluster_content(
     categories = list({s.category for s in signals if s.category})
     workarounds = list({s.current_workaround for s in signals if s.current_workaround})
     wtp_count = sum(1 for s in signals if s.willingness_to_pay is True)
-    competitor_ids = list({s.competitor_id for s in signals if s.competitor_id})
-    market_ids = list({s.market_id for s in signals if s.market_id})
+    competitor_ids = list({s.niche_company_id for s in signals if s.niche_company_id})
+    market_ids = list({s.niche_id for s in signals if s.niche_id})
 
     lines = [
         "research_context:",
@@ -329,8 +329,8 @@ def _context_ignores_cluster(
 def _signal_evidence_lines(signal: Signal) -> list[str]:
     lines = [
         f"  - signal_id: {signal.id}",
-        f"    competitor_id: {signal.competitor_id or 'unknown'}",
-        f"    market_id: {signal.market_id or 'unknown'}",
+        f"    company_id: {signal.niche_company_id or 'unknown'}",
+        f"    market_id: {signal.niche_id or 'unknown'}",
         f"    pain: {signal.pain}",
         f"    user_type: {signal.user_type or 'unknown'}",
         f"    job_to_be_done: {signal.job_to_be_done or 'unknown'}",

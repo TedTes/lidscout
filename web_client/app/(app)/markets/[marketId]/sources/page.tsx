@@ -5,7 +5,7 @@ import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { Competitor, Market, MonitoredSource, SourceCoverageSummary, SourceSuggestion } from '@/lib/types/signals';
+import { NicheCompany, Market, MonitoredSource, SourceCoverageSummary, SourceSuggestion } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
@@ -70,7 +70,7 @@ export default function NicheSourcesPage({ params }: Props) {
   const [niche, setNiche] = useState<Market | null>(null);
   const [sources, setSources] = useState<MonitoredSource[]>([]);
   const [summary, setSummary] = useState<SourceCoverageSummary | null>(null);
-  const [companies, setCompanies] = useState<Competitor[]>([]);
+  const [companies, setCompanies] = useState<NicheCompany[]>([]);
   const [suggestions, setSuggestions] = useState<SourceSuggestion[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [suggestionStatus, setSuggestionStatus] = useState<Status>('loading');
@@ -86,14 +86,14 @@ export default function NicheSourcesPage({ params }: Props) {
       const [market, sourcesRes, companiesRes, suggestionsRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getSources({ market_id: marketId }),
-        signalApi.getMarketCompetitors(marketId),
+        signalApi.getMarketCompanies(marketId),
         signalApi.getMarketSourceSuggestions(marketId),
       ]);
       const loadedSources = sourcesRes.sources;
       setNiche(market);
       setSources(loadedSources);
       setSummary(sourcesRes.summary ?? null);
-      setCompanies(companiesRes.competitors);
+      setCompanies(companiesRes.companies);
       setSuggestions(suggestionsRes.suggestions);
       setStatus('ready');
       setSuggestionStatus('ready');
@@ -136,7 +136,7 @@ export default function NicheSourcesPage({ params }: Props) {
     const lines = sources.map(s => {
       const health = sourceHealth(s);
       const icon = health === 'active' ? '✅' : health === 'failing' ? '❌' : '⏸️';
-      return `${icon} ${s.locator}  [${familyLabel(s.source_family)}${s.competitor_name ? ` · ${s.competitor_name}` : ''}]${s.last_error ? `  ⚠ ${s.last_error}` : ''}`;
+      return `${icon} ${s.locator}  [${familyLabel(s.source_family)}${s.company_name ? ` · ${s.company_name}` : ''}]${s.last_error ? `  ⚠ ${s.last_error}` : ''}`;
     });
     const header = `${niche?.name ?? 'Niche'} sources (${sources.length} total · ${activeCount} active · ${errorCount} failing)\n\n`;
     navigator.clipboard.writeText(header + lines.join('\n'));
@@ -157,8 +157,8 @@ export default function NicheSourcesPage({ params }: Props) {
 
   const addSuggestion = async (suggestion: SourceSuggestion) => {
     if (suggestion.already_monitored) return;
-    if (suggestion.competitor_id) {
-      await signalApi.createCompetitorSource(suggestion.competitor_id, {
+    if (suggestion.company_id) {
+      await signalApi.createCompanySource(suggestion.company_id, {
         locator: suggestion.locator,
         source_type: suggestion.source_type,
         limit: suggestion.limit,
@@ -309,7 +309,7 @@ export default function NicheSourcesPage({ params }: Props) {
                   <div className="divide-y divide-slate-800/50 border-t border-slate-800/60">
                     {newSuggestions.slice(0, 8).map(suggestion => (
                       <SuggestionRow
-                        key={`${suggestion.template_id ?? suggestion.locator}-${suggestion.competitor_id ?? 'niche'}`}
+                        key={`${suggestion.template_id ?? suggestion.locator}-${suggestion.company_id ?? 'niche'}`}
                         suggestion={suggestion}
                         onAdd={() => addSuggestion(suggestion)}
                       />
@@ -369,8 +369,8 @@ function SourceRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <HealthBadge health={health} />
-            {source.competitor_name
-              ? <Chip label={source.competitor_name} />
+            {source.company_name
+              ? <Chip label={source.company_name} />
               : <Chip label="Niche-wide" />}
             <Chip label={familyLabel(source.source_family)} />
           </div>
@@ -454,8 +454,8 @@ function SuggestionRow({
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-medium text-slate-400">{suggestion.label}</h3>
           <Chip label={familyLabel(suggestion.source_family)} />
-          {suggestion.competitor_name
-            ? <Chip label={suggestion.competitor_name} />
+          {suggestion.company_name
+            ? <Chip label={suggestion.company_name} />
             : <Chip label="Niche-wide" />}
         </div>
         <p className="mt-1 text-xs leading-relaxed text-slate-600">{suggestion.rationale}</p>
@@ -503,7 +503,7 @@ function AddSourcePanel({
   onAdd,
   onCancel,
 }: {
-  companies: Competitor[];
+  companies: NicheCompany[];
   marketId: string;
   onAdd: (source: MonitoredSource) => void;
   onCancel: () => void;
@@ -527,7 +527,7 @@ function AddSourcePanel({
         options: {},
       };
       const source = companyId
-        ? await signalApi.createCompetitorSource(companyId, { ...request, market_id: marketId })
+        ? await signalApi.createCompanySource(companyId, { ...request, market_id: marketId })
         : await signalApi.createMarketSource(marketId, request);
       onAdd(source);
     } catch (err) {

@@ -139,6 +139,6 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
 def _signals_by_competitor(signals: list[Signal]) -> list[list[Signal]]:
     groups: dict[str, list[Signal]] = {}
     for signal in signals:
-        key = signal.competitor_id or "__unscoped__"
+        key = signal.niche_company_id or "__unscoped__"
         groups.setdefault(key, []).append(signal)
     return list(groups.values())

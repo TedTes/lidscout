@@ -10,8 +10,8 @@ export type Signal = {
   willingness_to_pay: boolean | null;
   category: string | null;
   confidence: number;
-  competitor_id: string | null;
-  competitor_name: string | null;
+  company_id: string | null;
+  company_name: string | null;
   market_id: string | null;
   market_name: string | null;
   evidence_url: string | null;
@@ -50,7 +50,7 @@ export type Opportunity = {
   market_company_count: number | null;
 };
 
-export type Competitor = {
+export type NicheCompany = {
   id: string;
   name: string;
   website: string | null;
@@ -143,8 +143,8 @@ export type AgentFeedbackResponse = {
 
 export type MonitoredSource = {
   id: string;
-  competitor_id: string | null;
-  competitor_name: string | null;
+  company_id: string | null;
+  company_name: string | null;
   market_id: string | null;
   market_name: string | null;
   locator: string;
@@ -204,8 +204,8 @@ export type SourceSuggestion = {
   label: string;
   rationale: string;
   source_family: string;
-  competitor_id: string | null;
-  competitor_name: string | null;
+  company_id: string | null;
+  company_name: string | null;
   market_id: string | null;
   market_name: string | null;
   limit: number | null;
@@ -217,8 +217,8 @@ export type SourceSuggestion = {
   validation_error: string | null;
 };
 
-export type CompetitorsResponse = {
-  competitors: Competitor[];
+export type CompaniesResponse = {
+  companies: NicheCompany[];
 };
 
 export type MarketsResponse = {

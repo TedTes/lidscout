@@ -238,13 +238,13 @@ def get_signal_api_dependencies() -> SignalApiDependencies:
 @router.get("/signals")
 async def list_signals(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    competitor_id: str | None = None,
+    company_id: str | None = None,
     market_id: str | None = None,
 ) -> dict[str, Any]:
     """Return persisted extracted signals, optionally filtered by scope."""
     signals = dependencies.signal_repository.list_signals()
-    if competitor_id is not None:
-        signals = [s for s in signals if s.niche_company_id == competitor_id]
+    if company_id is not None:
+        signals = [s for s in signals if s.niche_company_id == company_id]
     if market_id is not None:
         signals = [s for s in signals if s.niche_id == market_id]
     return {"signals": [_serialize_signal(s) for s in signals]}
@@ -270,17 +270,17 @@ async def delete_signal(
 @router.get("/clusters")
 async def list_clusters(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    competitor_id: str | None = None,
+    company_id: str | None = None,
     market_id: str | None = None,
 ) -> dict[str, Any]:
     """Return persisted signal clusters, optionally filtered by scope."""
     clusters = dependencies.cluster_repository.list_clusters()
     all_signals = dependencies.signal_repository.list_signals()
-    if competitor_id is not None or market_id is not None:
+    if company_id is not None or market_id is not None:
         scoped_signal_ids = {
             s.id
             for s in all_signals
-            if (competitor_id is None or s.niche_company_id == competitor_id)
+            if (company_id is None or s.niche_company_id == company_id)
             and (market_id is None or s.niche_id == market_id)
         }
         clusters = [
@@ -299,17 +299,17 @@ async def list_clusters(
 @router.get("/opportunities")
 async def list_opportunities(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    competitor_id: str | None = None,
+    company_id: str | None = None,
     market_id: str | None = None,
 ) -> dict[str, Any]:
     """Return synthesized product opportunities, optionally filtered by scope."""
     opportunities = dependencies.opportunity_repository.list_opportunities()
     all_signals = dependencies.signal_repository.list_signals()
-    if competitor_id is not None or market_id is not None:
+    if company_id is not None or market_id is not None:
         scoped_signal_ids = {
             s.id
             for s in all_signals
-            if (competitor_id is None or s.niche_company_id == competitor_id)
+            if (company_id is None or s.niche_company_id == company_id)
             and (market_id is None or s.niche_id == market_id)
         }
         opportunities = [
@@ -409,6 +409,7 @@ async def create_market(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     dependencies.user_niche_repository.save_user_niche(user_niche)
+    _enqueue_pipeline(user_niche.id)
     return _serialize_market(user_niche)
 
 
@@ -477,8 +478,8 @@ async def delete_market(
     }
 
 
-@router.get("/markets/{market_id}/competitors")
-async def list_market_competitors(
+@router.get("/markets/{market_id}/companies")
+async def list_market_companies(
     market_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
@@ -487,13 +488,13 @@ async def list_market_competitors(
     user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
     niche_id = user_niche.template_niche_id
     if niche_id is None:
-        return {"competitors": []}
+        return {"companies": []}
     companies = dependencies.niche_company_repository.list_niche_companies(niche_id)
-    return {"competitors": [_serialize_niche_company(c) for c in companies]}
+    return {"companies": [_serialize_niche_company(c) for c in companies]}
 
 
-@router.post("/markets/{market_id}/competitors")
-async def create_market_competitor(
+@router.post("/markets/{market_id}/companies")
+async def create_market_company(
     market_id: str,
     request: NicheCompanyRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
@@ -575,16 +576,16 @@ async def create_market_source(
 @router.get("/reports/latest")
 async def get_latest_report(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    competitor_id: str | None = None,
+    company_id: str | None = None,
     market_id: str | None = None,
 ) -> dict[str, Any]:
     """Generate and return the latest report from persisted clusters."""
     clusters = dependencies.cluster_repository.list_clusters()
     opportunities = dependencies.opportunity_repository.list_opportunities()
-    if competitor_id is not None or market_id is not None:
+    if company_id is not None or market_id is not None:
         scoped_signal_ids = _scoped_signal_ids(
             dependencies,
-            competitor_id=competitor_id,
+            company_id=company_id,
             market_id=market_id,
         )
         clusters = [
@@ -609,17 +610,17 @@ async def get_latest_report(
     return _serialize_report(report, market_id=market_id)
 
 
-@router.get("/competitors")
-async def list_competitors(
+@router.get("/companies")
+async def list_companies(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return monitored competitors (placeholder — use /markets/{id}/competitors)."""
-    return {"competitors": []}
+    """Return monitored companies (placeholder — use /markets/{id}/companies)."""
+    return {"companies": []}
 
 
-@router.get("/competitors/{competitor_id}/sources")
-async def list_competitor_sources(
-    competitor_id: str,
+@router.get("/companies/{company_id}/sources")
+async def list_company_sources(
+    company_id: str,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Return sources for one company (placeholder)."""
@@ -1064,7 +1065,7 @@ async def get_market_agent_memory(
 
 @router.get("/sources")
 async def list_sources(
-    competitor_id: str | None = None,
+    company_id: str | None = None,
     market_id: str | None = None,
     enabled: bool | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
@@ -1076,9 +1077,9 @@ async def list_sources(
     }
 
 
-@router.post("/competitors/{competitor_id}/sources")
-async def create_competitor_source(
-    competitor_id: str,
+@router.post("/companies/{company_id}/sources")
+async def create_company_source(
+    company_id: str,
     request: NicheSourceRequest,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
@@ -1269,13 +1270,13 @@ def _get_owned_user_niche(
 def _scoped_signal_ids(
     dependencies: SignalApiDependencies,
     *,
-    competitor_id: str | None = None,
+    company_id: str | None = None,
     market_id: str | None = None,
 ) -> set[str]:
     return {
         signal.id
         for signal in dependencies.signal_repository.list_signals()
-        if (competitor_id is None or signal.niche_company_id == competitor_id)
+        if (company_id is None or signal.niche_company_id == company_id)
         and (market_id is None or signal.niche_id == market_id)
     }
 
@@ -1386,8 +1387,8 @@ def _serialize_signal(
         "willingness_to_pay": signal.willingness_to_pay,
         "category": signal.category,
         "confidence": signal.confidence,
-        "competitor_id": signal.niche_company_id,
-        "competitor_name": None,
+        "company_id": signal.niche_company_id,
+        "company_name": None,
         "market_id": signal.niche_id,
         "market_name": None,
         "evidence_url": signal.evidence_url,
@@ -1411,8 +1412,8 @@ def _serialize_niche_company(company: NicheCompany) -> dict[str, Any]:
 def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
     return {
         "id": source.id,
-        "competitor_id": source.company_id,
-        "competitor_name": None,
+        "company_id": source.company_id,
+        "company_name": None,
         "market_id": source.niche_id,
         "market_name": None,
         "locator": source.locator,

@@ -67,7 +67,7 @@ export default function NicheFindingsPage({ params }: Props) {
       signal.job_to_be_done,
       signal.evidence_text,
       signal.category,
-      signal.competitor_name,
+      signal.company_name,
       signal.user_type,
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(debouncedQuery.trim().toLowerCase());
@@ -137,7 +137,7 @@ export default function NicheFindingsPage({ params }: Props) {
 
                     <div className="mt-3 flex flex-wrap gap-2">
                       {theme && <ClusterLink id={theme.id} marketId={marketId}>{theme.theme}</ClusterLink>}
-                      {signal.competitor_name && <Chip label={signal.competitor_name} />}
+                      {signal.company_name && <Chip label={signal.company_name} />}
                       {signal.category && <Chip label={signal.category} />}
                       {signal.user_type && <Chip label={signal.user_type} />}
                     </div>
