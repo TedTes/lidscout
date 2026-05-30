@@ -2096,7 +2096,7 @@ def _agent_preferences_values(
 
 def _agent_preferences_from_row(row: sqlite3.Row) -> AgentPreferences:
     return AgentPreferences.create(
-        user_niche_id=row["user_niche_id"],
+        user_niche_id=str(row["user_niche_id"]),
         preferred_source_families=_from_json(row["preferred_source_families"]),
         ignored_themes=_from_json(row["ignored_themes"]),
         ignored_categories=_from_json(row["ignored_categories"]),
@@ -2120,9 +2120,9 @@ def _agent_feedback_values(feedback: AgentFeedback, *, sqlite: bool) -> tuple:
 
 def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
     return AgentFeedback.create(
-        id=row["id"],
-        user_niche_id=row["user_niche_id"],
-        opportunity_id=row["opportunity_id"],
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
+        opportunity_id=str(row["opportunity_id"]) if row["opportunity_id"] else None,
         action=row["action"],
         reason=row["reason"],
         created_at=_datetime_from_text(row["created_at"]),
@@ -2143,8 +2143,8 @@ def _agent_activity_values(activity: AgentActivity, *, sqlite: bool) -> tuple:
 
 def _agent_activity_from_row(row: sqlite3.Row) -> AgentActivity:
     return AgentActivity.create(
-        id=row["id"],
-        user_niche_id=row["user_niche_id"],
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
         event_type=row["event_type"],
         title=row["title"],
         detail=row["detail"],
@@ -2174,8 +2174,8 @@ def _agent_alert_values(alert: AgentAlert, *, sqlite: bool) -> tuple:
 
 def _agent_alert_from_row(row: sqlite3.Row) -> AgentAlert:
     return AgentAlert.create(
-        id=row["id"],
-        user_niche_id=row["user_niche_id"],
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
         alert_type=row["alert_type"],
         title=row["title"],
         severity=row["severity"],
@@ -2212,8 +2212,8 @@ def _agent_follow_up_values(follow_up: AgentFollowUp, *, sqlite: bool) -> tuple:
 
 def _agent_follow_up_from_row(row: sqlite3.Row) -> AgentFollowUp:
     return AgentFollowUp.create(
-        id=row["id"],
-        user_niche_id=row["user_niche_id"],
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
         question=row["question"],
         opportunity_id=row["opportunity_id"],
         cluster_id=row["cluster_id"],
