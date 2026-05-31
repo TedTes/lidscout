@@ -246,7 +246,8 @@ async def list_signals(
     if company_id is not None:
         signals = [s for s in signals if s.niche_company_id == company_id]
     if market_id is not None:
-        signals = [s for s in signals if s.niche_id == market_id]
+        niche_id = _template_niche_id(market_id, dependencies)
+        signals = [s for s in signals if s.niche_id == niche_id]
     return {"signals": [_serialize_signal(s) for s in signals]}
 
 
@@ -277,11 +278,12 @@ async def list_clusters(
     clusters = dependencies.cluster_repository.list_clusters()
     all_signals = dependencies.signal_repository.list_signals()
     if company_id is not None or market_id is not None:
+        niche_id = _template_niche_id(market_id, dependencies)
         scoped_signal_ids = {
             s.id
             for s in all_signals
             if (company_id is None or s.niche_company_id == company_id)
-            and (market_id is None or s.niche_id == market_id)
+            and (niche_id is None or s.niche_id == niche_id)
         }
         clusters = [
             c for c in clusters
@@ -306,11 +308,12 @@ async def list_opportunities(
     opportunities = dependencies.opportunity_repository.list_opportunities()
     all_signals = dependencies.signal_repository.list_signals()
     if company_id is not None or market_id is not None:
+        niche_id = _template_niche_id(market_id, dependencies)
         scoped_signal_ids = {
             s.id
             for s in all_signals
             if (company_id is None or s.niche_company_id == company_id)
-            and (market_id is None or s.niche_id == market_id)
+            and (niche_id is None or s.niche_id == niche_id)
         }
         opportunities = [
             o for o in opportunities
@@ -565,6 +568,17 @@ async def create_market_source(
             source_type=request.source_type,
             source_family=source_family,
             is_gate_free=is_gate_free,
+            enabled=request.enabled,
+            limit=_option_int(request.options, "limit"),
+            scan_frequency=_option_str(request.options, "scan_frequency"),
+            last_error=_option_str(request.options, "last_error"),
+            options=request.options,
+            tier=_option_int(request.options, "tier"),
+            signal_quality_score=_option_float(request.options, "signal_quality_score"),
+            access_mode=str(request.options.get("access_mode") or "unknown"),
+            requires_proxy=bool(request.options.get("requires_proxy", False)),
+            requires_auth=bool(request.options.get("requires_auth", False)),
+            recommended_cadence=_option_str(request.options, "recommended_cadence"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1176,22 +1190,25 @@ async def get_market_pipeline_status(
     events_sorted = sorted(events, key=lambda e: e.created_at or "", reverse=True)
     last_event = events_sorted[0] if events_sorted else None
 
-    if last_event is None:
-        status = "pending"
-    elif last_event.event_type == "run_started":
-        status = "running"
-    elif last_event.event_type in {"run_completed", "gaps_synthesized", "clusters_formed",
-                                    "signals_extracted", "sources_scanned", "alert_created"}:
-        status = "done"
-    else:
-        status = "pending"
+    latest_run_start = next((e for e in events_sorted if e.event_type == "run_started"), None)
 
-    has_started = any(e.event_type == "run_started" for e in events)
-    has_completed = any(e.event_type == "run_completed" for e in events)
-    if has_started and not has_completed:
-        status = "running"
-    elif has_completed:
-        status = "done"
+    if latest_run_start is None:
+        status = "pending"
+    else:
+        # Only consider events from the most recent run onwards
+        start_time = latest_run_start.created_at
+        current_run = [
+            e for e in events_sorted
+            if start_time is None or (e.created_at or "") >= str(start_time)
+        ]
+        has_completed = any(e.event_type == "run_completed" for e in current_run)
+        if has_completed:
+            status = "done"
+        elif start_time is not None:
+            age_seconds = (datetime.now(UTC) - start_time.astimezone(UTC)).total_seconds()
+            status = "failed" if age_seconds > 900 else "running"
+        else:
+            status = "running"
 
     return {
         "status": status,
@@ -1251,6 +1268,16 @@ def _current_user_id(current_user: User | Any) -> str | None:
     return current_user.id if isinstance(current_user, User) else None
 
 
+def _template_niche_id(market_id: str | None, dependencies: SignalApiDependencies) -> str | None:
+    """Resolve a user_niche_id (market_id) to its template_niche_id for signal filtering."""
+    if market_id is None:
+        return None
+    user_niche = dependencies.user_niche_repository.get_user_niche(market_id)
+    if user_niche is None:
+        return market_id
+    return str(user_niche.template_niche_id) if user_niche.template_niche_id else market_id
+
+
 def _get_owned_user_niche(
     market_id: str,
     dependencies: SignalApiDependencies,
@@ -1273,11 +1300,12 @@ def _scoped_signal_ids(
     company_id: str | None = None,
     market_id: str | None = None,
 ) -> set[str]:
+    niche_id = _template_niche_id(market_id, dependencies)
     return {
         signal.id
         for signal in dependencies.signal_repository.list_signals()
         if (company_id is None or signal.niche_company_id == company_id)
-        and (market_id is None or signal.niche_id == market_id)
+        and (niche_id is None or signal.niche_id == niche_id)
     }
 
 
@@ -1419,16 +1447,52 @@ def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
         "locator": source.locator,
         "source_type": source.source_type,
         "source_family": source.source_family,
-        "enabled": source.health_status != "paused",
-        "limit": None,
-        "scan_frequency": None,
+        "enabled": source.enabled,
+        "limit": source.limit,
+        "scan_frequency": source.scan_frequency,
         "last_scanned_at": (
             source.last_scanned_at.isoformat() if source.last_scanned_at else None
         ),
-        "last_error": None,
+        "last_error": source.last_error,
         "health": None,
-        "options": {},
+        "is_gate_free": source.is_gate_free,
+        "buyer_voice_verified": source.buyer_voice_verified,
+        "tier": source.tier,
+        "signal_quality_score": source.signal_quality_score,
+        "access_mode": source.access_mode,
+        "requires_proxy": source.requires_proxy,
+        "requires_auth": source.requires_auth,
+        "recommended_cadence": source.recommended_cadence,
+        "options": source.options,
     }
+
+
+def _option_str(options: dict[str, Any], key: str) -> str | None:
+    value = options.get(key)
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def _option_int(options: dict[str, Any], key: str) -> int | None:
+    value = options.get(key)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{key} must be an integer") from exc
+
+
+def _option_float(options: dict[str, Any], key: str) -> float | None:
+    value = options.get(key)
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{key} must be a number") from exc
 
 
 def _source_coverage_summary(sources: list[NicheSource]) -> dict[str, Any]:
@@ -1449,9 +1513,11 @@ def _source_coverage_summary(sources: list[NicheSource]) -> dict[str, Any]:
             },
         )
         entry["source_count"] += 1
-        if source.health_status != "paused":
+        if source.enabled:
             active_count += 1
             entry["active_count"] += 1
+        if source.last_error or source.health_status == "failing":
+            entry["error_count"] += 1
         if source.company_id:
             company_ids.add(source.company_id)
 
@@ -1467,7 +1533,9 @@ def _source_coverage_summary(sources: list[NicheSource]) -> dict[str, Any]:
         "source_count": len(sources),
         "active_count": active_count,
         "disabled_count": len(sources) - active_count,
-        "error_count": 0,
+        "error_count": sum(
+            1 for source in sources if source.last_error or source.health_status == "failing"
+        ),
         "company_count": len(company_ids),
         "by_family": sorted(
             by_family.values(),
