@@ -20,6 +20,9 @@ AgentActivityType = Literal[
     "brief_updated",
     "alert_created",
     "follow_up_recorded",
+    "post_evaluating",
+    "post_accepted",
+    "post_filtered",
 ]
 
 AgentAlertSeverity = Literal["info", "warning", "critical"]
@@ -179,6 +182,9 @@ class AgentActivity:
             "brief_updated",
             "alert_created",
             "follow_up_recorded",
+            "post_evaluating",
+            "post_accepted",
+            "post_filtered",
         }:
             raise ValueError("unsupported activity event type")
         if not normalized_title:

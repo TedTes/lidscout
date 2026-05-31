@@ -68,6 +68,7 @@ class SourceAdapterTests(unittest.TestCase):
                         "competitor_domain": "notion.so",
                         "market_id": "workspace-tools",
                         "market_name": "Workspace tools",
+                        "niche_source_id": "source-1",
                         "source_family": "social",
                     },
                 )
@@ -84,6 +85,7 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(posts[1].metadata["competitor_domain"], "notion.so")
         self.assertEqual(posts[1].metadata["market_id"], "workspace-tools")
         self.assertEqual(posts[1].metadata["market_name"], "Workspace tools")
+        self.assertEqual(posts[1].metadata["niche_source_id"], "source-1")
         self.assertEqual(posts[1].metadata["source_family"], "social")
 
     def test_json_url_extracts_items_at_configured_path(self):

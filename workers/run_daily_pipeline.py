@@ -140,7 +140,12 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         title=f"Scanned {success_count} of {source_count} source(s)",
         detail=f"Fetched {len(posts)} post(s) across {success_count} source(s)."
         + (f" {source_count - success_count} source(s) failed." if source_count - success_count else ""),
-        metadata={"source_count": source_count, "success_count": success_count, "post_count": len(posts)},
+        metadata={
+            "source_count": source_count,
+            "success_count": success_count,
+            "post_count": len(posts),
+            "sources": _build_source_post_list(fetch_result.details, posts),
+        },
     )
 
     ingestion_service = IngestionService(config.post_repository)
@@ -149,6 +154,8 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     relevance_result = _filter_relevant_posts(
         posts,
         config.relevance_llm_client,
+        activity_repository=config.agent_activity_repository,
+        user_niche_id=config.user_niche_id,
     )
     relevant_count = len(relevance_result.posts)
     filtered_count = relevance_result.rule_filtered_count + relevance_result.llm_filtered_count
@@ -494,6 +501,8 @@ def _record_niche_source_health(
 def _filter_relevant_posts(
     posts: list[RawPost],
     relevance_llm_client: LLMClient | None,
+    activity_repository: AgentActivityRepository | None = None,
+    user_niche_id: str | None = None,
 ) -> RelevanceFilterResult:
     rule_filter = RuleBasedRelevanceFilter()
     llm_filter = (
@@ -516,16 +525,53 @@ def _filter_relevant_posts(
             relevant_posts.append(post)
             continue
 
+        _record_agent_activity(
+            activity_repository,
+            user_niche_id=user_niche_id,
+            event_type="post_evaluating",
+            title=f"Evaluating: {post.title[:80] or post.id}",
+            metadata=_post_event_metadata(post),
+        )
+
         try:
             llm_result = llm_filter.evaluate(post)
-        except Exception:
+        except Exception as exc:
             failed_count += 1
+            _record_agent_activity(
+                activity_repository,
+                user_niche_id=user_niche_id,
+                event_type="post_filtered",
+                title=f"Filtered: {post.title[:80] or post.id}",
+                detail="Relevance check failed; skipped this post.",
+                metadata={
+                    **_post_event_metadata(post),
+                    "reason": "other",
+                    "error_type": type(exc).__name__,
+                },
+            )
             continue
 
         if not llm_result.is_relevant:
             llm_filtered_count += 1
+            _record_agent_activity(
+                activity_repository,
+                user_niche_id=user_niche_id,
+                event_type="post_filtered",
+                title=f"Filtered: {post.title[:80] or post.id}",
+                metadata={
+                    **_post_event_metadata(post),
+                    "reason": llm_result.rejection_category or "other",
+                },
+            )
             continue
 
+        _record_agent_activity(
+            activity_repository,
+            user_niche_id=user_niche_id,
+            event_type="post_accepted",
+            title=f"Kept: {post.title[:80] or post.id}",
+            metadata=_post_event_metadata(post),
+        )
         relevant_posts.append(post)
 
     return RelevanceFilterResult(
@@ -534,6 +580,65 @@ def _filter_relevant_posts(
         llm_filtered_count=llm_filtered_count,
         failed_count=failed_count,
     )
+
+
+_SOURCE_TYPE_LABELS: dict[str, str] = {
+    "hackernews": "Hacker News",
+    "hackernews_search": "Hacker News",
+    "github_issues": "GitHub Issues",
+    "github_issues_search": "GitHub Issues",
+    "stackoverflow": "Stack Overflow",
+    "stackoverflow_search": "Stack Overflow",
+    "reddit": "Reddit",
+    "g2_reviews": "G2",
+    "producthunt": "Product Hunt",
+}
+
+
+def _post_source_label(post: RawPost) -> str:
+    source_type = str(post.metadata.get("source_type", "") or "")
+    if source_type == "reddit":
+        url = post.url or ""
+        if "/r/" in url:
+            return "r/" + url.split("/r/")[1].split("/")[0]
+    return _SOURCE_TYPE_LABELS.get(source_type) or source_type.replace("_", " ").title() or post.source or "web"
+
+
+def _post_event_metadata(post: RawPost) -> dict[str, object]:
+    return {
+        "title": post.title[:120] if post.title else "",
+        "source_label": _post_source_label(post),
+        "url": post.url,
+        "post_date": post.created_at.isoformat() if post.created_at else None,
+    }
+
+
+def _build_source_post_list(
+    details: list[SourceFetchDetail],
+    posts: list[RawPost],
+) -> list[dict[str, object]]:
+    result = []
+    for detail in details:
+        source_id = detail.source.options.get("niche_source_id")
+        source_type = str(detail.source.options.get("source_type", "") or "")
+        source_label = _SOURCE_TYPE_LABELS.get(source_type) or source_type.replace("_", " ").title() or "Source"
+        source_posts = [p for p in posts if p.metadata.get("niche_source_id") == source_id]
+        result.append({
+            "source_id": source_id,
+            "source_type": source_type,
+            "source_label": source_label,
+            "post_count": len(source_posts),
+            "error": detail.error,
+            "posts": [
+                {
+                    "title": p.title[:120] if p.title else "",
+                    "url": p.url,
+                    "post_date": p.created_at.isoformat() if p.created_at else None,
+                }
+                for p in source_posts
+            ],
+        })
+    return result
 
 
 def _configured_sources(

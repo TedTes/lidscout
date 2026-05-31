@@ -366,6 +366,10 @@ async def apply_template(
         raise HTTPException(status_code=404, detail="Template not found")
 
     user_id = _current_user_id(current_user) or "anonymous"
+    existing = _find_user_niche_for_template(dependencies, user_id, niche.id)
+    if existing is not None:
+        return _serialize_market(existing)
+
     user_niche = UserNiche.create(
         user_id=user_id,
         job=niche.job,
@@ -390,7 +394,9 @@ async def list_markets(
     return {
         "markets": [
             _serialize_market(un)
-            for un in dependencies.user_niche_repository.list_user_niches(user_id)
+            for un in _dedupe_user_niches_for_display(
+                dependencies.user_niche_repository.list_user_niches(user_id)
+            )
         ]
     }
 
@@ -403,12 +409,24 @@ async def create_market(
 ) -> dict[str, Any]:
     """Create a watched market or niche."""
     user_id = _current_user_id(current_user) or "anonymous"
+    buyer = request.target_user or "general"
+    category = request.description or "general"
+    existing = _find_user_niche_for_definition(
+        dependencies,
+        user_id,
+        job=request.name,
+        buyer=buyer,
+        category=category,
+    )
+    if existing is not None:
+        return _serialize_market(existing)
+
     try:
         user_niche = UserNiche.create(
             user_id=user_id,
             job=request.name,
-            buyer=request.target_user or "general",
-            category=request.description or "general",
+            buyer=buyer,
+            category=category,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1228,6 +1246,54 @@ async def get_market_pipeline_status(
     }
 
 
+@router.get("/markets/{market_id}/pipeline/live-feed")
+async def get_market_pipeline_live_feed(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return live per-item visibility for an active pipeline run."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    all_activity = dependencies.agent_activity_repository.list_agent_activity(
+        user_niche_id=market_id, limit=200
+    )
+    # Scope to current run: slice from newest down to the most recent run_started
+    run_start_idx = next(
+        (i for i, a in enumerate(all_activity) if a.event_type == "run_started"),
+        len(all_activity),
+    )
+    current_run = all_activity[: run_start_idx + 1]
+
+    live_event_types = {
+        "post_evaluating",
+        "post_accepted",
+        "post_filtered",
+        "posts_filtered",
+        "signals_extracted",
+        "clusters_formed",
+        "gaps_synthesized",
+        "run_completed",
+    }
+    latest_live_event = next(
+        (a for a in current_run if a.event_type in live_event_types), None
+    )
+    current_item = (
+        latest_live_event
+        if latest_live_event is not None
+        and latest_live_event.event_type == "post_evaluating"
+        else None
+    )
+    recent_decisions = [
+        a for a in current_run
+        if a.event_type in ("post_accepted", "post_filtered")
+    ][:5]
+
+    return {
+        "current_item": _serialize_agent_activity(current_item) if current_item else None,
+        "recent_decisions": [_serialize_agent_activity(a) for a in recent_decisions],
+    }
+
+
 def _enqueue_pipeline(market_id: str) -> None:
     """Push a pipeline task onto the Celery queue via the configured broker.
 
@@ -1292,6 +1358,83 @@ def _ensure_pipeline_dependencies(
 
 def _current_user_id(current_user: User | Any) -> str | None:
     return current_user.id if isinstance(current_user, User) else None
+
+
+def _find_user_niche_for_template(
+    dependencies: SignalApiDependencies,
+    user_id: str,
+    template_niche_id: str,
+) -> UserNiche | None:
+    for user_niche in dependencies.user_niche_repository.list_user_niches(user_id):
+        if user_niche.template_niche_id == template_niche_id:
+            return user_niche
+    return None
+
+
+def _find_user_niche_for_definition(
+    dependencies: SignalApiDependencies,
+    user_id: str,
+    *,
+    job: str,
+    buyer: str,
+    category: str,
+) -> UserNiche | None:
+    definition_key = _user_niche_definition_key(job, buyer, category)
+    for user_niche in dependencies.user_niche_repository.list_user_niches(user_id):
+        if _user_niche_display_keys(user_niche)[1] == definition_key:
+            return user_niche
+    return None
+
+
+def _dedupe_user_niches_for_display(user_niches: list[UserNiche]) -> list[UserNiche]:
+    deduped: list[UserNiche] = []
+    seen_keys: set[tuple[str, str] | tuple[str, str, str, str]] = set()
+    for user_niche in user_niches:
+        template_key, definition_key = _user_niche_display_keys(user_niche)
+        if template_key is not None and template_key in seen_keys:
+            continue
+        if definition_key in seen_keys:
+            continue
+        if template_key is not None:
+            seen_keys.add(template_key)
+        seen_keys.add(definition_key)
+        deduped.append(user_niche)
+    return deduped
+
+
+def _user_niche_display_keys(
+    user_niche: UserNiche,
+) -> tuple[tuple[str, str] | None, tuple[str, str, str, str]]:
+    template_key = (
+        ("template", user_niche.template_niche_id)
+        if user_niche.template_niche_id is not None
+        else None
+    )
+    return (
+        template_key,
+        _user_niche_definition_key(
+            user_niche.job,
+            user_niche.buyer,
+            user_niche.category,
+        ),
+    )
+
+
+def _user_niche_definition_key(
+    job: str,
+    buyer: str,
+    category: str,
+) -> tuple[str, str, str, str]:
+    return (
+        "definition",
+        _normalize_user_niche_key_part(job),
+        _normalize_user_niche_key_part(buyer),
+        _normalize_user_niche_key_part(category),
+    )
+
+
+def _normalize_user_niche_key_part(value: str | None) -> str:
+    return " ".join((value or "").strip().casefold().split())
 
 
 def _template_niche_id(market_id: str | None, dependencies: SignalApiDependencies) -> str | None:
