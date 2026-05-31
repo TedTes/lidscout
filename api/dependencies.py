@@ -27,6 +27,7 @@ from shared.config import AppConfig, get_app_config
 
 def build_signal_api_dependencies(
     config: AppConfig | None = None,
+    connection: object | None = None,
 ) -> SignalApiDependencies:
     """Build signal API dependencies from runtime configuration."""
     app_config = config or get_app_config()
@@ -34,7 +35,7 @@ def build_signal_api_dependencies(
     if not _is_postgres_url(database_url):
         raise ValueError("DATABASE_URL must be a Supabase/Postgres URL")
 
-    connection = connect_postgres(database_url)
+    connection = connection or connect_postgres(database_url)
     return SignalApiDependencies(
         post_repository=PostgresPostRepository(connection=connection),
         signal_repository=PostgresSignalRepository(connection=connection),

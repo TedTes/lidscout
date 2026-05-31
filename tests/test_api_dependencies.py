@@ -190,6 +190,21 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.embedding_client, embedding_client.return_value)
         self.assertIs(dependencies.email_client, email_client.return_value)
 
+    def test_builds_runtime_dependencies_with_supplied_connection(self):
+        config = _app_config()
+        supplied_connection = object()
+
+        with patch("api.dependencies.connect_postgres") as connect_postgres:
+            dependencies = build_signal_api_dependencies(
+                config,
+                connection=supplied_connection,
+            )
+
+        connect_postgres.assert_not_called()
+        self.assertIs(dependencies.post_repository.connection, supplied_connection)
+        self.assertIs(dependencies.signal_repository.connection, supplied_connection)
+        self.assertIs(dependencies.niche_source_repository.connection, supplied_connection)
+
     def test_leaves_llm_client_empty_without_key(self):
         database_url = "postgresql://postgres.example/lidscout"
         config = _app_config(

@@ -40,17 +40,11 @@ app.include_router(signals_router)
 @app.on_event("startup")
 async def configure_runtime_dependencies() -> None:
     """Configure runtime dependencies for API route handlers."""
-    import logging
     from shared.config import get_app_config
     from infrastructure.db import connect_postgres
     app_config = get_app_config()
-    _startup_logger = logging.getLogger(__name__)
-    redis_url = app_config.REDIS_URL
-    _startup_logger.warning(
-        "startup redis_url=%s",
-        (redis_url[:50] + "...") if redis_url and len(redis_url) > 50 else repr(redis_url),
-    )
     connection = connect_postgres(app_config.DATABASE_URL)
+    app.state.postgres_connection = connection
     configure_auth_service(
         AuthService(
             user_repository=PostgresUserRepository(connection=connection),
@@ -58,7 +52,18 @@ async def configure_runtime_dependencies() -> None:
             expiry_minutes=app_config.JWT_EXPIRY_MINUTES,
         )
     )
-    configure_signal_api_dependencies(build_signal_api_dependencies())
+    configure_signal_api_dependencies(
+        build_signal_api_dependencies(app_config, connection=connection)
+    )
+
+
+@app.on_event("shutdown")
+async def close_runtime_dependencies() -> None:
+    """Release runtime dependencies created during startup."""
+    connection = getattr(app.state, "postgres_connection", None)
+    if connection is not None:
+        connection.close()
+        app.state.postgres_connection = None
 
 
 @app.get("/")
