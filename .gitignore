@@ -13,3 +13,5 @@ supabase/.temp/
 
 web_client/.next/
 web_client/node_modules/
+
+celerybeat-schedule.db
