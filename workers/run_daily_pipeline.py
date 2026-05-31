@@ -49,6 +49,15 @@ from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
 
 
+_JSON_SOURCE_ITEMS_PATH = {
+    "github_issues_search": "items",
+    "hackernews": "hits",
+    "hackernews_search": "hits",
+    "stackoverflow": "items",
+    "stackoverflow_search": "items",
+}
+
+
 @dataclass(frozen=True)
 class PipelineConfig:
     """Dependencies and source settings for a daily pipeline run."""

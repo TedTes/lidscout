@@ -314,7 +314,18 @@ def _walk_json_records(payload: Any) -> list[dict[str, Any]]:
 
 def _record_text(record: dict[str, Any]) -> str:
     parts = []
-    for key in ("title", "name", "body", "text", "selftext", "story_text", "comment_text", "description", "comment"):
+    for key in (
+        "title",
+        "name",
+        "body",
+        "text",
+        "selftext",
+        "story_text",
+        "comment_text",
+        "description",
+        "comment",
+        "content",
+    ):
         value = record.get(key)
         if isinstance(value, str) and value.strip():
             parts.append(value.strip())
@@ -334,11 +345,25 @@ def _record_author(record: dict[str, Any]) -> str | None:
         value = record.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+    for key in ("user", "owner"):
+        value = record.get(key)
+        if isinstance(value, dict):
+            for nested_key in ("login", "display_name", "name", "username"):
+                nested_value = value.get(nested_key)
+                if isinstance(nested_value, str) and nested_value.strip():
+                    return nested_value.strip()
     return None
 
 
 def _record_timestamp(record: dict[str, Any]) -> datetime | int | float | None:
-    for key in ("created_at", "created_utc", "time", "timestamp"):
+    for key in (
+        "created_at",
+        "created_utc",
+        "creation_date",
+        "updated_at",
+        "time",
+        "timestamp",
+    ):
         value = record.get(key)
         if isinstance(value, (int, float, datetime)):
             return value
@@ -366,10 +391,18 @@ def _raw_post_from_record(
     index: int,
 ) -> RawPost:
     parsed = urlparse(source.locator)
-    record_id = record.get("id") or record.get("objectID") or record.get("permalink")
+    record_id = (
+        record.get("id")
+        or record.get("objectID")
+        or record.get("question_id")
+        or record.get("number")
+        or record.get("permalink")
+        or record.get("html_url")
+        or record.get("link")
+    )
     source_id = str(record_id) if record_id else f"{_source_id(source.locator)}:{index}"
     permalink = record.get("permalink")
-    record_url = record.get("url")
+    record_url = record.get("html_url") or record.get("link") or record.get("url")
     if isinstance(permalink, str) and permalink.startswith("/"):
         record_url = f"{parsed.scheme}://{parsed.netloc}{permalink}"
 
@@ -382,7 +415,14 @@ def _raw_post_from_record(
         url=record_url if isinstance(record_url, str) else source.locator,
         created_at=_record_timestamp(record),
         upvotes=_record_int(record, "score", "points", "upvotes"),
-        comments_count=_record_int(record, "num_comments", "comments_count", "descendants"),
+        comments_count=_record_int(
+            record,
+            "num_comments",
+            "comments_count",
+            "comments",
+            "answer_count",
+            "descendants",
+        ),
         metadata=_source_metadata(source, parsed.netloc),
     )
 

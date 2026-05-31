@@ -124,6 +124,80 @@ class SourceAdapterTests(unittest.TestCase):
 
         self.assertTrue(adapter.can_handle(source))
 
+    def test_json_url_normalizes_github_issue_search_items(self):
+        response = Mock()
+        response.headers = {"content-type": "application/json"}
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "items": [
+                {
+                    "id": 123,
+                    "number": 4,
+                    "title": "Issue title",
+                    "body": "Expected X but actual behavior is Y.",
+                    "html_url": "https://github.com/org/repo/issues/4",
+                    "url": "https://api.github.com/repos/org/repo/issues/4",
+                    "user": {"login": "devuser"},
+                    "created_at": "2024-02-01T00:00:00Z",
+                    "comments": 3,
+                    "score": 7,
+                }
+            ]
+        }
+
+        with patch("adapters.web.client.requests.get", return_value=response):
+            adapter = JsonUrlAdapter()
+            posts = adapter.fetch_source(
+                SourceInput.create(
+                    locator="https://api.github.com/search/issues?q=repo:org/repo+is%3Aissue",
+                    options={"adapter": "json", "items_path": "items"},
+                )
+            )
+
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0].id, "web_json:123")
+        self.assertEqual(posts[0].url, "https://github.com/org/repo/issues/4")
+        self.assertEqual(posts[0].author, "devuser")
+        self.assertEqual(posts[0].comments_count, 3)
+        self.assertEqual(posts[0].upvotes, 7)
+        self.assertIn("Expected X", posts[0].body)
+
+    def test_json_url_normalizes_stackoverflow_items(self):
+        response = Mock()
+        response.headers = {"content-type": "application/json"}
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "items": [
+                {
+                    "question_id": 456,
+                    "title": "Why is deploy slow?",
+                    "body": "Builds wait on cache invalidation.",
+                    "link": "https://stackoverflow.com/questions/456/why-is-deploy-slow",
+                    "owner": {"display_name": "so_user"},
+                    "creation_date": 1_700_000_000,
+                    "score": 12,
+                    "answer_count": 2,
+                }
+            ]
+        }
+
+        with patch("adapters.web.client.requests.get", return_value=response):
+            adapter = JsonUrlAdapter()
+            posts = adapter.fetch_source(
+                SourceInput.create(
+                    locator="https://api.stackexchange.com/2.3/search/advanced?q=deploy&site=stackoverflow",
+                    options={"adapter": "json", "items_path": "items"},
+                )
+            )
+
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0].id, "web_json:456")
+        self.assertEqual(posts[0].url, "https://stackoverflow.com/questions/456/why-is-deploy-slow")
+        self.assertEqual(posts[0].author, "so_user")
+        self.assertEqual(int(posts[0].created_at.timestamp()), 1_700_000_000)
+        self.assertEqual(posts[0].comments_count, 2)
+        self.assertEqual(posts[0].upvotes, 12)
+
     def test_web_page_url_normalizes_static_page_text(self):
         response = Mock()
         response.headers = {"content-type": "text/html"}
