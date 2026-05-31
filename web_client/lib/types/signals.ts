@@ -296,6 +296,11 @@ export type AgentActivityResponse = {
   activity: AgentActivity[];
 };
 
+export type PipelineLiveFeedResponse = {
+  current_item: AgentActivity | null;
+  recent_decisions: AgentActivity[];
+};
+
 export type AgentMemorySummary = {
   market_id: string;
   headline: string;

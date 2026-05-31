@@ -10,6 +10,7 @@ import { signalApi } from '@/lib/api';
 import {
   AgentActivity,
   AgentColdStartPlan,
+  PipelineLiveFeedResponse,
   AgentFeedbackAction,
   NicheCompany,
   Market,
@@ -45,6 +46,26 @@ function isItemFeedbackAction(action: AgentFeedbackAction): action is ItemFeedba
 
 function isTrainingFeedbackAction(action: AgentFeedbackAction): action is TrainingFeedbackAction {
   return action === 'more_like_this' || action === 'less_like_this';
+}
+
+function plural(n: number, singular: string, pluralForm = `${singular}s`) {
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
+function formatElapsed(isoString: string | null | undefined): string | null {
+  if (!isoString) return null;
+  const minutes = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000);
+  if (minutes < 1) return 'just now';
+  return plural(minutes, 'min') + ' ago';
+}
+
+function formatUntil(isoString: string | null): string | null {
+  if (!isoString) return null;
+  const ms = new Date(isoString).getTime() - Date.now();
+  if (ms <= 0) return 'soon';
+  const hours = Math.floor(ms / 3600000);
+  if (hours > 0) return `${hours}h`;
+  return `${Math.floor((ms % 3600000) / 60000)}m`;
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -93,8 +114,8 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
-  const [competitors, setCompetitors] = useState<NicheCompany[]>([]);
-  const [sources, setSources] = useState<MonitoredSource[]>([]);
+  const [, setCompetitors] = useState<NicheCompany[]>([]);
+  const [, setSources] = useState<MonitoredSource[]>([]);
   const [nextScanAt, setNextScanAt] = useState<string | null>(null);
   const [showBrief, setShowBrief] = useState(false);
   const [status, setStatus] = useState<Status>('loading');
@@ -138,7 +159,6 @@ export default function NicheWorkspacePage({ params }: Props) {
       setShowBrief(coldStartRes !== null && coldStartRes.status === 'setup_needed');
 
       if (feedbackRes?.feedback) {
-        // Take latest action per opportunity (sort asc by created_at, last wins)
         const sorted = [...feedbackRes.feedback].sort((a, b) =>
           (a.created_at ?? '').localeCompare(b.created_at ?? '')
         );
@@ -166,11 +186,18 @@ export default function NicheWorkspacePage({ params }: Props) {
 
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
   const [progressActivity, setProgressActivity] = useState<AgentActivity[]>([]);
+  const [liveFeed, setLiveFeed] = useState<PipelineLiveFeedResponse>({ current_item: null, recent_decisions: [] });
   const prevPipelineStatusRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveFeedIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Silently refresh only opportunities and clusters — no loading flash, no state reset
+  const runStartedEvent = useMemo(
+    () => currentRunEvents(progressActivity).find(a => a.event_type === 'run_started'),
+    [progressActivity]
+  );
+  const isRunningFirstScan = pipelineStatus === 'running' && opportunities.length === 0;
+
   const refreshData = async () => {
     try {
       const [oppsRes, clustersRes] = await Promise.all([
@@ -184,7 +211,6 @@ export default function NicheWorkspacePage({ params }: Props) {
     }
   };
 
-  // Poll pipeline status; trigger data refresh on running → done transition
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
@@ -212,7 +238,6 @@ export default function NicheWorkspacePage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
-  // Poll activity events every 5s while pipeline is running
   useEffect(() => {
     if (pipelineStatus !== 'running') {
       clearInterval(activityIntervalRef.current ?? undefined);
@@ -230,6 +255,28 @@ export default function NicheWorkspacePage({ params }: Props) {
     return () => {
       cancelled = true;
       clearInterval(activityIntervalRef.current ?? undefined);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineStatus, marketId]);
+
+  useEffect(() => {
+    if (pipelineStatus !== 'running') {
+      clearInterval(liveFeedIntervalRef.current ?? undefined);
+      if (pipelineStatus === 'done') setLiveFeed({ current_item: null, recent_decisions: [] });
+      return;
+    }
+    let cancelled = false;
+    const pollLiveFeed = async () => {
+      try {
+        const res = await signalApi.getMarketPipelineLiveFeed(marketId);
+        if (!cancelled) setLiveFeed(res);
+      } catch { /* ignore */ }
+    };
+    pollLiveFeed();
+    liveFeedIntervalRef.current = setInterval(pollLiveFeed, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(liveFeedIntervalRef.current ?? undefined);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineStatus, marketId]);
@@ -254,6 +301,10 @@ export default function NicheWorkspacePage({ params }: Props) {
   const validatedCount = opportunities.filter(o => evidenceStrength(o) === 'validated').length;
   const evidenceCount = opportunities.reduce((sum, o) => sum + o.evidence_count, 0);
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
+  const subtitle = niche?.description
+    || coldStart?.brief?.objective
+    || (niche?.target_user ? `For ${niche.target_user}` : null)
+    || 'Ranked product gaps backed by public evidence.';
 
   const handleItemFeedback = async (opportunityId: string, action: ItemFeedbackAction) => {
     const previousAction = itemFeedbackMap.get(opportunityId);
@@ -302,8 +353,17 @@ export default function NicheWorkspacePage({ params }: Props) {
   return (
     <DashboardShell
       title={title}
-      subtitle={niche?.description ?? 'Ranked product gaps backed by public evidence.'}
-      actions={<NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />}
+      subtitle={subtitle}
+      actions={
+        <div className="flex items-center gap-2">
+          <AgentStatusPill
+            pipelineStatus={pipelineStatus}
+            runStartedAt={runStartedEvent?.created_at}
+            nextScanAt={nextScanAt}
+          />
+          <NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />
+        </div>
+      }
     >
       {status === 'loading' && <LoadingPanel label="Loading gaps" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
@@ -312,51 +372,64 @@ export default function NicheWorkspacePage({ params }: Props) {
         <div className="space-y-5 animate-fade-in">
 
           {pipelineStatus === 'running' && opportunities.length === 0 && (
-            <PipelineProgressStrip activity={progressActivity} />
+            <>
+              <PipelineProgressStrip
+                activity={progressActivity}
+                runStartedAt={runStartedEvent?.created_at}
+                currentItem={liveFeed.current_item}
+              />
+              {liveFeed.recent_decisions.length > 0 && (
+                <RecentDecisionsFeed decisions={liveFeed.recent_decisions} />
+              )}
+            </>
           )}
 
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-3">
-                <StatRow compact stats={[
-                  { label: 'Candidates surfaced', value: opportunities.length, accent: opportunities.length > 0 },
-                  { label: 'Validated gaps', value: validatedCount, accent: validatedCount > 0 },
-                  { label: 'Evidence items', value: evidenceCount },
-                ]} />
-                <div className="ml-auto flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
-                    {(['all', 'saved', 'dismissed'] as const).map(filter => (
+              {isRunningFirstScan ? (
+                <p className="text-xs text-slate-600">Awaiting first candidates from this scan</p>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatRow compact stats={[
+                    { label: 'Candidates surfaced', value: opportunities.length, accent: opportunities.length > 0 },
+                    { label: 'Validated gaps', value: validatedCount, accent: validatedCount > 0 },
+                    { label: 'Evidence items', value: evidenceCount },
+                  ]} />
+                  <div className="ml-auto flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
+                      {(['all', 'saved', 'dismissed'] as const).map(filter => (
+                        <button
+                          key={filter}
+                          onClick={() => setGapFilter(filter)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${gapFilter === filter ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                          {filter}
+                          {filter === 'saved' && savedIds.size > 0 && (
+                            <span className="ml-1 text-slate-600">({savedIds.size})</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                    {coldStart && (
                       <button
-                        key={filter}
-                        onClick={() => setGapFilter(filter)}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${gapFilter === filter ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                        onClick={() => setShowBrief(v => !v)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                          showBrief
+                            ? 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+                            : 'border-slate-700/70 text-slate-500 hover:border-slate-600 hover:text-slate-300'
+                        }`}
                       >
-                        {filter}
-                        {filter === 'saved' && savedIds.size > 0 && (
-                          <span className="ml-1 text-slate-600">({savedIds.size})</span>
-                        )}
+                        <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                        Research brief
                       </button>
-                    ))}
+                    )}
                   </div>
-                  {coldStart && (
-                    <button
-                      onClick={() => setShowBrief(v => !v)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                        showBrief
-                          ? 'border-violet-500/30 bg-violet-500/10 text-violet-300'
-                          : 'border-slate-700/70 text-slate-500 hover:border-slate-600 hover:text-slate-300'
-                      }`}
-                    >
-                      <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                      Research brief
-                    </button>
-                  )}
                 </div>
-              </div>
+              )}
 
-              {showBrief && coldStart && (
+              {showBrief && coldStart && !isRunningFirstScan && (
                 <ResearchBriefPanel coldStart={coldStart} marketId={marketId} />
               )}
               {feedbackError && (
@@ -364,10 +437,16 @@ export default function NicheWorkspacePage({ params }: Props) {
               )}
 
               {filteredOpportunities.length === 0 ? (
-                <EmptyPanel
-                  title={gapFilter === 'all' ? 'No candidates surfaced yet' : `No ${gapFilter} candidates`}
-                  detail={gapFilter === 'all' ? 'Opportunity candidates appear after active sources are scanned.' : undefined}
-                />
+                isRunningFirstScan ? (
+                  <p className="mt-2 text-xs text-slate-600">
+                    Candidates will appear here when the agent finishes grouping evidence.
+                  </p>
+                ) : (
+                  <EmptyPanel
+                    title={gapFilter === 'all' ? 'No candidates surfaced yet' : `No ${gapFilter} candidates`}
+                    detail={gapFilter === 'all' ? 'Opportunity candidates appear after active sources are scanned.' : undefined}
+                  />
+                )
               ) : (
                 <div className="space-y-3">
                   {filteredOpportunities.map((opportunity, index) => (
@@ -394,77 +473,153 @@ export default function NicheWorkspacePage({ params }: Props) {
   );
 }
 
+// ── Agent Status Pill ──────────────────────────────────────────────────────────
+
+function AgentStatusPill({
+  pipelineStatus,
+  runStartedAt,
+  nextScanAt,
+}: {
+  pipelineStatus: string | null;
+  runStartedAt: string | null | undefined;
+  nextScanAt: string | null;
+}) {
+  if (!pipelineStatus || pipelineStatus === 'pending') return null;
+
+  if (pipelineStatus === 'running') {
+    const elapsed = formatElapsed(runStartedAt);
+    return (
+      <div className="flex items-center gap-1.5 rounded-full border border-violet-500/20 bg-violet-500/[0.06] px-3 py-1.5 text-xs text-violet-300 whitespace-nowrap">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.6)]" />
+        <span>Agent running{elapsed ? ` · ${elapsed}` : ''}</span>
+      </div>
+    );
+  }
+
+  if (pipelineStatus === 'failed') {
+    return (
+      <div className="flex items-center gap-1.5 rounded-full border border-rose-500/20 bg-rose-500/[0.06] px-3 py-1.5 text-xs text-rose-400 whitespace-nowrap">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+        <span>Last scan had errors</span>
+      </div>
+    );
+  }
+
+  const until = formatUntil(nextScanAt);
+  return (
+    <div className="flex items-center gap-1.5 rounded-full border border-slate-800/60 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-600 whitespace-nowrap">
+      <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
+      <span>Agent idle{until ? ` · next in ${until}` : ''}</span>
+    </div>
+  );
+}
+
 // ── Pipeline Progress Strip ────────────────────────────────────────────────────
 
-type ProgressStep = {
-  key: string;
-  label: string;
-  detail: string | null;
-  done: boolean;
-};
-
 function currentRunEvents(activity: AgentActivity[]): AgentActivity[] {
-  // Activity is newest-first. Slice down to the most recent run_started.
   const startIdx = activity.findIndex(a => a.event_type === 'run_started');
   return startIdx >= 0 ? activity.slice(0, startIdx + 1) : activity;
 }
 
-function PipelineProgressStrip({ activity }: { activity: AgentActivity[] }) {
+function PipelineProgressStrip({
+  activity,
+  runStartedAt,
+  currentItem,
+}: {
+  activity: AgentActivity[];
+  runStartedAt?: string | null;
+  currentItem?: AgentActivity | null;
+}) {
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const run = currentRunEvents(activity);
   const ev = (type: string) => run.find(a => a.event_type === type);
 
-  const sources = ev('sources_scanned');
-  const filtered = ev('posts_filtered');
-  const extracted = ev('signals_extracted');
-  const clustered = ev('clusters_formed');
-  const gaps = ev('gaps_synthesized');
+  const sourcesEv = ev('sources_scanned');
+  const filteredEv = ev('posts_filtered');
+  const extractedEv = ev('signals_extracted');
+  const gapsEv = ev('gaps_synthesized');
 
-  const steps: ProgressStep[] = [
+  const sourceCount = (sourcesEv?.metadata?.success_count ?? sourcesEv?.metadata?.source_count) as number | undefined;
+  const postCount = sourcesEv?.metadata?.post_count as number | undefined;
+  const relevantCount = filteredEv?.metadata?.relevant_count as number | undefined;
+  const filteredCount = filteredEv?.metadata?.filtered_count as number | undefined;
+  const signalCount = extractedEv?.metadata?.signal_count as number | undefined;
+  const gapCount = gapsEv?.metadata?.gap_count as number | undefined;
+
+  type Step = {
+    key: string;
+    label: string;
+    done: boolean;
+    completedDetail: string | null;
+    activeText: string;
+    futureText: string;
+  };
+
+  const steps: Step[] = [
     {
       key: 'sources',
       label: 'Scanning sources',
-      done: !!sources,
-      detail: sources
-        ? `${sources.metadata?.success_count ?? sources.metadata?.source_count} sources · ${sources.metadata?.post_count} posts`
+      done: !!sourcesEv,
+      completedDetail: sourceCount != null && postCount != null
+        ? `${plural(sourceCount, 'source')} · ${plural(postCount, 'post')}`
         : null,
+      activeText: 'Fetching posts from active sources',
+      futureText: 'Waiting for sources',
     },
     {
       key: 'filter',
       label: 'Reviewing posts',
-      done: !!filtered,
-      detail: filtered
-        ? `${filtered.metadata?.relevant_count} relevant of ${
-            ((filtered.metadata?.relevant_count as number) ?? 0) +
-            ((filtered.metadata?.filtered_count as number) ?? 0)
-          }`
+      done: !!filteredEv,
+      completedDetail: relevantCount != null && filteredCount != null
+        ? `${plural(relevantCount, 'relevant')} · ${plural(filteredCount, 'filtered')}`
         : null,
+      activeText: 'Checking posts against the research brief',
+      futureText: 'Waiting for post review',
     },
     {
       key: 'signals',
-      label: 'Extracting signals',
-      done: !!extracted,
-      detail: extracted ? `${extracted.metadata?.signal_count} found` : null,
+      label: 'Extracting findings',
+      done: !!extractedEv,
+      completedDetail: signalCount != null ? `${plural(signalCount, 'finding')} extracted` : null,
+      activeText: 'Extracting structured pain signals',
+      futureText: 'Waiting for findings',
     },
     {
       key: 'gaps',
-      label: 'Identifying gaps',
-      done: !!gaps,
-      detail: gaps ? `${gaps.metadata?.gap_count} new gap${(gaps.metadata?.gap_count as number) !== 1 ? 's' : ''}` : null,
+      label: 'Identifying candidates',
+      done: !!gapsEv,
+      completedDetail: gapCount != null ? `${plural(gapCount, 'candidate')} surfaced` : null,
+      activeText: 'Grouping evidence into candidate gaps',
+      futureText: 'Waiting for themes',
     },
   ];
 
   const activeIdx = steps.findLastIndex(s => s.done) + 1;
+  const fallbackText = activeIdx < steps.length ? steps[activeIdx].activeText : null;
+  const currentlyText = currentItem
+    ? `${currentItem.metadata?.title as string || 'post'} · ${currentItem.metadata?.source_label as string || ''}`
+    : fallbackText;
+  const elapsed = formatElapsed(runStartedAt);
 
   return (
-    <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] px-5 py-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.7)]" />
-        <p className="text-xs font-semibold text-violet-300">Research agent running…</p>
+    <div className="space-y-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.04] px-5 py-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.7)]" />
+          <p className="text-xs font-semibold text-violet-300">Research agent running…</p>
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+          {elapsed && <span>Started {elapsed}</span>}
+          <span className="text-slate-800">·</span>
+          <span>Typical scan: 8–15 min</span>
+        </div>
       </div>
-      <div className="flex items-center gap-1.5">
+
+      <div className="flex items-start gap-1.5">
         {steps.map((step, i) => {
           const isActive = i === activeIdx;
           const isDone = step.done;
+          const isFuture = i > activeIdx;
           return (
             <div key={step.key} className="flex min-w-0 flex-1 items-center gap-1.5">
               <div className={`flex min-w-0 flex-1 flex-col rounded-lg border px-3 py-2 transition-colors ${
@@ -487,12 +642,50 @@ function PipelineProgressStrip({ activity }: { activity: AgentActivity[] }) {
                   <span className={`truncate text-[11px] font-medium ${isDone ? 'text-violet-300' : isActive ? 'text-slate-400' : 'text-slate-700'}`}>
                     {step.label}
                   </span>
+                  {isDone && step.key === 'sources' && (
+                    <button
+                      onClick={() => setSourcesExpanded(v => !v)}
+                      className="ml-auto shrink-0 text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
+                    >
+                      {sourcesExpanded ? '▲' : '▼'}
+                    </button>
+                  )}
                 </div>
-                {(isDone && step.detail) && (
-                  <p className="mt-0.5 truncate pl-3 text-[10px] text-slate-500">{step.detail}</p>
+                {isDone && step.completedDetail && (
+                  <p className="mt-0.5 truncate pl-3 text-[10px] text-slate-500">{step.completedDetail}</p>
                 )}
-                {isActive && !step.detail && (
-                  <p className="mt-0.5 animate-pulse pl-3 text-[10px] text-slate-700">…</p>
+                {isDone && step.key === 'sources' && sourcesExpanded && (() => {
+                  const sourceList = sourcesEv?.metadata?.sources as Array<{
+                    source_label: string; post_count: number;
+                    posts: Array<{ title: string; url: string | null; post_date: string | null }>;
+                  }> | undefined;
+                  if (!sourceList?.length) {
+                    return <p className="mt-1 pl-3 text-[10px] text-slate-600">Source-level counts were not recorded for this run.</p>;
+                  }
+                  return (
+                    <div className="mt-1.5 space-y-2 pl-3">
+                      {sourceList.map((src, si) => (
+                        <div key={si}>
+                          <p className="text-[10px] font-semibold text-slate-500">{src.source_label} · {plural(src.post_count, 'post')}</p>
+                          <ul className="mt-0.5 space-y-0.5">
+                            {src.posts.slice(0, 8).map((p, pi) => (
+                              <li key={pi} className="truncate text-[10px] text-slate-600">
+                                {p.url
+                                  ? <a href={p.url} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400 hover:underline">{p.title || p.url}</a>
+                                  : <span>{p.title || '(untitled)'}</span>}
+                              </li>
+                            ))}
+                            {src.posts.length > 8 && (
+                              <li className="text-[10px] text-slate-700">+{src.posts.length - 8} more</li>
+                            )}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+                {isFuture && (
+                  <p className="mt-0.5 truncate pl-3 text-[10px] text-slate-700">{step.futureText}</p>
                 )}
               </div>
               {i < steps.length - 1 && (
@@ -500,6 +693,59 @@ function PipelineProgressStrip({ activity }: { activity: AgentActivity[] }) {
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               )}
+            </div>
+          );
+        })}
+      </div>
+
+      {currentlyText && (
+        <p className="text-[11px] text-slate-600">Currently: {currentlyText}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Recent Decisions Mini-Feed ─────────────────────────────────────────────────
+
+const REJECTION_LABELS: Record<string, string> = {
+  empty: 'no content',
+  wrong_subject: 'off-topic',
+  tutorial_or_template: 'tutorial',
+  promotional: 'promotional',
+  news: 'news',
+  job_posting: 'job posting',
+  no_pain_signal: 'no pain signal',
+  other: 'filtered',
+};
+
+function RecentDecisionsFeed({ decisions }: { decisions: AgentActivity[] }) {
+  return (
+    <div className="rounded-xl border border-slate-800/50 bg-slate-900/20 px-4 py-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+        Recent decisions
+      </p>
+      <div className="space-y-1.5">
+        {decisions.map(d => {
+          const accepted = d.event_type === 'post_accepted';
+          const title = (d.metadata?.title as string) || d.title.replace(/^(Kept|Filtered):\s*/i, '');
+          const source = d.metadata?.source_label as string | undefined;
+          const reason = d.metadata?.reason as string | undefined;
+          return (
+            <div key={d.id} className="flex items-start gap-2 text-[11px]">
+              <span className={`mt-px shrink-0 font-semibold ${accepted ? 'text-emerald-500' : 'text-slate-600'}`}>
+                {accepted ? '✓' : '✗'}
+              </span>
+              <span className={`truncate ${accepted ? 'text-slate-400' : 'text-slate-600'}`}>
+                <span className="font-medium">{accepted ? 'Kept' : 'Filtered'}</span>
+                {' · '}
+                <span className="italic">&ldquo;{title}&rdquo;</span>
+                {source && <span className="text-slate-600"> · {source}</span>}
+                {!accepted && reason && (
+                  <span className="ml-1 rounded bg-slate-800/60 px-1 py-px text-[10px] text-slate-600">
+                    {REJECTION_LABELS[reason] ?? reason}
+                  </span>
+                )}
+              </span>
             </div>
           );
         })}
@@ -662,7 +908,7 @@ function GapCard({
                 {meta.label}
               </span>
               <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs tabular-nums text-slate-500">
-                {opportunity.evidence_count} quote{opportunity.evidence_count === 1 ? '' : 's'}
+                {plural(opportunity.evidence_count, 'quote')}
               </span>
               {theme && <ClusterLink id={theme.id} marketId={marketId}>{theme.theme}</ClusterLink>}
             </div>
@@ -693,15 +939,15 @@ function GapCard({
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="text-xs text-slate-600">
               Evidence trail:
-              {' '}<span className="font-medium text-slate-400">{opportunity.evidence_count}</span> quote{opportunity.evidence_count === 1 ? '' : 's'}
-              {' '}· <span className="font-medium text-slate-400">{opportunity.evidence_source_count ?? 0}</span> source{opportunity.evidence_source_count === 1 ? '' : 's'}
+              {' '}<span className="font-medium text-slate-400">{plural(opportunity.evidence_count, 'quote')}</span>
+              {' '}· <span className="font-medium text-slate-400">{plural(opportunity.evidence_source_count ?? 0, 'source')}</span>
               {opportunity.company_count > 0 && (
                 <>
                   {' '}· <span className="font-medium text-slate-400">{opportunity.company_count}</span>
                   {opportunity.market_company_count != null && (
                     <>/{opportunity.market_company_count}</>
                   )}{' '}
-                  compan{opportunity.company_count === 1 ? 'y' : 'ies'}
+                  {opportunity.company_count === 1 ? 'company' : 'companies'}
                 </>
               )}
             </span>

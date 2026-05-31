@@ -8,6 +8,7 @@ import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
   AgentActivityResponse,
+  PipelineLiveFeedResponse,
   AgentColdStartPlan,
   AgentFeedback,
   AgentFeedbackRequest,
@@ -635,6 +636,20 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load pipeline status');
+      }
+      throw error;
+    }
+  }
+
+  async getMarketPipelineLiveFeed(marketId: string): Promise<PipelineLiveFeedResponse> {
+    try {
+      const response = await api.get<PipelineLiveFeedResponse>(
+        `/markets/${marketId}/pipeline/live-feed`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load pipeline live feed');
       }
       throw error;
     }
