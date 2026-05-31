@@ -8,6 +8,7 @@ import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
+  AgentActivity,
   AgentColdStartPlan,
   AgentFeedbackAction,
   NicheCompany,
@@ -19,21 +20,19 @@ import {
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
-type Tier = 'strong' | 'moderate' | 'weak';
+type EvidenceStrength = 'early' | 'emerging' | 'validated';
 type GapFilter = 'all' | 'saved' | 'dismissed';
 type ItemFeedbackAction = Extract<AgentFeedbackAction, 'save' | 'dismiss'>;
 type TrainingFeedbackAction = Extract<AgentFeedbackAction, 'more_like_this' | 'less_like_this'>;
 
-const TIER_META: Record<Tier, { label: string; dotCls: string; badgeCls: string }> = {
-  strong: { label: 'Strong signal', dotCls: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]', badgeCls: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' },
-  moderate: { label: 'Moderate signal', dotCls: 'bg-amber-400', badgeCls: 'border-amber-500/25 bg-amber-500/10 text-amber-400' },
-  weak: { label: 'Weak signal', dotCls: 'bg-slate-600', badgeCls: 'border-slate-700/50 bg-slate-800/60 text-slate-500' },
+const STRENGTH_META: Record<EvidenceStrength, { label: string; dotCls: string; badgeCls: string }> = {
+  validated: { label: 'Validated gap', dotCls: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]', badgeCls: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' },
+  emerging: { label: 'Emerging gap', dotCls: 'bg-amber-400', badgeCls: 'border-amber-500/25 bg-amber-500/10 text-amber-400' },
+  early: { label: 'Early signal', dotCls: 'bg-slate-500', badgeCls: 'border-slate-700/60 bg-slate-800/60 text-slate-400' },
 };
 
-function opportunityTier(confidence: number): Tier {
-  if (confidence >= 0.7) return 'strong';
-  if (confidence >= 0.4) return 'moderate';
-  return 'weak';
+function evidenceStrength(opportunity: Opportunity): EvidenceStrength {
+  return opportunity.evidence_strength ?? 'early';
 }
 
 function fallbackTitleFromId(id: string) {
@@ -116,6 +115,8 @@ export default function NicheWorkspacePage({ params }: Props) {
     setNextScanAt(null);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
+    setPipelineStatus(null);
+    setProgressActivity([]);
     try {
       const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes, scheduleRes] = await Promise.all([
         signalApi.getMarket(marketId),
@@ -163,8 +164,11 @@ export default function NicheWorkspacePage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
+  const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+  const [progressActivity, setProgressActivity] = useState<AgentActivity[]>([]);
   const prevPipelineStatusRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Silently refresh only opportunities and clusters — no loading flash, no state reset
   const refreshData = async () => {
@@ -180,7 +184,7 @@ export default function NicheWorkspacePage({ params }: Props) {
     }
   };
 
-  // Poll pipeline status only; trigger a data refresh on running → done transition
+  // Poll pipeline status; trigger data refresh on running → done transition
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
@@ -189,8 +193,10 @@ export default function NicheWorkspacePage({ params }: Props) {
         if (cancelled) return;
         const prev = prevPipelineStatusRef.current;
         prevPipelineStatusRef.current = res.status;
+        setPipelineStatus(res.status);
         if (prev === 'running' && res.status === 'done') {
           refreshData();
+          setProgressActivity([]);
         }
       } catch (err: unknown) {
         const status = (err as { response?: { status?: number } })?.response?.status;
@@ -205,6 +211,28 @@ export default function NicheWorkspacePage({ params }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
+
+  // Poll activity events every 5s while pipeline is running
+  useEffect(() => {
+    if (pipelineStatus !== 'running') {
+      clearInterval(activityIntervalRef.current ?? undefined);
+      return;
+    }
+    let cancelled = false;
+    const pollActivity = async () => {
+      try {
+        const res = await signalApi.getMarketAgentActivity(marketId);
+        if (!cancelled) setProgressActivity(res.activity);
+      } catch { /* ignore */ }
+    };
+    pollActivity();
+    activityIntervalRef.current = setInterval(pollActivity, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(activityIntervalRef.current ?? undefined);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineStatus, marketId]);
 
   const clusterById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters]);
 
@@ -223,7 +251,7 @@ export default function NicheWorkspacePage({ params }: Props) {
     return !dismissedIds.has(o.id);
   });
 
-  const strongCount = opportunities.filter(o => o.confidence >= 0.7).length;
+  const validatedCount = opportunities.filter(o => evidenceStrength(o) === 'validated').length;
   const evidenceCount = opportunities.reduce((sum, o) => sum + o.evidence_count, 0);
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
 
@@ -283,14 +311,18 @@ export default function NicheWorkspacePage({ params }: Props) {
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
 
+          {pipelineStatus === 'running' && opportunities.length === 0 && (
+            <PipelineProgressStrip activity={progressActivity} />
+          )}
+
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-3">
                 <StatRow compact stats={[
-                  { label: 'Gaps identified', value: opportunities.length, accent: opportunities.length > 0 },
-                  { label: 'Strong signals', value: strongCount, accent: strongCount > 0 },
+                  { label: 'Candidates surfaced', value: opportunities.length, accent: opportunities.length > 0 },
+                  { label: 'Validated gaps', value: validatedCount, accent: validatedCount > 0 },
                   { label: 'Evidence items', value: evidenceCount },
                 ]} />
                 <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -333,8 +365,8 @@ export default function NicheWorkspacePage({ params }: Props) {
 
               {filteredOpportunities.length === 0 ? (
                 <EmptyPanel
-                  title={gapFilter === 'all' ? 'No gaps identified yet' : `No ${gapFilter} gaps`}
-                  detail={gapFilter === 'all' ? 'Gaps appear after active sources are scanned.' : undefined}
+                  title={gapFilter === 'all' ? 'No candidates surfaced yet' : `No ${gapFilter} candidates`}
+                  detail={gapFilter === 'all' ? 'Opportunity candidates appear after active sources are scanned.' : undefined}
                 />
               ) : (
                 <div className="space-y-3">
@@ -345,7 +377,7 @@ export default function NicheWorkspacePage({ params }: Props) {
                       opportunity={opportunity}
                       marketId={marketId}
                       theme={opportunity.cluster_id ? clusterById.get(opportunity.cluster_id) : undefined}
-                      meta={TIER_META[opportunityTier(opportunity.confidence)]}
+                      meta={STRENGTH_META[evidenceStrength(opportunity)]}
                       itemAction={itemFeedbackMap.get(opportunity.id) ?? null}
                       trainingAction={trainingFeedbackMap.get(opportunity.id) ?? null}
                       onItemFeedback={action => handleItemFeedback(opportunity.id, action)}
@@ -359,6 +391,120 @@ export default function NicheWorkspacePage({ params }: Props) {
         </div>
       )}
     </DashboardShell>
+  );
+}
+
+// ── Pipeline Progress Strip ────────────────────────────────────────────────────
+
+type ProgressStep = {
+  key: string;
+  label: string;
+  detail: string | null;
+  done: boolean;
+};
+
+function currentRunEvents(activity: AgentActivity[]): AgentActivity[] {
+  // Activity is newest-first. Slice down to the most recent run_started.
+  const startIdx = activity.findIndex(a => a.event_type === 'run_started');
+  return startIdx >= 0 ? activity.slice(0, startIdx + 1) : activity;
+}
+
+function PipelineProgressStrip({ activity }: { activity: AgentActivity[] }) {
+  const run = currentRunEvents(activity);
+  const ev = (type: string) => run.find(a => a.event_type === type);
+
+  const sources = ev('sources_scanned');
+  const filtered = ev('posts_filtered');
+  const extracted = ev('signals_extracted');
+  const clustered = ev('clusters_formed');
+  const gaps = ev('gaps_synthesized');
+
+  const steps: ProgressStep[] = [
+    {
+      key: 'sources',
+      label: 'Scanning sources',
+      done: !!sources,
+      detail: sources
+        ? `${sources.metadata?.success_count ?? sources.metadata?.source_count} sources · ${sources.metadata?.post_count} posts`
+        : null,
+    },
+    {
+      key: 'filter',
+      label: 'Reviewing posts',
+      done: !!filtered,
+      detail: filtered
+        ? `${filtered.metadata?.relevant_count} relevant of ${
+            ((filtered.metadata?.relevant_count as number) ?? 0) +
+            ((filtered.metadata?.filtered_count as number) ?? 0)
+          }`
+        : null,
+    },
+    {
+      key: 'signals',
+      label: 'Extracting signals',
+      done: !!extracted,
+      detail: extracted ? `${extracted.metadata?.signal_count} found` : null,
+    },
+    {
+      key: 'gaps',
+      label: 'Identifying gaps',
+      done: !!gaps,
+      detail: gaps ? `${gaps.metadata?.gap_count} new gap${(gaps.metadata?.gap_count as number) !== 1 ? 's' : ''}` : null,
+    },
+  ];
+
+  const activeIdx = steps.findLastIndex(s => s.done) + 1;
+
+  return (
+    <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] px-5 py-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.7)]" />
+        <p className="text-xs font-semibold text-violet-300">Research agent running…</p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {steps.map((step, i) => {
+          const isActive = i === activeIdx;
+          const isDone = step.done;
+          return (
+            <div key={step.key} className="flex min-w-0 flex-1 items-center gap-1.5">
+              <div className={`flex min-w-0 flex-1 flex-col rounded-lg border px-3 py-2 transition-colors ${
+                isDone
+                  ? 'border-violet-500/25 bg-violet-500/[0.07]'
+                  : isActive
+                  ? 'border-slate-700/60 bg-slate-800/40'
+                  : 'border-slate-800/40 bg-transparent'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  {isDone ? (
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-violet-400">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  ) : isActive ? (
+                    <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-slate-500" />
+                  ) : (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-800" />
+                  )}
+                  <span className={`truncate text-[11px] font-medium ${isDone ? 'text-violet-300' : isActive ? 'text-slate-400' : 'text-slate-700'}`}>
+                    {step.label}
+                  </span>
+                </div>
+                {(isDone && step.detail) && (
+                  <p className="mt-0.5 truncate pl-3 text-[10px] text-slate-500">{step.detail}</p>
+                )}
+                {isActive && !step.detail && (
+                  <p className="mt-0.5 animate-pulse pl-3 text-[10px] text-slate-700">…</p>
+                )}
+              </div>
+              {i < steps.length - 1 && (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${isDone ? 'text-violet-500/40' : 'text-slate-800'}`}>
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -492,7 +638,7 @@ function GapCard({
   opportunity: Opportunity;
   marketId: string;
   theme?: SignalCluster;
-  meta: typeof TIER_META['strong'];
+  meta: typeof STRENGTH_META['early'];
   itemAction: ItemFeedbackAction | null;
   trainingAction: TrainingFeedbackAction | null;
   onItemFeedback: (action: ItemFeedbackAction) => void;
@@ -516,14 +662,17 @@ function GapCard({
                 {meta.label}
               </span>
               <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs tabular-nums text-slate-500">
-                {opportunity.evidence_count} evidence
+                {opportunity.evidence_count} quote{opportunity.evidence_count === 1 ? '' : 's'}
               </span>
               {theme && <ClusterLink id={theme.id} marketId={marketId}>{theme.theme}</ClusterLink>}
             </div>
           </div>
 
           {opportunity.pain_summary && (
-            <p className="mb-3 text-sm leading-relaxed text-slate-400">{opportunity.pain_summary}</p>
+            <div className="mb-3">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Observed pain</p>
+              <p className="text-sm leading-relaxed text-slate-400">{opportunity.pain_summary}</p>
+            </div>
           )}
 
           <div className="grid gap-2 sm:grid-cols-2">
@@ -535,24 +684,37 @@ function GapCard({
             )}
             {opportunity.suggested_wedge && (
               <div className="rounded-lg border border-violet-500/15 bg-violet-500/[0.04] px-3 py-2">
-                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Suggested wedge</p>
+                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Possible wedge</p>
                 <p className="text-xs text-violet-300">{opportunity.suggested_wedge}</p>
               </div>
             )}
           </div>
 
-          {opportunity.company_count > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-xs text-slate-600">
-                Across <span className="font-medium text-slate-400">{opportunity.company_count}</span>
-                {opportunity.market_company_count != null && (
-                  <> of <span className="font-medium text-slate-400">{opportunity.market_company_count}</span></>
-                )}{' '}
-                {opportunity.company_count === 1 ? 'company' : 'companies'}
-              </span>
-              {opportunity.company_names.slice(0, 4).map(name => (
-                <span key={name} className="rounded-md bg-slate-800/50 px-2 py-0.5 text-[11px] text-slate-500">{name}</span>
-              ))}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-xs text-slate-600">
+              Evidence trail:
+              {' '}<span className="font-medium text-slate-400">{opportunity.evidence_count}</span> quote{opportunity.evidence_count === 1 ? '' : 's'}
+              {' '}· <span className="font-medium text-slate-400">{opportunity.evidence_source_count ?? 0}</span> source{opportunity.evidence_source_count === 1 ? '' : 's'}
+              {opportunity.company_count > 0 && (
+                <>
+                  {' '}· <span className="font-medium text-slate-400">{opportunity.company_count}</span>
+                  {opportunity.market_company_count != null && (
+                    <>/{opportunity.market_company_count}</>
+                  )}{' '}
+                  compan{opportunity.company_count === 1 ? 'y' : 'ies'}
+                </>
+              )}
+            </span>
+            {opportunity.company_names.slice(0, 4).map(name => (
+              <span key={name} className="rounded-md bg-slate-800/50 px-2 py-0.5 text-[11px] text-slate-500">{name}</span>
+            ))}
+          </div>
+
+          {opportunity.evidence_strength === 'early' && (
+            <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/30 px-3 py-2">
+              <p className="text-xs leading-relaxed text-slate-500">
+                Treat this as a lead to verify. The agent found a narrow signal, but it needs more evidence before it should drive roadmap decisions.
+              </p>
             </div>
           )}
 

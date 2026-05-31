@@ -1,6 +1,7 @@
 """Opportunity synthesis service."""
 import json
 import logging
+import re
 from collections import Counter
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -92,6 +93,7 @@ class OpportunitySynthesisService:
             except ValueError:
                 failed_count += 1
 
+        opportunities = merge_near_duplicate_opportunities(opportunities)
         inserted_count = self.repository.save_opportunities(opportunities)
         failed_count += len(opportunities) - inserted_count
 
@@ -238,24 +240,28 @@ def _suggested_wedge(category: str | None, workaround: str | None) -> str:
 
 def _confidence_for(cluster: SignalCluster, signals: list[Signal]) -> float:
     score_component = min(cluster.average_score / 10.0, 1.0) * 0.45
-    evidence_component = min(max(cluster.frequency, len(signals)), 5) / 5 * 0.25
-    source_component = min(_source_diversity(signals), 3) / 3 * 0.20
+    evidence_count = max(cluster.frequency, len(signals))
+    source_diversity = _source_diversity(signals)
+    evidence_component = min(evidence_count, 5) / 5 * 0.25
+    source_component = min(source_diversity, 3) / 3 * 0.20
     average_signal_confidence = (
         sum(signal.confidence for signal in signals) / len(signals)
         if signals
         else 0.0
     )
     quality_component = min(average_signal_confidence, 1.0) * 0.10
-    return round(
-        min(
-            score_component
-            + evidence_component
-            + source_component
-            + quality_component,
-            1.0,
-        ),
-        2,
+    confidence = min(
+        score_component
+        + evidence_component
+        + source_component
+        + quality_component,
+        1.0,
     )
+    if evidence_count < 2:
+        confidence = min(confidence, 0.39)
+    elif evidence_count < 3 and source_diversity < 2:
+        confidence = min(confidence, 0.55)
+    return round(confidence, 2)
 
 
 def _cluster_content(
@@ -370,3 +376,91 @@ def _format_bool(value: bool | None) -> str:
     if value is None:
         return "unknown"
     return "true" if value else "false"
+
+
+def merge_near_duplicate_opportunities(
+    opportunities: list[Opportunity],
+) -> list[Opportunity]:
+    merged: list[Opportunity] = []
+    for candidate in opportunities:
+        duplicate_index = next(
+            (
+                index
+                for index, existing in enumerate(merged)
+                if _opportunity_similarity(existing, candidate) >= 0.52
+            ),
+            None,
+        )
+        if duplicate_index is None:
+            merged.append(candidate)
+            continue
+        merged[duplicate_index] = _merge_opportunity(
+            merged[duplicate_index],
+            candidate,
+        )
+    return merged
+
+
+def _merge_opportunity(existing: Opportunity, duplicate: Opportunity) -> Opportunity:
+    evidence_signal_ids = list(
+        dict.fromkeys(existing.evidence_signal_ids + duplicate.evidence_signal_ids)
+    )
+    return Opportunity.create(
+        id=existing.id,
+        cluster_id=existing.cluster_id,
+        title=existing.title,
+        target_user=existing.target_user,
+        pain_summary=existing.pain_summary,
+        why_it_matters=existing.why_it_matters,
+        suggested_wedge=existing.suggested_wedge,
+        evidence_count=max(
+            existing.evidence_count + duplicate.evidence_count,
+            len(evidence_signal_ids),
+        ),
+        confidence=max(existing.confidence, duplicate.confidence),
+        evidence_signal_ids=evidence_signal_ids,
+    )
+
+
+def _opportunity_similarity(left: Opportunity, right: Opportunity) -> float:
+    left_tokens = _opportunity_tokens(left)
+    right_tokens = _opportunity_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = len(left_tokens.intersection(right_tokens))
+    return overlap / len(left_tokens.union(right_tokens))
+
+
+def _opportunity_tokens(opportunity: Opportunity) -> set[str]:
+    text = " ".join(
+        [
+            opportunity.title,
+            opportunity.pain_summary,
+            opportunity.suggested_wedge,
+        ]
+    )
+    stopwords = {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "for",
+        "from",
+        "in",
+        "is",
+        "of",
+        "or",
+        "that",
+        "the",
+        "this",
+        "to",
+        "with",
+        "users",
+        "user",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) > 2 and token not in stopwords
+    }

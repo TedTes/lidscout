@@ -85,6 +85,7 @@ export default function NicheActivityPage({ params }: Props) {
   }, [marketId]);
 
   const seenIdsRef = useRef<Set<string>>(new Set());
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Append-only poll — only updates state when there are genuinely new events
   useEffect(() => {
@@ -101,15 +102,16 @@ export default function NicheActivityPage({ params }: Props) {
           const truly = newItems.filter(a => !existingIds.has(a.id));
           return truly.length > 0 ? [...truly, ...prev] : prev;
         });
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 404) clearInterval(intervalRef.current ?? undefined);
       }
     };
     poll();
-    const interval = setInterval(poll, 15000);
+    intervalRef.current = setInterval(poll, 15000);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(intervalRef.current ?? undefined);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);

@@ -280,6 +280,80 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
 
         self.assertGreater(high_diversity.confidence, low_diversity.confidence)
 
+    def test_caps_confidence_for_single_evidence_opportunities(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        signal = Signal.create(
+            id="signal-1",
+            post_id="g2:shipstation-1",
+            pain="Shipping sync fails during fulfillment.",
+            urgency="high",
+            severity="high",
+            confidence=0.95,
+            evidence_url="https://example.com/review/1",
+        )
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Shipping reliability",
+            summary="Operators report unreliable shipping sync.",
+            signal_ids=["signal-1"],
+            frequency=1,
+            average_score=9.5,
+        )
+
+        opportunity = service.synthesize([cluster], [signal]).opportunities[0]
+
+        self.assertLess(opportunity.confidence, 0.4)
+
+    def test_merges_near_duplicate_opportunity_cards(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        signals = [
+            Signal.create(
+                id="signal-1",
+                post_id="post-1",
+                pain="ShipStation users are switching because fulfillment sync is unreliable.",
+                user_type="ecommerce operators",
+                category="Shipping integration",
+                confidence=0.9,
+            ),
+            Signal.create(
+                id="signal-2",
+                post_id="post-2",
+                pain="Ecommerce operators are frustrated with ShipStation reliability and seek alternatives.",
+                user_type="ecommerce operators",
+                category="Shipping software",
+                confidence=0.9,
+            ),
+        ]
+        clusters = [
+            SignalCluster.create(
+                id="cluster-1",
+                theme="Shipping integration",
+                summary="Ecommerce operators need more reliable ShipStation fulfillment sync.",
+                signal_ids=["signal-1"],
+                frequency=1,
+                average_score=8.0,
+            ),
+            SignalCluster.create(
+                id="cluster-2",
+                theme="Shipping software",
+                summary="ShipStation dissatisfaction pushes ecommerce operators to alternatives.",
+                signal_ids=["signal-2"],
+                frequency=1,
+                average_score=8.0,
+            ),
+        ]
+
+        result = service.synthesize(clusters, signals)
+
+        self.assertEqual(result.synthesized_count, 1)
+        self.assertEqual(result.opportunities[0].evidence_count, 2)
+        self.assertEqual(
+            result.opportunities[0].evidence_signal_ids,
+            ["signal-1", "signal-2"],
+        )
+
     def test_falls_back_to_templates_when_llm_raises(self):
         repository = InMemoryOpportunityRepository()
         llm_client = MagicMock()

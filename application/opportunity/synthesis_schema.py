@@ -20,6 +20,10 @@ Use only the supplied evidence. Do not invent competitors, users, sources, or
 market facts. If the evidence is thin, keep the claim conservative. Do not use
 generic language. Do not repeat the cluster theme verbatim as the title. Be
 direct and specific about what to build and why.
+
+If there is only one evidence item, frame the opportunity as an early signal,
+not a proven market gap. Make the claim narrow and cite the exact workflow or
+failure mode visible in the evidence.
 """.strip()
 
 

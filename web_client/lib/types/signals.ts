@@ -48,6 +48,8 @@ export type Opportunity = {
   company_names: string[];
   company_count: number;
   market_company_count: number | null;
+  evidence_source_count: number;
+  evidence_strength: 'early' | 'emerging' | 'validated';
 };
 
 export type NicheCompany = {

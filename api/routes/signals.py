@@ -14,6 +14,7 @@ from application.agent import (
     build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
+from application.opportunity import merge_near_duplicate_opportunities
 from application.ingestion import SourceAdapter
 from application.ports import (
     AgentActivityRepository,
@@ -319,6 +320,7 @@ async def list_opportunities(
             o for o in opportunities
             if any(sid in scoped_signal_ids for sid in o.evidence_signal_ids)
         ]
+    opportunities = merge_near_duplicate_opportunities(opportunities)
     if market_id is not None:
         opportunities = rank_opportunities_with_feedback(
             opportunities,
@@ -1187,7 +1189,11 @@ async def get_market_pipeline_status(
     events = dependencies.agent_activity_repository.list_agent_activity(
         user_niche_id=market_id, limit=20
     )
-    events_sorted = sorted(events, key=lambda e: e.created_at or "", reverse=True)
+    events_sorted = sorted(
+        events,
+        key=lambda e: _activity_created_at(e) or datetime.min.replace(tzinfo=UTC),
+        reverse=True,
+    )
     last_event = events_sorted[0] if events_sorted else None
 
     latest_run_start = next((e for e in events_sorted if e.event_type == "run_started"), None)
@@ -1196,24 +1202,29 @@ async def get_market_pipeline_status(
         status = "pending"
     else:
         # Only consider events from the most recent run onwards
-        start_time = latest_run_start.created_at
+        start_time = _activity_created_at(latest_run_start)
         current_run = [
             e for e in events_sorted
-            if start_time is None or (e.created_at or "") >= str(start_time)
+            if start_time is None
+            or (
+                (event_time := _activity_created_at(e)) is not None
+                and event_time >= start_time
+            )
         ]
         has_completed = any(e.event_type == "run_completed" for e in current_run)
         if has_completed:
             status = "done"
         elif start_time is not None:
-            age_seconds = (datetime.now(UTC) - start_time.astimezone(UTC)).total_seconds()
+            age_seconds = (datetime.now(UTC) - start_time).total_seconds()
             status = "failed" if age_seconds > 900 else "running"
         else:
             status = "running"
 
+    last_event_at = _activity_created_at(last_event) if last_event else None
     return {
         "status": status,
         "last_event_type": last_event.event_type if last_event else None,
-        "last_event_at": last_event.created_at.isoformat() if last_event and last_event.created_at else None,
+        "last_event_at": last_event_at.isoformat() if last_event_at else None,
     }
 
 
@@ -1241,6 +1252,21 @@ def _enqueue_pipeline(market_id: str) -> None:
             error_type=type(exc).__name__,
             error=str(exc),
         )
+
+
+def _activity_created_at(activity: AgentActivity | None) -> datetime | None:
+    if activity is None or activity.created_at is None:
+        return None
+    value = activity.created_at
+    if isinstance(value, datetime):
+        return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return None
 
 
 def _ensure_pipeline_dependencies(
@@ -1325,16 +1351,31 @@ def _company_breadth_for_signal_ids(
         {signal.niche_company_id for signal in signals if signal.niche_company_id is not None}
     )
     resolved_market_id = market_id or _single_niche_id(signals)
+    company_names = _company_names_for_ids(
+        dependencies,
+        company_ids,
+        resolved_market_id,
+        signals,
+    )
     market_company_count = (
         _market_company_count(dependencies, resolved_market_id)
         if resolved_market_id is not None
         else None
     )
+    source_keys = {
+        _signal_source_key(signal)
+        for signal in signals
+        if _signal_source_key(signal) is not None
+    }
+    source_count = len(source_keys)
+    if source_count == 0 and signals:
+        source_count = 1
     return {
         "company_ids": company_ids,
-        "company_names": [],
+        "company_names": company_names,
         "company_count": len(company_ids),
         "market_company_count": market_company_count,
+        "evidence_source_count": source_count,
     }
 
 
@@ -1357,6 +1398,36 @@ def _market_company_count(
             user_niche.template_niche_id
         )
     )
+
+
+def _company_names_for_ids(
+    dependencies: SignalApiDependencies,
+    company_ids: list[str],
+    market_id: str | None,
+    signals: list[Signal],
+) -> list[str]:
+    if not company_ids:
+        return []
+    niche_id = _template_niche_id(market_id, dependencies) if market_id else None
+    if niche_id is None:
+        niche_id = _single_niche_id(signals)
+    if niche_id is None:
+        return []
+    companies = dependencies.niche_company_repository.list_niche_companies(niche_id)
+    name_by_id = {company.id: company.name for company in companies}
+    return [name_by_id[company_id] for company_id in company_ids if company_id in name_by_id]
+
+
+def _signal_source_key(signal: Signal) -> str | None:
+    if signal.evidence_url:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(signal.evidence_url)
+        if parsed.netloc:
+            return parsed.netloc.lower()
+    if ":" in signal.post_id:
+        return signal.post_id.split(":", 1)[0].lower()
+    return None
 
 
 def _market_report_title(
@@ -1731,7 +1802,19 @@ def _serialize_opportunity(
                 _signals_by_id=_signals_by_id,
             )
         )
+    serialized["evidence_strength"] = _opportunity_evidence_strength(serialized)
     return serialized
+
+
+def _opportunity_evidence_strength(serialized: dict[str, Any]) -> str:
+    evidence_count = int(serialized.get("evidence_count") or 0)
+    company_count = int(serialized.get("company_count") or 0)
+    source_count = int(serialized.get("evidence_source_count") or 0)
+    if evidence_count >= 3 and (company_count >= 2 or source_count >= 2):
+        return "validated"
+    if evidence_count >= 2 or source_count >= 2:
+        return "emerging"
+    return "early"
 
 
 def _serialize_report(
