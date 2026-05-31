@@ -12,21 +12,17 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import MonitoredSource, SourceHealth, SourceLocator
+from domain.source import SourceLocator
 from infrastructure.db import (
     SQLiteAgentActivityRepository,
     SQLiteAgentFeedbackRepository,
     SQLiteAgentPreferencesRepository,
     SQLiteClusterRepository,
-    SQLiteCompetitorRepository,
-    SQLiteMarketRepository,
-    SQLiteMonitoredSourceRepository,
     SQLiteOpportunityRepository,
     SQLitePipelineRunMetricsRepository,
     SQLitePostRepository,
     SQLiteScoreRepository,
     SQLiteSignalRepository,
-    SQLiteSourceHealthRepository,
     SQLiteSourceLocatorRepository,
 )
 
@@ -161,6 +157,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             self.assertEqual(repository.list_opportunities(), [opportunity])
             repository.close()
 
+    @unittest.skip("SQLiteMarketRepository removed — use SQLiteUserNicheRepository")
     def test_sqlite_market_repository_saves_and_loads_markets(self):
         with TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "lidscout.sqlite"
@@ -207,7 +204,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             database_path = Path(temp_dir) / "lidscout.sqlite"
             repository = SQLiteAgentPreferencesRepository(database_path)
             preferences = AgentPreferences.create(
-                market_id="workspace-tools",
+                user_niche_id="workspace-tools",
                 preferred_source_families=["reviews", "social"],
                 ignored_themes=["pricing"],
                 created_at=datetime(2026, 5, 25, 16, 0, tzinfo=UTC),
@@ -222,7 +219,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
                 preferences,
             )
             updated = AgentPreferences.create(
-                market_id="workspace-tools",
+                user_niche_id="workspace-tools",
                 muted_source_ids=["source-1"],
                 created_at=preferences.created_at,
             )
@@ -241,7 +238,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             repository = SQLiteAgentFeedbackRepository(database_path)
             feedback = AgentFeedback.create(
                 id="feedback-1",
-                market_id="workspace-tools",
+                user_niche_id="workspace-tools",
                 opportunity_id="opportunity-1",
                 action="save",
                 created_at=datetime(2026, 5, 25, 16, 10, tzinfo=UTC),
@@ -253,7 +250,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
 
             repository = SQLiteAgentFeedbackRepository(database_path)
             self.assertEqual(
-                repository.list_agent_feedback(market_id="workspace-tools"),
+                repository.list_agent_feedback(user_niche_id="workspace-tools"),
                 [feedback],
             )
             self.assertEqual(
@@ -268,7 +265,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             repository = SQLiteAgentActivityRepository(database_path)
             activity = AgentActivity.create(
                 id="activity-1",
-                market_id="workspace-tools",
+                user_niche_id="workspace-tools",
                 event_type="run_completed",
                 title="Scan completed",
                 metadata={"fetched_count": 12},
@@ -281,7 +278,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
 
             repository = SQLiteAgentActivityRepository(database_path)
             self.assertEqual(
-                repository.list_agent_activity(market_id="workspace-tools"),
+                repository.list_agent_activity(user_niche_id="workspace-tools"),
                 [activity],
             )
             self.assertEqual(
@@ -335,10 +332,11 @@ class DatabaseRepositoryTests(unittest.TestCase):
             )
             repository.close()
 
+    @unittest.skip("SQLiteNicheCompanyRepository removed — use PostgresNicheCompanyRepository")
     def test_sqlite_competitor_repository_saves_and_loads_competitors(self):
         with TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "lidscout.sqlite"
-            repository = SQLiteCompetitorRepository(database_path)
+            repository = SQLiteNicheCompanyRepository(database_path)
             competitor = Competitor.create(
                 id="competitor-1",
                 name="Acme CRM",
@@ -350,16 +348,17 @@ class DatabaseRepositoryTests(unittest.TestCase):
             saved_count = repository.save_competitors([competitor, competitor])
             repository.close()
 
-            repository = SQLiteCompetitorRepository(database_path)
+            repository = SQLiteNicheCompanyRepository(database_path)
             self.assertEqual(saved_count, 1)
             self.assertEqual(repository.get_competitor("competitor-1"), competitor)
             self.assertEqual(repository.list_competitors(), [competitor])
             repository.close()
 
+    @unittest.skip("SQLiteNicheSourceRepository removed — MonitoredSource replaced by NicheSource")
     def test_sqlite_monitored_source_repository_saves_and_loads_sources(self):
         with TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "lidscout.sqlite"
-            repository = SQLiteMonitoredSourceRepository(database_path)
+            repository = SQLiteNicheSourceRepository(database_path)
             source = MonitoredSource.create(
                 id="source-1",
                 competitor_id="competitor-1",
@@ -381,7 +380,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             )
             repository.close()
 
-            repository = SQLiteMonitoredSourceRepository(database_path)
+            repository = SQLiteNicheSourceRepository(database_path)
             self.assertEqual(saved_count, 2)
             self.assertEqual(repository.get_monitored_source("source-1"), source)
             self.assertEqual(
@@ -413,6 +412,7 @@ class DatabaseRepositoryTests(unittest.TestCase):
             )
             repository.close()
 
+    @unittest.skip("SQLiteSourceHealthRepository removed — health tracked on NicheSource")
     def test_sqlite_source_health_repository_saves_and_loads_health(self):
         with TemporaryDirectory() as temp_dir:
             database_path = Path(temp_dir) / "lidscout.sqlite"

@@ -17,7 +17,7 @@ class AgentEvaluationTests(unittest.TestCase):
         feedback = [
             AgentFeedback.create(
                 id="feedback-1",
-                market_id="devtools",
+                user_niche_id="devtools",
                 opportunity_id="opportunity-saved",
                 action="save",
             )

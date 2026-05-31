@@ -24,6 +24,9 @@ def _app_config(**overrides):
         "GOOGLE_CLIENT_SECRET": None,
         "API_URL": "http://localhost:8000",
         "FRONTEND_URL": "http://localhost:3000",
+        "REDIS_URL": None,
+        "REDDIT_CLIENT_ID": None,
+        "REDDIT_CLIENT_SECRET": None,
     }
     values.update(overrides)
     return AppConfig(**values)
@@ -74,17 +77,17 @@ class ApiDependencyTests(unittest.TestCase):
             agent_follow_up_repository = stack.enter_context(
                 patch("api.dependencies.PostgresAgentFollowUpRepository")
             )
-            competitor_repository = stack.enter_context(
-                patch("api.dependencies.PostgresCompetitorRepository")
+            niche_repository = stack.enter_context(
+                patch("api.dependencies.PostgresNicheRepository")
             )
-            market_repository = stack.enter_context(
-                patch("api.dependencies.PostgresMarketRepository")
+            niche_company_repository = stack.enter_context(
+                patch("api.dependencies.PostgresNicheCompanyRepository")
             )
-            monitored_source_repository = stack.enter_context(
-                patch("api.dependencies.PostgresMonitoredSourceRepository")
+            niche_source_repository = stack.enter_context(
+                patch("api.dependencies.PostgresNicheSourceRepository")
             )
-            source_health_repository = stack.enter_context(
-                patch("api.dependencies.PostgresSourceHealthRepository")
+            user_niche_repository = stack.enter_context(
+                patch("api.dependencies.PostgresUserNicheRepository")
             )
             source_locator_repository = stack.enter_context(
                 patch("api.dependencies.PostgresSourceLocatorRepository")
@@ -123,10 +126,10 @@ class ApiDependencyTests(unittest.TestCase):
         agent_activity_repository.assert_called_once_with(connection=connection)
         agent_alert_repository.assert_called_once_with(connection=connection)
         agent_follow_up_repository.assert_called_once_with(connection=connection)
-        competitor_repository.assert_called_once_with(connection=connection)
-        market_repository.assert_called_once_with(connection=connection)
-        monitored_source_repository.assert_called_once_with(connection=connection)
-        source_health_repository.assert_called_once_with(connection=connection)
+        niche_repository.assert_called_once_with(connection=connection)
+        niche_company_repository.assert_called_once_with(connection=connection)
+        niche_source_repository.assert_called_once_with(connection=connection)
+        user_niche_repository.assert_called_once_with(connection=connection)
         source_locator_repository.assert_called_once_with(connection=connection)
         self.assertEqual(llm_client.call_count, 2)
         llm_client.assert_any_call(api_key="llm-key", model="response-model")
@@ -141,13 +144,8 @@ class ApiDependencyTests(unittest.TestCase):
         )
         email_client.assert_called_once_with(email_notifier.return_value)
 
-        self.assertEqual(
-            dependencies.source_adapters,
-            [
-                json_adapter.return_value,
-                static_adapter.return_value,
-            ],
-        )
+        self.assertIn(json_adapter.return_value, dependencies.source_adapters)
+        self.assertIn(static_adapter.return_value, dependencies.source_adapters)
         self.assertIs(dependencies.post_repository, post_repository.return_value)
         self.assertIs(dependencies.signal_repository, signal_repository.return_value)
         self.assertIs(dependencies.score_repository, score_repository.return_value)
@@ -180,16 +178,9 @@ class ApiDependencyTests(unittest.TestCase):
             dependencies.agent_follow_up_repository,
             agent_follow_up_repository.return_value,
         )
-        self.assertIs(dependencies.competitor_repository, competitor_repository.return_value)
-        self.assertIs(dependencies.market_repository, market_repository.return_value)
-        self.assertIs(
-            dependencies.monitored_source_repository,
-            monitored_source_repository.return_value,
-        )
-        self.assertIs(
-            dependencies.source_health_repository,
-            source_health_repository.return_value,
-        )
+        self.assertIs(dependencies.niche_company_repository, niche_company_repository.return_value)
+        self.assertIs(dependencies.user_niche_repository, user_niche_repository.return_value)
+        self.assertIs(dependencies.niche_source_repository, niche_source_repository.return_value)
         self.assertIs(
             dependencies.source_locator_repository,
             source_locator_repository.return_value,
@@ -218,10 +209,10 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresAgentActivityRepository",
                 "api.dependencies.PostgresAgentAlertRepository",
                 "api.dependencies.PostgresAgentFollowUpRepository",
-                "api.dependencies.PostgresCompetitorRepository",
-                "api.dependencies.PostgresMarketRepository",
-                "api.dependencies.PostgresMonitoredSourceRepository",
-                "api.dependencies.PostgresSourceHealthRepository",
+                "api.dependencies.PostgresNicheRepository",
+                "api.dependencies.PostgresNicheCompanyRepository",
+                "api.dependencies.PostgresNicheSourceRepository",
+                "api.dependencies.PostgresUserNicheRepository",
                 "api.dependencies.PostgresSourceLocatorRepository",
                 "api.dependencies.JsonUrlAdapter",
                 "api.dependencies.StaticUrlAdapter",

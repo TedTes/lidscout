@@ -78,14 +78,14 @@ class ClusteringServiceTests(unittest.TestCase):
                 post_id="reddit:1",
                 pain="Calendar sync is broken",
                 category="calendar",
-                competitor_id="notion",
+                niche_company_id="notion",
             ),
             Signal.create(
                 id="signal-2",
                 post_id="reddit:2",
                 pain="Calendar sync is broken",
                 category="calendar",
-                competitor_id="linear",
+                niche_company_id="linear",
             ),
         ]
 

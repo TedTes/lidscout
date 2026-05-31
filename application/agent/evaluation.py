@@ -158,7 +158,7 @@ def _feedback_from_payload(payload: object) -> AgentFeedback:
         raise ValueError("feedback must be an object")
     return AgentFeedback.create(
         id=_required_string(payload, "id"),
-        market_id=_required_string(payload, "market_id"),
+        user_niche_id=_required_string(payload, "market_id"),
         opportunity_id=_required_string(payload, "opportunity_id"),
         action=_required_string(payload, "action"),
         reason=_optional_string(payload, "reason"),

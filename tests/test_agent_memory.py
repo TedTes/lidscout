@@ -1,52 +1,50 @@
 import unittest
-from datetime import UTC, datetime
 
 from application.agent import build_agent_memory_summary
 from domain.agent import AgentFeedback, AgentPreferences
-from domain.market import Market
-from domain.source import MonitoredSource, SourceHealth
+from domain.niche import NicheSource, UserNiche
 
 
 class AgentMemorySummaryTests(unittest.TestCase):
     def test_summarizes_preferences_feedback_and_source_health(self):
-        source = MonitoredSource.create(
+        user_niche = UserNiche.create(
+            id="devtools",
+            user_id="user-1",
+            job="Developer tools",
+            buyer="developers",
+            category="tools",
+        )
+        source = NicheSource.create(
             id="source-1",
-            market_id="devtools",
+            niche_id="devtools",
             locator="https://example.com/issues",
             source_type="github_issues",
-            options={"source_family": "technical_forum"},
-        )
-        health = SourceHealth.create(monitored_source_id="source-1").record_run(
-            fetched_count=12,
-            relevant_count=3,
-            extracted_count=1,
-            opportunity_count=1,
-            error=None,
-            scanned_at=datetime(2026, 5, 25, tzinfo=UTC),
+            source_family="technical_forum",
+            is_gate_free=True,
+            health_status="active",
         )
 
         summary = build_agent_memory_summary(
-            market=Market.create(id="devtools", name="Developer tools"),
+            user_niche=user_niche,
             preferences=AgentPreferences.create(
-                market_id="devtools",
+                user_niche_id="devtools",
                 preferred_source_families=["technical_forum"],
                 ignored_themes=["pricing"],
                 extra_instructions="Prioritize developer workflow pain.",
             ),
             feedback=[
                 AgentFeedback.create(
-                    market_id="devtools",
+                    user_niche_id="devtools",
                     opportunity_id="opportunity-1",
                     action="save",
                 ),
                 AgentFeedback.create(
-                    market_id="devtools",
+                    user_niche_id="devtools",
                     opportunity_id="opportunity-2",
                     action="dismiss",
                 ),
             ],
             sources=[source],
-            source_health=[health],
         )
 
         self.assertEqual(summary.market_id, "devtools")
