@@ -7,7 +7,7 @@ if [ "$SERVICE_TYPE" = "worker" ]; then
   # Combined worker + Beat — safe while only one worker instance is running.
   # When scaling to multiple worker instances, run Beat as a separate service
   # (set SERVICE_TYPE=beat) to avoid double-scheduling.
-  exec celery -A workers.celery_app worker --beat --loglevel=info --concurrency=2
+  exec celery -A workers.celery_app worker --beat --loglevel=info --concurrency="${WORKER_CONCURRENCY:-1}"
 elif [ "$SERVICE_TYPE" = "beat" ]; then
   exec celery -A workers.celery_app beat --loglevel=info
 else
