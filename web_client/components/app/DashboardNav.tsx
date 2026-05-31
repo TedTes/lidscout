@@ -221,6 +221,14 @@ export default function DashboardNav() {
       .catch(() => setMarkets([]));
   }, []); // mount-only — state kept in sync by handleNicheCreated / handleDeleteNiche
 
+  useEffect(() => {
+    if (activeId && markets.length > 0 && !markets.find(m => m.id === activeId)) {
+      signalApi.getMarkets()
+        .then(response => setMarkets(response.markets))
+        .catch(() => {});
+    }
+  }, [activeId, markets]);
+
   const handleNicheCreated = (market: Market) => {
     setMarkets(prev => [...prev, market]);
     setShowAddNiche(false);
