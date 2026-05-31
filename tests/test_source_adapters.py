@@ -103,7 +103,7 @@ class SourceAdapterTests(unittest.TestCase):
             adapter = JsonUrlAdapter()
             posts = adapter.fetch_source(
                 SourceInput.create(
-                    locator="https://hn.algolia.com/api/v1/search_by_date?query=example&tags=story",
+                    locator="https://hn.algolia.com/api/v1/search_by_date?query=example&tags=comment",
                     options={"adapter": "json", "items_path": "hits", "market_id": "mkt-1"},
                 )
             )

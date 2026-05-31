@@ -156,6 +156,14 @@ export type MonitoredSource = {
   last_scanned_at: string | null;
   last_error: string | null;
   health: SourceHealth | null;
+  is_gate_free?: boolean;
+  buyer_voice_verified?: boolean;
+  tier?: number | null;
+  signal_quality_score?: number | null;
+  access_mode?: string;
+  requires_proxy?: boolean;
+  requires_auth?: boolean;
+  recommended_cadence?: string | null;
   options: Record<string, unknown>;
 };
 

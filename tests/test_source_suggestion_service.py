@@ -24,7 +24,7 @@ class SourceSuggestionServiceTests(unittest.TestCase):
             locators,
         )
         self.assertIn(
-            "https://hn.algolia.com/api/v1/search_by_date?query=Notion&tags=story",
+            "https://hn.algolia.com/api/v1/search_by_date?query=Notion&tags=comment",
             locators,
         )
         self.assertIn("https://www.g2.com/search?query=Notion", locators)
@@ -64,7 +64,7 @@ class SourceSuggestionServiceTests(unittest.TestCase):
             locators,
         )
         self.assertIn(
-            "https://hn.algolia.com/api/v1/search_by_date?query=AI+Devtools&tags=story",
+            "https://hn.algolia.com/api/v1/search_by_date?query=AI+Devtools&tags=comment",
             locators,
         )
         self.assertTrue(all(suggestion.competitor_id is None for suggestion in suggestions))
