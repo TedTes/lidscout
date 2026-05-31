@@ -478,6 +478,7 @@ def _record_niche_source_health(
             source_id,
             health_status,
             scanned_at,
+            detail.error,
         )
 
 
@@ -540,7 +541,10 @@ def _configured_sources(
             if user_niche is not None:
                 niche_id = user_niche.template_niche_id
         if niche_id is not None:
-            niche_sources = niche_source_repository.list_niche_sources(niche_id)
+            niche_sources = niche_source_repository.list_niche_sources(
+                niche_id,
+                enabled=True,
+            )
             if niche_sources:
                 filtered = _apply_agent_source_preferences(
                     niche_sources,
@@ -575,16 +579,22 @@ def _niche_source_input(
     preferences: object | None,
 ) -> SourceInput:
     options: dict = {
+        **source.options,
         "niche_source_id": source.id,
         "source_type": source.source_type,
         "source_family": source.source_family,
-        "niche_id": source.niche_id,
+        "market_id": str(source.niche_id),
     }
+    if source.tier is not None:
+        options["source_tier"] = str(source.tier)
+    if source.signal_quality_score is not None:
+        options["source_quality_score"] = str(source.signal_quality_score)
+    options["source_access_mode"] = source.access_mode
     if source.company_id:
-        options["niche_company_id"] = source.company_id
+        options["competitor_id"] = source.company_id
     if user_niche is not None:
-        options["niche_name"] = user_niche.job
-        options["target_user"] = user_niche.buyer
+        options["market_name"] = user_niche.job
+        options["market_target_user"] = user_niche.buyer
     if preferences is not None:
         if getattr(preferences, "extra_instructions", None):
             options["agent_extra_instructions"] = preferences.extra_instructions  # type: ignore[union-attr]
@@ -592,7 +602,17 @@ def _niche_source_input(
             options["agent_ignored_themes"] = ", ".join(preferences.ignored_themes)  # type: ignore[union-attr]
         if getattr(preferences, "ignored_categories", None):
             options["agent_ignored_categories"] = ", ".join(preferences.ignored_categories)  # type: ignore[union-attr]
-    return SourceInput.create(locator=source.locator, options=options)
+    items_path = source.options.get("items_path") or _JSON_SOURCE_ITEMS_PATH.get(
+        source.source_type
+    )
+    if items_path:
+        options["adapter"] = "json"
+        options["items_path"] = items_path
+    return SourceInput.create(
+        locator=source.locator,
+        limit=source.limit,
+        options=options,
+    )
 
 
 def _apply_agent_source_preferences(

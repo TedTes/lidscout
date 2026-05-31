@@ -86,6 +86,35 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(posts[1].metadata["market_name"], "Workspace tools")
         self.assertEqual(posts[1].metadata["source_family"], "social")
 
+    def test_json_url_extracts_items_at_configured_path(self):
+        response = Mock()
+        response.headers = {"content-type": "application/json"}
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "hits": [
+                {"objectID": "1", "title": "HN story one", "story_text": "Pain with SaaS pricing", "author": "user1", "points": 42, "num_comments": 5, "created_at": "2024-01-01T00:00:00Z"},
+                {"objectID": "2", "title": "HN story two", "url": "https://example.com/post", "author": "user2", "points": 10, "num_comments": 1, "created_at": "2024-01-02T00:00:00Z"},
+            ],
+            "nbHits": 2,
+            "page": 0,
+        }
+
+        with patch("adapters.web.client.requests.get", return_value=response):
+            adapter = JsonUrlAdapter()
+            posts = adapter.fetch_source(
+                SourceInput.create(
+                    locator="https://hn.algolia.com/api/v1/search_by_date?query=example&tags=story",
+                    options={"adapter": "json", "items_path": "hits", "market_id": "mkt-1"},
+                )
+            )
+
+        self.assertEqual(len(posts), 2)
+        self.assertEqual(posts[0].id, "web_json:1")
+        self.assertEqual(posts[0].title, "HN story one")
+        self.assertIn("Pain with SaaS pricing", posts[0].body)
+        self.assertEqual(posts[1].id, "web_json:2")
+        self.assertEqual(posts[1].metadata["market_id"], "mkt-1")
+
     def test_json_adapter_can_handle_explicit_json_api_source(self):
         adapter = JsonUrlAdapter()
         source = SourceInput.create(

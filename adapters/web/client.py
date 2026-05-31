@@ -227,7 +227,13 @@ def _normalize_json_payload(
     default_limit: int,
     source_label: str = "web_json",
 ) -> list[RawPost]:
-    records = [r for r in _walk_json_records(payload) if _record_text(r)]
+    items_path = source.options.get("items_path")
+    if items_path and isinstance(payload, dict):
+        raw = payload.get(items_path)
+        candidates = raw if isinstance(raw, list) else []
+    else:
+        candidates = _walk_json_records(payload)
+    records = [r for r in candidates if isinstance(r, dict) and _record_text(r)]
     limit = source.limit or default_limit
     posts = [
         _raw_post_from_record(source, record, index)
@@ -308,7 +314,7 @@ def _walk_json_records(payload: Any) -> list[dict[str, Any]]:
 
 def _record_text(record: dict[str, Any]) -> str:
     parts = []
-    for key in ("title", "name", "body", "text", "selftext", "description", "comment"):
+    for key in ("title", "name", "body", "text", "selftext", "story_text", "comment_text", "description", "comment"):
         value = record.get(key)
         if isinstance(value, str) and value.strip():
             parts.append(value.strip())
@@ -316,7 +322,7 @@ def _record_text(record: dict[str, Any]) -> str:
 
 
 def _record_title(record: dict[str, Any], fallback: str) -> str:
-    for key in ("title", "name"):
+    for key in ("title", "name", "story_title"):
         value = record.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -398,6 +404,9 @@ def _source_metadata(source: SourceInput, domain: str) -> dict[str, Any]:
         "market_idea_prompt",
         "source_family",
         "source_type",
+        "agent_extra_instructions",
+        "agent_ignored_themes",
+        "agent_ignored_categories",
     ):
         value = source.options.get(key)
         if isinstance(value, str) and value.strip():
