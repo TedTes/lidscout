@@ -16,8 +16,11 @@ logger = logging.getLogger(__name__)
 )
 def run_pipeline_for_market(self, market_id: str) -> dict:
     """Run the full research pipeline for one market."""
+    import sys as _sys, os as _os
+    _root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
     from workers.jobs import run_configured_daily_pipeline, _pipeline_job_summary
-
     logger.info("pipeline starting market_id=%s attempt=%d", market_id, self.request.retries + 1)
     try:
         result = run_configured_daily_pipeline(market_id=market_id)
@@ -43,6 +46,10 @@ def run_pipeline_for_market(self, market_id: str) -> dict:
 )
 def run_daily_pipeline_all() -> dict:
     """Coordinator task: enqueue one pipeline run per user_niche that has sources."""
+    import sys as _sys, os as _os
+    _root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
     from api.dependencies import build_signal_api_dependencies
 
     deps = build_signal_api_dependencies()
@@ -50,7 +57,10 @@ def run_daily_pipeline_all() -> dict:
     active = [
         un for un in all_niches
         if un.template_niche_id is not None
-        and deps.niche_source_repository.list_niche_sources(un.template_niche_id)
+        and deps.niche_source_repository.list_niche_sources(
+            un.template_niche_id,
+            enabled=True,
+        )
     ]
 
     for user_niche in active:

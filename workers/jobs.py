@@ -13,26 +13,22 @@ from __future__ import annotations
 import json
 import sys
 
-from api.dependencies import build_signal_api_dependencies
-from api.schemas import InteractionExtractionRequest, InteractionExtractionResponse
-from api.routes.signals import SignalApiDependencies
-from application.factory import ServiceFactory
 from shared.config import get_app_config
 from workers.run_daily_pipeline import PipelineConfig, PipelineRunResult, run_daily_pipeline
 
 
-async def extract_public_activity_signals(
-    request: InteractionExtractionRequest,
-) -> InteractionExtractionResponse:
+async def extract_public_activity_signals(request: object) -> object:
     """Run the extraction pipeline for supplied public activity sources."""
+    from api.schemas import InteractionExtractionRequest, InteractionExtractionResponse  # noqa: F401
+    from application.factory import ServiceFactory
     extractor = ServiceFactory.get_interaction_extraction_service()
-    return await extractor.extract(request)
+    return await extractor.extract(request)  # type: ignore[arg-type]
 
 
 def run_configured_daily_pipeline(
     recipient: str | None = None,
     market_id: str | None = None,
-    dependencies: SignalApiDependencies | None = None,
+    dependencies: object | None = None,
 ) -> PipelineRunResult:
     """Run the pipeline from persisted, enabled source locators."""
     app_config = get_app_config()
@@ -40,6 +36,7 @@ def run_configured_daily_pipeline(
     if not resolved_recipient:
         raise ValueError("REPORT_RECIPIENT is required for background pipeline runs")
 
+    from api.dependencies import build_signal_api_dependencies
     runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
     _ensure_background_pipeline_dependencies(runtime_dependencies)
 
@@ -74,9 +71,10 @@ def run_configured_daily_pipeline(
 
 def check_worker_readiness(
     user_niche_id: str | None = None,
-    dependencies: SignalApiDependencies | None = None,
+    dependencies: object | None = None,
 ) -> dict[str, object]:
     """Return deploy-time readiness details for the scheduled worker."""
+    from api.dependencies import build_signal_api_dependencies
     app_config = get_app_config()
     runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
     _ensure_background_pipeline_dependencies(runtime_dependencies)
@@ -87,13 +85,19 @@ def check_worker_readiness(
         if user_niche and user_niche.template_niche_id:
             niche_source_count = len(
                 runtime_dependencies.niche_source_repository.list_niche_sources(
-                    user_niche.template_niche_id
+                    user_niche.template_niche_id,
+                    enabled=True,
                 )
             )
     else:
         all_niches = runtime_dependencies.user_niche_repository.list_all_user_niches()
         niche_source_count = sum(
-            len(runtime_dependencies.niche_source_repository.list_niche_sources(un.template_niche_id))
+            len(
+                runtime_dependencies.niche_source_repository.list_niche_sources(
+                    un.template_niche_id,
+                    enabled=True,
+                )
+            )
             for un in all_niches
             if un.template_niche_id
         )
