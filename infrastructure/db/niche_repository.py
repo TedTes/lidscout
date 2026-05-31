@@ -138,17 +138,29 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
                 """
                 INSERT INTO niche_sources (
                     id, niche_id, company_id, locator, source_type, source_family,
-                    is_gate_free, buyer_voice_verified, health_status,
-                    last_scanned_at, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    is_gate_free, enabled, limit_value, scan_frequency,
+                    buyer_voice_verified, health_status, last_scanned_at,
+                    last_error, options, tier, signal_quality_score, access_mode,
+                    requires_proxy, requires_auth, recommended_cadence,
+                    created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s::jsonb, %s, %s, %s,
+                    %s, %s, %s, %s, %s
+                )
                 ON CONFLICT (niche_id, locator) DO NOTHING
                 """,
                 (
                     source.id, source.niche_id, source.company_id,
                     source.locator, source.source_type, source.source_family,
-                    source.is_gate_free, source.buyer_voice_verified,
+                    source.is_gate_free, source.enabled, source.limit,
+                    source.scan_frequency, source.buyer_voice_verified,
                     source.health_status, source.last_scanned_at,
-                    source.created_at, source.updated_at,
+                    source.last_error, json.dumps(source.options), source.tier,
+                    source.signal_quality_score, source.access_mode,
+                    source.requires_proxy, source.requires_auth,
+                    source.recommended_cadence, source.created_at,
+                    source.updated_at,
                 ),
             )
             inserted += _rowcount(cursor)
@@ -159,10 +171,14 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
         self,
         niche_id: str,
         *,
+        enabled: bool | None = None,
         is_gate_free: bool | None = None,
         buyer_voice_verified: bool | None = None,
     ) -> list[NicheSource]:
         clauses, params = ["niche_id = %s"], [niche_id]
+        if enabled is not None:
+            clauses.append("enabled = %s")
+            params.append(enabled)
         if is_gate_free is not None:
             clauses.append("is_gate_free = %s")
             params.append(is_gate_free)
@@ -180,15 +196,17 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
         source_id: str,
         health_status: str,
         last_scanned_at: Any = None,
+        last_error: str | None = None,
     ) -> bool:
         from datetime import UTC
         cursor = self.connection.execute(
             """
             UPDATE niche_sources
-               SET health_status = %s, last_scanned_at = %s, updated_at = %s
+               SET health_status = %s, last_scanned_at = %s,
+                   last_error = %s, updated_at = %s
              WHERE id = %s
             """,
-            (health_status, last_scanned_at, datetime.now(UTC), source_id),
+            (health_status, last_scanned_at, last_error, datetime.now(UTC), source_id),
         )
         self.connection.commit()
         return _rowcount(cursor) > 0
@@ -327,6 +345,20 @@ class PostgresUserNicheRepository(_PostgresRepository, UserNicheRepository):
 
 # ── Row deserializers ─────────────────────────────────────────────────────────
 
+def _json_obj(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return decoded if isinstance(decoded, dict) else {}
+    return {}
+
+
 def _niche_from_row(row: dict[str, Any]) -> Niche:
     return Niche(
         id=str(row["id"]),
@@ -362,9 +394,20 @@ def _niche_source_from_row(row: dict[str, Any]) -> NicheSource:
         source_type=row["source_type"],
         source_family=row["source_family"],
         is_gate_free=bool(row["is_gate_free"]),
+        enabled=bool(row.get("enabled", True)),
+        limit=row.get("limit_value"),
+        scan_frequency=row.get("scan_frequency"),
         buyer_voice_verified=bool(row.get("buyer_voice_verified", False)),
         health_status=row.get("health_status", "unknown"),
         last_scanned_at=row.get("last_scanned_at"),
+        last_error=row.get("last_error"),
+        options=_json_obj(row.get("options")),
+        tier=row.get("tier"),
+        signal_quality_score=row.get("signal_quality_score"),
+        access_mode=row.get("access_mode", "unknown"),
+        requires_proxy=bool(row.get("requires_proxy", False)),
+        requires_auth=bool(row.get("requires_auth", False)),
+        recommended_cadence=row.get("recommended_cadence"),
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )

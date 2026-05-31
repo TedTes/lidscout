@@ -286,6 +286,7 @@ class NicheSourceRepository(Protocol):
         self,
         niche_id: str,
         *,
+        enabled: bool | None = None,
         is_gate_free: bool | None = None,
         buyer_voice_verified: bool | None = None,
     ) -> list[NicheSource]:
@@ -297,6 +298,7 @@ class NicheSourceRepository(Protocol):
         source_id: str,
         health_status: str,
         last_scanned_at: object | None = None,
+        last_error: str | None = None,
     ) -> bool:
         """Update health status and last_scanned_at for one source."""
         ...

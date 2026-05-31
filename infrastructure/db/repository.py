@@ -455,17 +455,40 @@ class InMemoryNicheSourceRepository:
                 count += 1
         return count
 
-    def list_niche_sources(self, niche_id: str, *, is_gate_free=None, buyer_voice_verified=None) -> list:
+    def list_niche_sources(
+        self,
+        niche_id: str,
+        *,
+        enabled=None,
+        is_gate_free=None,
+        buyer_voice_verified=None,
+    ) -> list:
         sources = [s for s in self._sources.values() if s.niche_id == niche_id]
+        if enabled is not None:
+            sources = [s for s in sources if s.enabled == enabled]
         if is_gate_free is not None:
             sources = [s for s in sources if s.is_gate_free == is_gate_free]
         if buyer_voice_verified is not None:
             sources = [s for s in sources if s.buyer_voice_verified == buyer_voice_verified]
         return sources
 
-    def update_niche_source_health(self, source_id: str, health_status: str, last_scanned_at=None) -> bool:
-        if source_id not in self._sources:
+    def update_niche_source_health(
+        self,
+        source_id: str,
+        health_status: str,
+        last_scanned_at=None,
+        last_error: str | None = None,
+    ) -> bool:
+        source = self._sources.get(source_id)
+        if source is None:
             return False
+        from dataclasses import replace
+        self._sources[source_id] = replace(
+            source,
+            health_status=health_status,
+            last_scanned_at=last_scanned_at,
+            last_error=last_error,
+        )
         return True
 
     def delete_niche_source(self, source_id: str) -> bool:
