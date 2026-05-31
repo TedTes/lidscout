@@ -91,5 +91,5 @@ class Signal:
     def _clean_optional(value: str | None) -> str | None:
         if value is None:
             return None
-        cleaned = value.strip()
+        cleaned = str(value).strip()
         return cleaned or None
