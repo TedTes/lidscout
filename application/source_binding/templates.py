@@ -23,15 +23,30 @@ class CandidateSource:
     # GitHub, HN, Stack Overflow, Discourse.
     # False for Reddit (requires OAuth app), G2/Capterra (require proxy).
     is_gate_free: bool
+    enabled: bool = True
+    tier: int | None = None
+    signal_quality_score: float | None = None
+    access_mode: str = "unknown"
+    requires_proxy: bool = False
+    requires_auth: bool = False
+    recommended_cadence: str | None = None
 
 
 def github_issues(repo_slug: str) -> CandidateSource:
     """GitHub Issues for a public repo, e.g. 'vercel/next.js'."""
+    encoded_repo = repo_slug.strip()
     return CandidateSource(
-        locator=f"https://github.com/{repo_slug}/issues",
-        source_type="github_issues",
+        locator=(
+            "https://api.github.com/search/issues"
+            f"?q=repo:{encoded_repo}+is%3Aissue&sort=updated&order=desc"
+        ),
+        source_type="github_issues_search",
         source_family="technical_forum",
         is_gate_free=True,
+        tier=1,
+        signal_quality_score=0.95,
+        access_mode="api",
+        recommended_cadence="daily",
     )
 
 
@@ -42,6 +57,10 @@ def github_discussions(repo_slug: str) -> CandidateSource:
         source_type="github_discussions",
         source_family="technical_forum",
         is_gate_free=True,
+        tier=1,
+        signal_quality_score=0.95,
+        access_mode="api",
+        recommended_cadence="daily",
     )
 
 
@@ -51,11 +70,15 @@ def hackernews_search(query: str) -> CandidateSource:
     return CandidateSource(
         locator=(
             f"https://hn.algolia.com/api/v1/search_by_date"
-            f"?query={encoded}&tags=story&hitsPerPage=25"
+            f"?query={encoded}&tags=comment&hitsPerPage=25"
         ),
         source_type="hackernews_search",
         source_family="technical_forum",
         is_gate_free=True,
+        tier=2,
+        signal_quality_score=0.78,
+        access_mode="api",
+        recommended_cadence="daily",
     )
 
 
@@ -70,6 +93,10 @@ def stackoverflow_search(query: str) -> CandidateSource:
         source_type="stackoverflow_search",
         source_family="technical_forum",
         is_gate_free=True,
+        tier=1,
+        signal_quality_score=0.95,
+        access_mode="api",
+        recommended_cadence="daily",
     )
 
 
@@ -81,6 +108,10 @@ def discourse_forum(base_url: str) -> CandidateSource:
         source_type="discourse_forum",
         source_family="technical_forum",
         is_gate_free=True,
+        tier=2,
+        signal_quality_score=0.82,
+        access_mode="json",
+        recommended_cadence="daily",
     )
 
 
@@ -92,6 +123,12 @@ def reddit_search(query: str) -> CandidateSource:
         source_type="reddit_search",
         source_family="social",
         is_gate_free=False,
+        enabled=False,
+        tier=2,
+        signal_quality_score=0.82,
+        access_mode="api_auth",
+        requires_auth=True,
+        recommended_cadence="daily",
     )
 
 
@@ -102,6 +139,12 @@ def reddit_subreddit(subreddit: str) -> CandidateSource:
         source_type="reddit_subreddit",
         source_family="social",
         is_gate_free=False,
+        enabled=False,
+        tier=2,
+        signal_quality_score=0.82,
+        access_mode="api_auth",
+        requires_auth=True,
+        recommended_cadence="daily",
     )
 
 
@@ -112,6 +155,11 @@ def g2_reviews(slug: str) -> CandidateSource:
         source_type="g2_reviews",
         source_family="reviews",
         is_gate_free=False,
+        enabled=False,
+        tier=1,
+        signal_quality_score=0.9,
+        access_mode="proxy_required",
+        requires_proxy=True,
     )
 
 
@@ -122,6 +170,11 @@ def capterra_reviews(slug: str) -> CandidateSource:
         source_type="capterra_reviews",
         source_family="reviews",
         is_gate_free=False,
+        enabled=False,
+        tier=1,
+        signal_quality_score=0.9,
+        access_mode="proxy_required",
+        requires_proxy=True,
     )
 
 

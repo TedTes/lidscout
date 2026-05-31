@@ -44,6 +44,13 @@ def bind_sources_for_niche(
                     source_type=candidate.source_type,
                     source_family=candidate.source_family,
                     is_gate_free=candidate.is_gate_free,
+                    enabled=candidate.enabled,
+                    tier=candidate.tier,
+                    signal_quality_score=candidate.signal_quality_score,
+                    access_mode=candidate.access_mode,
+                    requires_proxy=candidate.requires_proxy,
+                    requires_auth=candidate.requires_auth,
+                    recommended_cadence=candidate.recommended_cadence,
                 )
             )
 

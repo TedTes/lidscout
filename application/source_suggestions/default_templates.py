@@ -38,7 +38,13 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         rationale="Find recent public complaints and discussions mentioning {company_name}.",
         default_limit=25,
         rank_score=0.85,
-        options={"adapter": "json", "source_family": "social"},
+        options={
+            "adapter": "json",
+            "source_family": "social",
+            "is_gate_free": False,
+            "access_mode": "api_auth",
+            "requires_auth": True,
+        },
     ),
     SourceTemplate.create(
         id="hackernews-company-search",
@@ -46,14 +52,20 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         source_type="hackernews_search",
         url_template=(
             "https://hn.algolia.com/api/v1/search_by_date"
-            "?query={company_query}&tags=story"
+            "?query={company_query}&tags=comment"
         ),
         source_family="technical_forum",
         rationale="Find technical buyer and founder discussions mentioning {company_name}.",
         default_limit=25,
         applicable_categories=["ai_tools", "b2b_saas", "devtools", "productivity"],
         rank_score=0.78,
-        options={"adapter": "json", "source_family": "technical_forum"},
+        options={
+            "adapter": "json",
+            "items_path": "hits",
+            "source_family": "technical_forum",
+            "is_gate_free": True,
+            "access_mode": "api",
+        },
     ),
     SourceTemplate.create(
         id="g2-company-search",
@@ -72,7 +84,13 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
             "vertical_saas",
         ],
         rank_score=0.9,
-        options={"adapter": "static", "source_family": "reviews"},
+        options={
+            "adapter": "static",
+            "source_family": "reviews",
+            "is_gate_free": False,
+            "access_mode": "proxy_required",
+            "requires_proxy": True,
+        },
     ),
     SourceTemplate.create(
         id="capterra-company-search",
@@ -91,7 +109,13 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
             "vertical_saas",
         ],
         rank_score=0.82,
-        options={"adapter": "static", "source_family": "reviews"},
+        options={
+            "adapter": "static",
+            "source_family": "reviews",
+            "is_gate_free": False,
+            "access_mode": "proxy_required",
+            "requires_proxy": True,
+        },
     ),
     SourceTemplate.create(
         id="github-company-issues-search",
@@ -106,7 +130,15 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         default_limit=25,
         applicable_categories=["ai_tools", "devtools"],
         rank_score=0.88,
-        options={"adapter": "json", "source_family": "technical_forum"},
+        options={
+            "adapter": "json",
+            "items_path": "items",
+            "source_family": "technical_forum",
+            "is_gate_free": True,
+            "access_mode": "api",
+            "tier": 1,
+            "signal_quality_score": 0.95,
+        },
     ),
     SourceTemplate.create(
         id="company-changelog",
@@ -140,7 +172,13 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         scope="market",
         default_limit=25,
         rank_score=0.7,
-        options={"adapter": "json", "source_family": "social"},
+        options={
+            "adapter": "json",
+            "source_family": "social",
+            "is_gate_free": False,
+            "access_mode": "api_auth",
+            "requires_auth": True,
+        },
     ),
     SourceTemplate.create(
         id="hackernews-market-search",
@@ -148,7 +186,7 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         source_type="hackernews_search",
         url_template=(
             "https://hn.algolia.com/api/v1/search_by_date"
-            "?query={market_query}&tags=story"
+            "?query={market_query}&tags=comment"
         ),
         source_family="technical_forum",
         rationale="Find technical buyer and founder discussions about {market_name}.",
@@ -156,7 +194,13 @@ DEFAULT_SOURCE_TEMPLATES: tuple[SourceTemplate, ...] = (
         default_limit=25,
         applicable_categories=["ai_tools", "b2b_saas", "devtools", "productivity"],
         rank_score=0.68,
-        options={"adapter": "json", "source_family": "technical_forum"},
+        options={
+            "adapter": "json",
+            "items_path": "hits",
+            "source_family": "technical_forum",
+            "is_gate_free": True,
+            "access_mode": "api",
+        },
     ),
 )
 
