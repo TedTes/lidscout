@@ -31,6 +31,14 @@ export type SignalCluster = {
   company_names: string[];
   company_count: number;
   market_company_count: number | null;
+  qualification_status?: 'qualified' | 'not_promoted';
+  qualification_rejection_reason?: string | null;
+  qualification?: {
+    finding_count: number;
+    source_count: number;
+    company_count: number;
+    general_finding_count: number;
+  };
 };
 
 export type Opportunity = {
@@ -49,7 +57,8 @@ export type Opportunity = {
   company_count: number;
   market_company_count: number | null;
   evidence_source_count: number;
-  evidence_strength: 'early' | 'emerging' | 'validated';
+  evidence_strength: 'early' | 'moderate' | 'strong' | 'emerging' | 'validated';
+  unmet_need_type?: 'time' | 'money' | 'effort' | 'capability' | 'fit' | null;
 };
 
 export type NicheCompany = {

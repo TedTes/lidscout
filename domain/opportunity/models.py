@@ -16,6 +16,7 @@ class Opportunity:
     evidence_count: int
     confidence: float
     evidence_signal_ids: list[str]
+    unmet_need_type: str | None = None
 
     @classmethod
     def create(
@@ -31,6 +32,7 @@ class Opportunity:
         evidence_count: int,
         confidence: float,
         evidence_signal_ids: list[str],
+        unmet_need_type: str | None = None,
     ) -> "Opportunity":
         """Create a validated synthesized opportunity entity."""
         opportunity_id = id.strip()
@@ -45,6 +47,7 @@ class Opportunity:
             for signal_id in evidence_signal_ids
             if str(signal_id).strip()
         ]
+        normalized_unmet_need_type = cls._clean_unmet_need_type(unmet_need_type)
 
         if not opportunity_id:
             raise ValueError("id is required")
@@ -78,4 +81,14 @@ class Opportunity:
             evidence_count=evidence_count,
             confidence=round(confidence, 2),
             evidence_signal_ids=normalized_signal_ids,
+            unmet_need_type=normalized_unmet_need_type,
         )
+
+    @staticmethod
+    def _clean_unmet_need_type(value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().lower()
+        if cleaned not in {"time", "money", "effort", "capability", "fit"}:
+            raise ValueError("unmet_need_type must be time, money, effort, capability, or fit")
+        return cleaned

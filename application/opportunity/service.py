@@ -4,6 +4,7 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
+from typing import Literal
 from urllib.parse import urlparse
 
 from application.opportunity.synthesis_schema import (
@@ -23,6 +24,19 @@ logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
+class ClusterQualification:
+    """Decision explaining whether a theme can become a strategic gap."""
+
+    cluster_id: str
+    qualified: bool
+    reason: str | None
+    finding_count: int
+    source_count: int
+    company_count: int
+    general_finding_count: int
+
+
+@dataclass(frozen=True)
 class OpportunitySynthesisResult:
     """Summary of one opportunity synthesis run."""
 
@@ -30,6 +44,7 @@ class OpportunitySynthesisResult:
     inserted_count: int
     failed_count: int
     opportunities: list[Opportunity]
+    rejected_qualifications: list[ClusterQualification]
 
 
 @dataclass(frozen=True)
@@ -42,6 +57,9 @@ class OpportunitySynthesisContext:
     extra_instructions: str | None = None
     ignored_themes: list[str] | None = None
     ignored_categories: list[str] | None = None
+
+
+UnmetNeedType = Literal["time", "money", "effort", "capability", "fit"]
 
 
 class OpportunitySynthesisService:
@@ -69,6 +87,7 @@ class OpportunitySynthesisService:
     ) -> OpportunitySynthesisResult:
         signal_index = {signal.id: signal for signal in signals}
         opportunities: list[Opportunity] = []
+        rejected_qualifications: list[ClusterQualification] = []
         failed_count = 0
 
         for cluster in clusters:
@@ -84,6 +103,15 @@ class OpportunitySynthesisService:
                 failed_count += 1
                 continue
             if _context_ignores_cluster(context, cluster, cluster_signals):
+                continue
+
+            qualification = qualify_cluster_for_opportunity(
+                cluster,
+                cluster_signals,
+                context,
+            )
+            if not qualification.qualified:
+                rejected_qualifications.append(qualification)
                 continue
 
             try:
@@ -102,6 +130,7 @@ class OpportunitySynthesisService:
             inserted_count=inserted_count,
             failed_count=failed_count,
             opportunities=opportunities,
+            rejected_qualifications=rejected_qualifications,
         )
         log_event(
             logger,
@@ -160,6 +189,7 @@ class OpportunitySynthesisService:
             evidence_count=cluster.frequency,
             confidence=_confidence_for(cluster, signals),
             evidence_signal_ids=[signal.id for signal in signals],
+            unmet_need_type=candidate.unmet_need_type,
         )
 
     def _build_opportunity_from_templates(
@@ -196,7 +226,83 @@ class OpportunitySynthesisService:
             evidence_count=cluster.frequency,
             confidence=_confidence_for(cluster, signals),
             evidence_signal_ids=[signal.id for signal in signals],
+            unmet_need_type=_infer_unmet_need_type(cluster, signals),
         )
+
+
+def qualify_cluster_for_opportunity(
+    cluster: SignalCluster,
+    signals: list[Signal],
+    context: OpportunitySynthesisContext | None = None,
+) -> ClusterQualification:
+    """Return whether a cluster is strong enough to become a strategic gap."""
+    finding_count = len(signals)
+    source_count = _source_diversity(signals)
+    company_ids = {
+        signal.niche_company_id
+        for signal in signals
+        if signal.niche_company_id
+    }
+    company_count = len(company_ids)
+    general_signals = [signal for signal in signals if not signal.niche_company_id]
+    general_source_count = _source_diversity(general_signals)
+
+    if finding_count < 2 or source_count < 2:
+        return ClusterQualification(
+            cluster_id=cluster.id,
+            qualified=False,
+            reason="insufficient_evidence",
+            finding_count=finding_count,
+            source_count=source_count,
+            company_count=company_count,
+            general_finding_count=len(general_signals),
+        )
+
+    if company_count <= 1 and _looks_vendor_fix_only(cluster, signals):
+        return ClusterQualification(
+            cluster_id=cluster.id,
+            qualified=False,
+            reason="vendor_fix_only",
+            finding_count=finding_count,
+            source_count=source_count,
+            company_count=company_count,
+            general_finding_count=len(general_signals),
+        )
+
+    has_cross_tool_pattern = company_count >= 2 or (
+        len(general_signals) >= 3 and general_source_count >= 2
+    )
+    if not has_cross_tool_pattern:
+        return ClusterQualification(
+            cluster_id=cluster.id,
+            qualified=False,
+            reason="no_cross_tool_pattern",
+            finding_count=finding_count,
+            source_count=source_count,
+            company_count=company_count,
+            general_finding_count=len(general_signals),
+        )
+
+    if _looks_off_niche(cluster, signals, context):
+        return ClusterQualification(
+            cluster_id=cluster.id,
+            qualified=False,
+            reason="off_niche",
+            finding_count=finding_count,
+            source_count=source_count,
+            company_count=company_count,
+            general_finding_count=len(general_signals),
+        )
+
+    return ClusterQualification(
+        cluster_id=cluster.id,
+        qualified=True,
+        reason=None,
+        finding_count=finding_count,
+        source_count=source_count,
+        company_count=company_count,
+        general_finding_count=len(general_signals),
+    )
 
 
 def _most_common(values: list[str], *, fallback: str | None) -> str | None:
@@ -236,6 +342,33 @@ def _suggested_wedge(category: str | None, workaround: str | None) -> str:
             f"repeated workaround: {workaround}."
         )
     return f"Build a focused {category.lower()} workflow for this repeated pain."
+
+
+def _infer_unmet_need_type(
+    cluster: SignalCluster,
+    signals: list[Signal],
+) -> UnmetNeedType:
+    text = _normalized_text(
+        " ".join(
+            [
+                cluster.theme,
+                cluster.summary,
+                *[signal.pain for signal in signals],
+                *[signal.job_to_be_done or "" for signal in signals],
+                *[signal.current_workaround or "" for signal in signals],
+                *[signal.category or "" for signal in signals],
+            ]
+        )
+    )
+    if re.search(r"\b(cost|price|pricing|expensive|budget|pay|paid|money|margin|revenue)\b", text):
+        return "money"
+    if re.search(r"\b(slow|hours?|minutes?|time|manual|delay|wait|deadline|weekly|daily)\b", text):
+        return "time"
+    if re.search(r"\b(workaround|manual|tedious|effort|complex|setup|configure|copy|export|import)\b", text):
+        return "effort"
+    if re.search(r"\b(can'?t|cannot|missing|lack|unsupported|unable|limit|capability|feature)\b", text):
+        return "capability"
+    return "fit"
 
 
 def _confidence_for(cluster: SignalCluster, signals: list[Signal]) -> float:
@@ -332,6 +465,104 @@ def _context_ignores_cluster(
     return bool(signal_categories.intersection(ignored_categories))
 
 
+def _looks_off_niche(
+    cluster: SignalCluster,
+    signals: list[Signal],
+    context: OpportunitySynthesisContext | None,
+) -> bool:
+    if context is None:
+        return False
+    context_keywords = _keywords(
+        " ".join(
+            item
+            for item in [
+                context.niche_name,
+                context.target_user,
+                context.objective,
+                context.extra_instructions,
+            ]
+            if item
+        )
+    )
+    if len(context_keywords) < 2:
+        return False
+
+    evidence_keywords = _keywords(
+        " ".join(
+            [
+                cluster.theme,
+                cluster.summary,
+                *[signal.pain for signal in signals],
+                *[signal.job_to_be_done or "" for signal in signals],
+                *[signal.user_type or "" for signal in signals],
+                *[signal.category or "" for signal in signals],
+                *[signal.evidence_text or "" for signal in signals],
+            ]
+        )
+    )
+    if len(evidence_keywords) < 3:
+        return False
+    return not bool(context_keywords.intersection(evidence_keywords))
+
+
+def _looks_vendor_fix_only(cluster: SignalCluster, signals: list[Signal]) -> bool:
+    text = _normalized_text(
+        " ".join(
+            [
+                cluster.theme,
+                cluster.summary,
+                *[signal.pain for signal in signals],
+                *[signal.current_workaround or "" for signal in signals],
+                *[signal.category or "" for signal in signals],
+                *[signal.evidence_text or "" for signal in signals],
+            ]
+        )
+    )
+    return bool(
+        re.search(
+            r"\b(bug|broken|crash|crashes|defect|fix|glitch|issue|regression)\b",
+            text,
+        )
+        or re.search(r"\b(add|allow|customi[sz]e|support|improve)\b.{0,60}\b(feature|setting|button|field|export|import|title|ui)\b", text)
+    )
+
+
+def _keywords(text: str) -> set[str]:
+    stopwords = {
+        "about",
+        "across",
+        "and",
+        "are",
+        "build",
+        "for",
+        "from",
+        "into",
+        "market",
+        "niche",
+        "over",
+        "product",
+        "products",
+        "teams",
+        "that",
+        "the",
+        "their",
+        "this",
+        "tool",
+        "tools",
+        "users",
+        "with",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) > 3 and token not in stopwords
+    }
+
+
+def _normalized_text(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9']+", text.lower()))
+
+
 def _signal_evidence_lines(signal: Signal) -> list[str]:
     lines = [
         f"  - signal_id: {signal.id}",
@@ -419,6 +650,7 @@ def _merge_opportunity(existing: Opportunity, duplicate: Opportunity) -> Opportu
         ),
         confidence=max(existing.confidence, duplicate.confidence),
         evidence_signal_ids=evidence_signal_ids,
+        unmet_need_type=existing.unmet_need_type or duplicate.unmet_need_type,
     )
 
 

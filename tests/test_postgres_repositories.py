@@ -257,7 +257,7 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(repository.get_opportunity("opportunity-1"), opportunity)
         self.assertEqual(repository.list_opportunities(), [opportunity])
         self.assertIn("ON CONFLICT (id) DO UPDATE", connection.calls[0][0])
-        self.assertEqual(json.loads(connection.calls[0][1][-1]), ["signal-1", "signal-2"])
+        self.assertEqual(json.loads(connection.calls[0][1][-2]), ["signal-1", "signal-2"])
         self.assertEqual(connection.commit_count, 1)
 
     def test_pipeline_run_metrics_repository_saves_and_loads_metrics(self):

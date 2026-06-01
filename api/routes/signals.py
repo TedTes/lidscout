@@ -14,7 +14,11 @@ from application.agent import (
     build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
-from application.opportunity import merge_near_duplicate_opportunities
+from application.opportunity import (
+    OpportunitySynthesisContext,
+    merge_near_duplicate_opportunities,
+    qualify_cluster_for_opportunity,
+)
 from application.ingestion import SourceAdapter
 from application.ports import (
     AgentActivityRepository,
@@ -1272,6 +1276,8 @@ async def get_market_pipeline_live_feed(
         "signals_extracted",
         "clusters_formed",
         "gaps_synthesized",
+        "theme_promoted",
+        "theme_rejected",
         "run_completed",
     }
     latest_live_event = next(
@@ -1914,6 +1920,29 @@ def _serialize_cluster(
                 _signals_by_id=_signals_by_id,
             )
         )
+        signal_index = _signals_by_id or {
+            signal.id: signal for signal in dependencies.signal_repository.list_signals()
+        }
+        cluster_signals = [
+            signal_index[signal_id]
+            for signal_id in cluster.signal_ids
+            if signal_id in signal_index
+        ]
+        qualification = qualify_cluster_for_opportunity(
+            cluster,
+            cluster_signals,
+            _opportunity_context_for_market(dependencies, market_id),
+        )
+        serialized["qualification_status"] = (
+            "qualified" if qualification.qualified else "not_promoted"
+        )
+        serialized["qualification_rejection_reason"] = qualification.reason
+        serialized["qualification"] = {
+            "finding_count": qualification.finding_count,
+            "source_count": qualification.source_count,
+            "company_count": qualification.company_count,
+            "general_finding_count": qualification.general_finding_count,
+        }
     return serialized
 
 
@@ -1935,6 +1964,7 @@ def _serialize_opportunity(
         "evidence_count": opportunity.evidence_count,
         "confidence": opportunity.confidence,
         "evidence_signal_ids": opportunity.evidence_signal_ids,
+        "unmet_need_type": opportunity.unmet_need_type,
     }
     if dependencies is not None:
         serialized.update(
@@ -1953,11 +1983,31 @@ def _opportunity_evidence_strength(serialized: dict[str, Any]) -> str:
     evidence_count = int(serialized.get("evidence_count") or 0)
     company_count = int(serialized.get("company_count") or 0)
     source_count = int(serialized.get("evidence_source_count") or 0)
-    if evidence_count >= 3 and (company_count >= 2 or source_count >= 2):
-        return "validated"
-    if evidence_count >= 2 or source_count >= 2:
-        return "emerging"
+    if evidence_count >= 5 and source_count >= 3 and company_count >= 2:
+        return "strong"
+    if evidence_count >= 3 and source_count >= 2 and company_count >= 1:
+        return "moderate"
     return "early"
+
+
+def _opportunity_context_for_market(
+    dependencies: SignalApiDependencies,
+    market_id: str | None,
+) -> OpportunitySynthesisContext | None:
+    if market_id is None:
+        return None
+    user_niche = dependencies.user_niche_repository.get_user_niche(market_id)
+    if user_niche is None:
+        return None
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(market_id)
+    return OpportunitySynthesisContext(
+        niche_name=user_niche.job,
+        target_user=user_niche.buyer,
+        objective=None,
+        extra_instructions=preferences.extra_instructions if preferences else None,
+        ignored_themes=preferences.ignored_themes if preferences else [],
+        ignored_categories=preferences.ignored_categories if preferences else [],
+    )
 
 
 def _serialize_report(

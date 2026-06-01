@@ -139,16 +139,18 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.scoring_result.scored_count, 1)
         self.assertEqual(result.embedding_failed_count, 0)
         self.assertEqual(result.clustered_count, 1)
-        self.assertEqual(result.opportunity_synthesis_result.synthesized_count, 1)
-        self.assertEqual(result.opportunity_synthesis_result.inserted_count, 1)
+        self.assertEqual(result.opportunity_synthesis_result.synthesized_count, 0)
+        self.assertEqual(result.opportunity_synthesis_result.inserted_count, 0)
+        self.assertEqual(
+            result.opportunity_synthesis_result.rejected_qualifications[0].reason,
+            "insufficient_evidence",
+        )
         self.assertTrue(result.email_result.sent)
         signal = signal_repository.list_signals()[0]
         self.assertEqual(signal.pain, "Export workflows are painful")
         self.assertEqual(score_repository.get_score(signal.id).total_score, 7.6)
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
-        self.assertIsNotNone(
-            opportunity_repository.get_opportunity("opportunity-cluster-1")
-        )
+        self.assertIsNone(opportunity_repository.get_opportunity("opportunity-cluster-1"))
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
 
     def test_runs_pipeline_from_enabled_source_locators(self):

@@ -801,9 +801,16 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                 suggested_wedge TEXT NOT NULL,
                 evidence_count INTEGER NOT NULL,
                 confidence REAL NOT NULL,
-                evidence_signal_ids TEXT NOT NULL
+                evidence_signal_ids TEXT NOT NULL,
+                unmet_need_type TEXT
             )
             """
+        )
+        _ensure_sqlite_column(
+            self.connection,
+            "opportunities",
+            "unmet_need_type",
+            "TEXT",
         )
         self.connection.commit()
 
@@ -819,8 +826,8 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                 INSERT INTO opportunities (
                     id, cluster_id, title, target_user, pain_summary,
                     why_it_matters, suggested_wedge, evidence_count,
-                    confidence, evidence_signal_ids
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, evidence_signal_ids, unmet_need_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     cluster_id = excluded.cluster_id,
                     title = excluded.title,
@@ -830,7 +837,8 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                     suggested_wedge = excluded.suggested_wedge,
                     evidence_count = excluded.evidence_count,
                     confidence = excluded.confidence,
-                    evidence_signal_ids = excluded.evidence_signal_ids
+                    evidence_signal_ids = excluded.evidence_signal_ids,
+                    unmet_need_type = excluded.unmet_need_type
                 """,
                 (
                     opportunity.id,
@@ -843,6 +851,7 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                     opportunity.evidence_count,
                     opportunity.confidence,
                     _to_json(opportunity.evidence_signal_ids),
+                    opportunity.unmet_need_type,
                 ),
             )
             saved_count += cursor.rowcount
@@ -1605,8 +1614,8 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                 INSERT INTO opportunities (
                     id, cluster_id, title, target_user, pain_summary,
                     why_it_matters, suggested_wedge, evidence_count,
-                    confidence, evidence_signal_ids
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                    confidence, evidence_signal_ids, unmet_need_type
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     cluster_id = EXCLUDED.cluster_id,
                     title = EXCLUDED.title,
@@ -1617,6 +1626,7 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                     evidence_count = EXCLUDED.evidence_count,
                     confidence = EXCLUDED.confidence,
                     evidence_signal_ids = EXCLUDED.evidence_signal_ids,
+                    unmet_need_type = EXCLUDED.unmet_need_type,
                     updated_at = now()
                 """,
                 (
@@ -1630,6 +1640,7 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                     opportunity.evidence_count,
                     opportunity.confidence,
                     _to_json(opportunity.evidence_signal_ids),
+                    opportunity.unmet_need_type,
                 ),
             )
             saved_count += _rowcount(cursor)
@@ -2097,6 +2108,7 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
         evidence_count=row["evidence_count"],
         confidence=_float(row["confidence"]),
         evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
+        unmet_need_type=_row_get(row, "unmet_need_type"),
     )
 
 
@@ -2315,6 +2327,21 @@ def _source_locator_from_row(row: sqlite3.Row) -> SourceLocator:
         enabled=bool(row["enabled"]),
         limit=row["limit_value"],
         options=_from_json(row["options"]),
+    )
+
+
+def _ensure_sqlite_column(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> None:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    existing_columns = {row["name"] for row in rows}
+    if column_name in existing_columns:
+        return
+    connection.execute(
+        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
     )
 
 

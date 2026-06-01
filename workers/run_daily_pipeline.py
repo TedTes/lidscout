@@ -212,6 +212,11 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         signals,
         _synthesis_context(config),
     )
+    _record_synthesis_qualification_activity(
+        config,
+        clusters,
+        opportunity_synthesis_result,
+    )
     if opportunity_synthesis_result.synthesized_count > 0:
         _record_agent_activity(
             config.agent_activity_repository,
@@ -283,11 +288,65 @@ def _synthesize_opportunities(
             inserted_count=0,
             failed_count=0,
             opportunities=[],
+            rejected_qualifications=[],
         )
     return OpportunitySynthesisService(
         opportunity_repository,
         llm_client=llm_client,
     ).synthesize(clusters, signals, context=context)
+
+
+def _record_synthesis_qualification_activity(
+    config: PipelineConfig,
+    clusters: list[SignalCluster],
+    result: OpportunitySynthesisResult,
+) -> None:
+    cluster_index = {cluster.id: cluster for cluster in clusters}
+    for opportunity in result.opportunities:
+        cluster = cluster_index.get(opportunity.cluster_id)
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="theme_promoted",
+            title=f"Promoted theme to candidate: {opportunity.title}",
+            detail=(
+                f"{opportunity.evidence_count} finding(s) qualified this theme as a strategic gap."
+            ),
+            metadata={
+                "cluster_id": opportunity.cluster_id,
+                "opportunity_id": opportunity.id,
+                "theme": cluster.theme if cluster else None,
+                "finding_count": opportunity.evidence_count,
+                "unmet_need_type": opportunity.unmet_need_type,
+            },
+        )
+    for qualification in result.rejected_qualifications:
+        cluster = cluster_index.get(qualification.cluster_id)
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="theme_rejected",
+            title=f"Theme not promoted: {cluster.theme if cluster else qualification.cluster_id}",
+            detail=_qualification_reason_detail(qualification.reason),
+            metadata={
+                "cluster_id": qualification.cluster_id,
+                "theme": cluster.theme if cluster else None,
+                "reason": qualification.reason,
+                "finding_count": qualification.finding_count,
+                "source_count": qualification.source_count,
+                "company_count": qualification.company_count,
+                "general_finding_count": qualification.general_finding_count,
+            },
+        )
+
+
+def _qualification_reason_detail(reason: str | None) -> str:
+    return {
+        "insufficient_evidence": "Needs at least 2 findings from 2 distinct sources.",
+        "no_cross_tool_pattern": "Needs cross-tool corroboration or broader non-vendor evidence.",
+        "vendor_fix_only": "Looks like a vendor fix rather than a strategic gap.",
+        "off_niche": "Evidence does not match the niche job-to-be-done.",
+    }.get(reason or "", "Theme did not meet strategic gap qualification criteria.")
 
 
 def _synthesis_context(
