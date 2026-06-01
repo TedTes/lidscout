@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, StatRow, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
+import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, Signal, SignalCluster } from '@/lib/types/signals';
 
@@ -73,11 +73,6 @@ export default function NicheThemeDetailPage({ params }: Props) {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
             Themes
           </Link>
-          <StatRow stats={[
-            { label: 'Findings', value: theme.frequency },
-            { label: 'Companies', value: theme.company_count, accent: theme.company_count > 1 },
-            { label: 'Avg score', value: theme.average_score.toFixed(1) },
-          ]} />
 
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
             {theme.summary && <p className="text-sm leading-relaxed text-slate-400">{theme.summary}</p>}
@@ -148,4 +143,3 @@ export default function NicheThemeDetailPage({ params }: Props) {
     </DashboardShell>
   );
 }
-

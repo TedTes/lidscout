@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
   AgentActivity,
@@ -22,7 +22,6 @@ import {
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
 type EvidenceStrength = 'early' | 'moderate' | 'strong' | 'emerging' | 'validated';
-type GapFilter = 'all' | 'saved' | 'dismissed';
 type ItemFeedbackAction = Extract<AgentFeedbackAction, 'save' | 'dismiss'>;
 type TrainingFeedbackAction = Extract<AgentFeedbackAction, 'more_like_this' | 'less_like_this'>;
 
@@ -120,11 +119,9 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
   const [, setCompetitors] = useState<NicheCompany[]>([]);
   const [, setSources] = useState<MonitoredSource[]>([]);
-  const [showBrief, setShowBrief] = useState(false);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
-  const [gapFilter, setGapFilter] = useState<GapFilter>('all');
   const [itemFeedbackMap, setItemFeedbackMap] = useState<Map<string, ItemFeedbackAction>>(new Map());
   const [trainingFeedbackMap, setTrainingFeedbackMap] = useState<Map<string, TrainingFeedbackAction>>(new Map());
 
@@ -156,7 +153,6 @@ export default function NicheWorkspacePage({ params }: Props) {
       setColdStart(coldStartRes);
       setCompetitors(competitorsRes?.companies ?? []);
       setSources(sourcesRes?.sources ?? []);
-      setShowBrief(coldStartRes !== null && coldStartRes.status === 'setup_needed');
 
       if (feedbackRes?.feedback) {
         const sorted = [...feedbackRes.feedback].sort((a, b) =>
@@ -292,17 +288,8 @@ export default function NicheWorkspacePage({ params }: Props) {
     [itemFeedbackMap]
   );
 
-  const filteredOpportunities = opportunities.filter(o => {
-    if (gapFilter === 'saved') return savedIds.has(o.id);
-    if (gapFilter === 'dismissed') return dismissedIds.has(o.id);
-    return !dismissedIds.has(o.id);
-  });
+  const visibleOpportunities = opportunities.filter(o => !dismissedIds.has(o.id));
 
-  const strongCount = opportunities.filter(o => {
-    const strength = evidenceStrength(o);
-    return strength === 'strong' || strength === 'validated';
-  }).length;
-  const evidenceCount = opportunities.reduce((sum, o) => sum + o.evidence_count, 0);
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
   const subtitle = niche?.description
     || coldStart?.brief?.objective
@@ -399,66 +386,25 @@ export default function NicheWorkspacePage({ params }: Props) {
             <>
               {isRunningFirstScan ? (
                 <p className="text-xs text-slate-600">Awaiting first candidates from this scan</p>
-              ) : (
-                <div className="flex flex-wrap items-center gap-3">
-                  <StatRow compact stats={[
-                    { label: 'Candidates surfaced', value: opportunities.length, accent: opportunities.length > 0 },
-                    { label: 'Strong signals', value: strongCount, accent: strongCount > 0 },
-                    { label: 'Evidence items', value: evidenceCount },
-                  ]} />
-                  <div className="ml-auto flex flex-wrap items-center gap-3">
-                    <div className="flex items-center divide-x divide-slate-700/80 text-sm font-semibold">
-                      {(['all', 'saved', 'dismissed'] as const).map(filter => (
-                        <button
-                          key={filter}
-                          onClick={() => setGapFilter(filter)}
-                          className={`px-2 capitalize transition first:pl-0 last:pr-0 ${gapFilter === filter ? 'text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}
-                        >
-                          {filter}
-                          {filter === 'saved' && savedIds.size > 0 && (
-                            <span className="ml-1 text-slate-600">({savedIds.size})</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                    {coldStart && (
-                      <button
-                        onClick={() => setShowBrief(v => !v)}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                          showBrief
-                            ? 'border-slate-600/70 bg-slate-800/50 text-slate-200'
-                            : 'border-slate-700/70 bg-slate-900/30 text-slate-500 hover:border-slate-600 hover:text-slate-300'
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400' : 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.75)]'}`} />
-                        Research brief
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {showBrief && coldStart && !isRunningFirstScan && (
-                <ResearchBriefPanel coldStart={coldStart} marketId={marketId} />
-              )}
+              ) : null}
               {feedbackError && (
                 <p className="text-xs text-rose-400">{feedbackError}</p>
               )}
 
-              {filteredOpportunities.length === 0 ? (
+              {visibleOpportunities.length === 0 ? (
                 isRunningFirstScan ? (
                   <p className="mt-2 text-xs text-slate-600">
                     Candidates will appear here when the agent finishes grouping evidence.
                   </p>
                 ) : (
                   <EmptyPanel
-                    title={gapFilter === 'all' ? 'No candidates surfaced yet' : `No ${gapFilter} candidates`}
-                    detail={gapFilter === 'all' ? 'Opportunity candidates appear after active sources are scanned.' : undefined}
+                    title="No candidates surfaced yet"
+                    detail="Opportunity candidates appear after active sources are scanned."
                   />
                 )
               ) : (
                 <div className="space-y-4">
-                  {filteredOpportunities.map((opportunity, index) => (
+                  {visibleOpportunities.map((opportunity, index) => (
                     <GapCard
                       key={opportunity.id}
                       rank={index + 1}
@@ -751,67 +697,6 @@ function RecentDecisionsFeed({ decisions }: { decisions: AgentActivity[] }) {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-// ── Research Brief Panel ───────────────────────────────────────────────────────
-
-function ResearchBriefPanel({
-  coldStart,
-  marketId,
-}: {
-  coldStart: AgentColdStartPlan;
-  marketId: string;
-}) {
-  return (
-    <section className="rounded-xl border border-slate-800/60 bg-slate-900/30 px-5 pb-5 pt-4">
-      {coldStart.status === 'setup_needed' && (
-        <p className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-amber-400">Setup needed</p>
-      )}
-      <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-3">
-              {coldStart.brief.objective && (
-                <BriefField label="Objective" value={coldStart.brief.objective} />
-              )}
-              {coldStart.brief.target_user && (
-                <BriefField label="Target user" value={coldStart.brief.target_user} />
-              )}
-            </div>
-            <div className="space-y-3">
-              <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Sources</p>
-                <p className="text-xs text-slate-400">
-                  <span className="font-medium text-slate-300">{coldStart.monitored_source_count}</span> monitored
-                  {coldStart.active_source_count > 0 && (
-                    <> · <span className="font-medium text-slate-300">{coldStart.active_source_count}</span> active</>
-                  )}
-                  {coldStart.suggested_source_count > 0 && (
-                    <> · <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="text-violet-400 hover:underline">{coldStart.suggested_source_count} suggested</Link></>
-                  )}
-                </p>
-              </div>
-              {coldStart.brief.source_family_priorities.length > 0 && (
-                <div>
-                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Source priorities</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {coldStart.brief.source_family_priorities.map(fam => (
-                      <span key={fam} className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] text-slate-400">{fam}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-      </div>
-    </section>
-  );
-}
-
-function BriefField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600">{label}</p>
-      <p className="text-xs leading-relaxed text-slate-400">{value}</p>
     </div>
   );
 }

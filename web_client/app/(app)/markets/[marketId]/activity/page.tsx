@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ErrorPanel, LoadingPanel, StatRow, relativeTime } from '@/components/ui/DashboardPrimitives';
+import { ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { AgentActivity, Market } from '@/lib/types/signals';
 
@@ -116,9 +116,6 @@ export default function NicheActivityPage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
-  const runCount = activity.filter(a => a.event_type === 'run_completed').length;
-  const failCount = activity.filter(a => a.event_type === 'source_failed').length;
-
   return (
     <DashboardShell
       title="Activity"
@@ -130,12 +127,6 @@ export default function NicheActivityPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
-          <StatRow compact stats={[
-            { label: 'Events', value: activity.length },
-            { label: 'Runs completed', value: runCount },
-            { label: 'Source failures', value: failCount, danger: failCount > 0 },
-          ]} />
-
           {activity.length > 0 && (
             <div className="rounded-xl border border-slate-800/70 bg-slate-900/40 px-5 pt-2 pb-1">
               {activity.map((item, i) => (

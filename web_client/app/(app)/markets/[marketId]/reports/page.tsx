@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, MarketSignalReport } from '@/lib/types/signals';
 
@@ -54,12 +54,6 @@ export default function NicheReportPage({ params }: Props) {
 
       {status === 'ready' && report && (
         <div className="space-y-5 animate-fade-in">
-          <StatRow stats={[
-            { label: 'Top themes', value: report.top_clusters.length },
-            { label: 'Emerging pains', value: report.emerging_pains.length },
-            { label: 'Gaps', value: report.recommended_opportunities.length, accent: report.recommended_opportunities.length > 0 },
-          ]} />
-
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40">
             <div className="border-b border-slate-800/70 px-5 py-4">
               <h2 className="text-sm font-semibold text-slate-300">Recommended gaps</h2>
@@ -132,4 +126,3 @@ export default function NicheReportPage({ params }: Props) {
     </DashboardShell>
   );
 }
-

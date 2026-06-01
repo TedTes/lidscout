@@ -3,13 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, StatRow, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
+import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, Signal, SignalCluster } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
-type UrgencyFilter = 'all' | 'high' | 'medium' | 'low';
 
 export default function NicheFindingsPage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
@@ -18,7 +17,6 @@ export default function NicheFindingsPage({ params }: Props) {
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
-  const [urgency, setUrgency] = useState<UrgencyFilter>('all');
 
   const load = async () => {
     setStatus('loading');
@@ -50,13 +48,6 @@ export default function NicheFindingsPage({ params }: Props) {
     return map;
   }, [clusters]);
 
-  const filtered = signals.filter(signal => {
-    if (urgency !== 'all' && signal.urgency !== urgency) return false;
-    return true;
-  });
-
-  const highUrgency = signals.filter(signal => signal.urgency === 'high').length;
-
   return (
     <DashboardShell
       title="Findings"
@@ -68,30 +59,11 @@ export default function NicheFindingsPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
-          <div className="flex flex-wrap items-center gap-3">
-            <StatRow compact stats={[
-              { label: 'Findings', value: signals.length },
-              { label: 'High urgency', value: highUrgency, accent: highUrgency > 0 },
-              { label: 'Themes linked', value: clusters.length },
-            ]} />
-            <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
-              {(['all', 'high', 'medium', 'low'] as const).map(filter => (
-                <button
-                  key={filter}
-                  onClick={() => setUrgency(filter)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${urgency === filter ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {filtered.length === 0 ? (
-            <EmptyPanel title="No findings match this view" detail="Adjust the filters or wait for the next background scan." />
+          {signals.length === 0 ? (
+            <EmptyPanel title="No findings yet" detail="Findings appear after the next background scan extracts evidence." />
           ) : (
             <div className="space-y-3">
-              {filtered.map(signal => {
+              {signals.map(signal => {
                 const theme = themeBySignalId.get(signal.id);
                 return (
                   <article key={signal.id} className="rounded-xl border border-slate-800/70 bg-slate-900/40 p-5">

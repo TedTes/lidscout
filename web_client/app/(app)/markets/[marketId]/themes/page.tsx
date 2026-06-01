@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, StatRow } from '@/components/ui/DashboardPrimitives';
+import { EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, SignalCluster } from '@/lib/types/signals';
 
@@ -40,9 +40,6 @@ export default function NicheThemesPage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
-  const findingCount = themes.reduce((sum, theme) => sum + theme.frequency, 0);
-  const broadThemes = themes.filter(theme => theme.company_count > 1).length;
-
   return (
     <DashboardShell
       title="Themes"
@@ -54,12 +51,6 @@ export default function NicheThemesPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-5 animate-fade-in">
-          <StatRow stats={[
-            { label: 'Themes', value: themes.length },
-            { label: 'Findings grouped', value: findingCount },
-            { label: 'Multi-company', value: broadThemes, accent: broadThemes > 0 },
-          ]} />
-
           {themes.length === 0 ? (
             <EmptyPanel title="No themes yet" detail="Themes appear after findings are grouped from active sources." />
           ) : (
@@ -117,4 +108,3 @@ export default function NicheThemesPage({ params }: Props) {
     </DashboardShell>
   );
 }
-
