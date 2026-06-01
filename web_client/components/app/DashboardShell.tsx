@@ -16,19 +16,23 @@ export default function DashboardShell({ title, subtitle, actions, children }: P
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-5 pb-16 pt-6 lg:px-9 lg:pt-9">
-      <div className="mb-8">
+    <div className="w-full min-w-0 px-4 pb-16 pt-1 sm:px-5 lg:mx-auto lg:max-w-6xl lg:px-9 lg:pt-9">
+      <div className="mb-3 lg:mb-8">
         {actions ? (
           <>
-            <div className="flex min-w-0 items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">{actions}</div>
-              <AccountMenu />
+              <div className="hidden lg:block">
+                <AccountMenu />
+              </div>
             </div>
           </>
         ) : (
           <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             {titleBlock}
-            <AccountMenu />
+            <div className="hidden lg:block">
+              <AccountMenu />
+            </div>
           </div>
         )}
       </div>

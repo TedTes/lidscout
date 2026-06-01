@@ -26,13 +26,14 @@ function IconLogout() {
   );
 }
 
-export default function AccountMenu() {
+export default function AccountMenu({ compact = false }: { compact?: boolean }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const sizeClass = compact ? 'h-8 w-8 text-xs' : 'h-10 w-10 text-sm';
 
   if (!user) {
     return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-800/80 bg-slate-900/40 text-slate-600">
+      <div className={`flex shrink-0 items-center justify-center rounded-full border border-slate-800/80 bg-slate-900/40 text-slate-600 ${sizeClass}`}>
         <IconUser />
       </div>
     );
@@ -43,7 +44,7 @@ export default function AccountMenu() {
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-800/80 bg-slate-900/50 text-sm font-semibold text-slate-300 shadow-sm transition hover:border-slate-700 hover:bg-slate-800/70"
+        className={`flex items-center justify-center rounded-full border border-slate-800/80 bg-slate-900/50 font-semibold text-slate-300 shadow-sm transition hover:border-slate-700 hover:bg-slate-800/70 ${sizeClass}`}
         aria-label="Account"
       >
         {initials(user.email)}
