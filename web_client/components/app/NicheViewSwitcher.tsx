@@ -49,18 +49,18 @@ export function NicheViewSwitcher({
   trailingAction?: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-start gap-2 lg:justify-end">
-      <div className="min-w-0 flex gap-1 overflow-x-auto rounded-full border border-slate-800/80 bg-slate-900/50 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex items-center justify-start gap-3 lg:justify-end">
+      <div className="min-w-0 flex gap-6 overflow-x-auto border-b border-slate-800/80 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {VIEWS.map(view => {
           const selected = view.id === active;
           return (
             <Link
               key={view.id}
               href={view.href(marketId)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              className={`border-b-2 px-0 pb-3 pt-1 text-sm font-semibold transition ${
                 selected
-                  ? 'bg-violet-500/15 text-violet-300'
-                  : 'text-slate-500 hover:bg-slate-800/80 hover:text-slate-300'
+                  ? 'border-violet-500 text-slate-100'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
               }`}
             >
               {view.label}

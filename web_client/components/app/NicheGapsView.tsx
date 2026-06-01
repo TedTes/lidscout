@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
   AgentActivity,
@@ -21,15 +21,17 @@ import {
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
-type EvidenceStrength = 'early' | 'emerging' | 'validated';
+type EvidenceStrength = 'early' | 'moderate' | 'strong' | 'emerging' | 'validated';
 type GapFilter = 'all' | 'saved' | 'dismissed';
 type ItemFeedbackAction = Extract<AgentFeedbackAction, 'save' | 'dismiss'>;
 type TrainingFeedbackAction = Extract<AgentFeedbackAction, 'more_like_this' | 'less_like_this'>;
 
 const STRENGTH_META: Record<EvidenceStrength, { label: string; dotCls: string; badgeCls: string }> = {
-  validated: { label: 'Validated gap', dotCls: 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]', badgeCls: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' },
-  emerging: { label: 'Emerging gap', dotCls: 'bg-amber-400', badgeCls: 'border-amber-500/25 bg-amber-500/10 text-amber-400' },
-  early: { label: 'Early signal', dotCls: 'bg-slate-500', badgeCls: 'border-slate-700/60 bg-slate-800/60 text-slate-400' },
+  strong: { label: 'Strong signal', dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]', badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
+  moderate: { label: 'Moderate signal', dotCls: 'bg-amber-300 shadow-[0_0_7px_rgba(251,191,36,0.6)]', badgeCls: 'border-amber-400/35 bg-amber-400/15 text-amber-200' },
+  validated: { label: 'Validated gap', dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]', badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
+  emerging: { label: 'Emerging gap', dotCls: 'bg-amber-300 shadow-[0_0_7px_rgba(251,191,36,0.6)]', badgeCls: 'border-amber-400/35 bg-amber-400/15 text-amber-200' },
+  early: { label: 'Early signal', dotCls: 'bg-blue-300 shadow-[0_0_7px_rgba(96,165,250,0.55)]', badgeCls: 'border-blue-400/35 bg-blue-400/12 text-blue-200' },
 };
 
 function evidenceStrength(opportunity: Opportunity): EvidenceStrength {
@@ -50,6 +52,17 @@ function isTrainingFeedbackAction(action: AgentFeedbackAction): action is Traini
 
 function plural(n: number, singular: string, pluralForm = `${singular}s`) {
   return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
+function unmetNeedLabel(type: Opportunity['unmet_need_type']) {
+  if (!type) return null;
+  return {
+    time: 'Time sink',
+    money: 'Cost pressure',
+    effort: 'Manual effort',
+    capability: 'Missing capability',
+    fit: 'Poor fit',
+  }[type] ?? null;
 }
 
 function formatElapsed(isoString: string | null | undefined): string | null {
@@ -298,7 +311,10 @@ export default function NicheWorkspacePage({ params }: Props) {
     return !dismissedIds.has(o.id);
   });
 
-  const validatedCount = opportunities.filter(o => evidenceStrength(o) === 'validated').length;
+  const strongCount = opportunities.filter(o => {
+    const strength = evidenceStrength(o);
+    return strength === 'strong' || strength === 'validated';
+  }).length;
   const evidenceCount = opportunities.reduce((sum, o) => sum + o.evidence_count, 0);
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
   const subtitle = niche?.description
@@ -355,13 +371,16 @@ export default function NicheWorkspacePage({ params }: Props) {
       title={title}
       subtitle={subtitle}
       actions={
-        <div className="flex items-center gap-2">
-          <AgentStatusPill
-            pipelineStatus={pipelineStatus}
-            runStartedAt={runStartedEvent?.created_at}
-            nextScanAt={nextScanAt}
-          />
+        <div className="grid w-full gap-3 lg:grid-cols-[minmax(140px,1fr)_auto_minmax(48px,1fr)] lg:items-start">
+          <div className="flex min-h-9 items-center">
+            <AgentStatusPill
+              pipelineStatus={pipelineStatus}
+              runStartedAt={runStartedEvent?.created_at}
+              nextScanAt={nextScanAt}
+            />
+          </div>
           <NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />
+          <div className="hidden lg:block" />
         </div>
       }
     >
@@ -392,18 +411,18 @@ export default function NicheWorkspacePage({ params }: Props) {
                 <p className="text-xs text-slate-600">Awaiting first candidates from this scan</p>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
-                  <StatRow compact stats={[
-                    { label: 'Candidates surfaced', value: opportunities.length, accent: opportunities.length > 0 },
-                    { label: 'Validated gaps', value: validatedCount, accent: validatedCount > 0 },
-                    { label: 'Evidence items', value: evidenceCount },
-                  ]} />
-                  <div className="ml-auto flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-1 rounded-lg border border-slate-800/80 bg-slate-900/60 p-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <GapMetric label="Candidates surfaced" value={opportunities.length} active={opportunities.length > 0} />
+                    <GapMetric label="Strong signals" value={strongCount} active={strongCount > 0} />
+                    <GapMetric label="Evidence items" value={evidenceCount} />
+                  </div>
+                  <div className="ml-auto flex flex-wrap items-center gap-3">
+                    <div className="flex items-center divide-x divide-slate-700/80 text-sm font-semibold">
                       {(['all', 'saved', 'dismissed'] as const).map(filter => (
                         <button
                           key={filter}
                           onClick={() => setGapFilter(filter)}
-                          className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${gapFilter === filter ? 'bg-slate-700 text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                          className={`px-2 capitalize transition first:pl-0 last:pr-0 ${gapFilter === filter ? 'text-slate-100' : 'text-slate-500 hover:text-slate-300'}`}
                         >
                           {filter}
                           {filter === 'saved' && savedIds.size > 0 && (
@@ -417,11 +436,11 @@ export default function NicheWorkspacePage({ params }: Props) {
                         onClick={() => setShowBrief(v => !v)}
                         className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
                           showBrief
-                            ? 'border-violet-500/30 bg-violet-500/10 text-violet-300'
-                            : 'border-slate-700/70 text-slate-500 hover:border-slate-600 hover:text-slate-300'
+                            ? 'border-slate-600/70 bg-slate-800/50 text-slate-200'
+                            : 'border-slate-700/70 bg-slate-900/30 text-slate-500 hover:border-slate-600 hover:text-slate-300'
                         }`}
                       >
-                        <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                        <span className={`h-1.5 w-1.5 rounded-full ${coldStart.status === 'setup_needed' ? 'bg-amber-400' : 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.75)]'}`} />
                         Research brief
                       </button>
                     )}
@@ -448,7 +467,7 @@ export default function NicheWorkspacePage({ params }: Props) {
                   />
                 )
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {filteredOpportunities.map((opportunity, index) => (
                     <GapCard
                       key={opportunity.id}
@@ -867,6 +886,19 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
   );
 }
 
+function GapMetric({ label, value, active }: { label: string; value: number; active?: boolean }) {
+  return (
+    <div className={`rounded-md border px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${
+      active
+        ? 'border-slate-700/80 bg-slate-900/50 text-slate-400'
+        : 'border-slate-800/70 bg-transparent text-slate-600'
+    }`}>
+      <span className={`mr-2 text-sm leading-none tabular-nums ${active ? 'text-slate-200' : 'text-slate-500'}`}>{value}</span>
+      {label}
+    </div>
+  );
+}
+
 // ── Gap card ───────────────────────────────────────────────────────────────────
 
 function GapCard({
@@ -892,119 +924,136 @@ function GapCard({
 }) {
   const saved = itemAction === 'save';
   const dismissed = itemAction === 'dismiss';
+  const needLabel = unmetNeedLabel(opportunity.unmet_need_type);
+  const sourceCount = opportunity.evidence_source_count ?? 0;
+  const companyBreadth = opportunity.company_count > 0
+    ? `${opportunity.company_count}${opportunity.market_company_count != null ? ` of ${opportunity.market_company_count}` : ''} ${opportunity.company_count === 1 ? 'company' : 'companies'}`
+    : null;
 
   return (
-    <div className={`rounded-xl border bg-slate-900/40 px-5 py-4 transition-colors hover:border-slate-700/80 ${dismissed ? 'border-slate-800/40 opacity-50' : 'border-slate-800/70'}`}>
-      <div className="flex items-start gap-4">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-800 text-xs font-bold tabular-nums text-slate-500">
-          {rank}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
-            <h3 className="font-semibold leading-snug text-slate-100">{opportunity.title}</h3>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium ${meta.badgeCls}`}>
+    <article className={`overflow-hidden rounded-xl border bg-slate-900/35 shadow-[0_18px_60px_rgba(0,0,0,0.18)] transition-colors hover:border-slate-700/80 ${dismissed ? 'border-slate-800/40 opacity-50' : 'border-slate-800/90'}`}>
+      <div className="border-b border-white/[0.06] bg-white/[0.035] px-5 py-4">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/80 text-lg font-semibold tabular-nums text-slate-200">
+            {rank}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex max-w-4xl flex-wrap items-center gap-x-3 gap-y-2">
+              <h3 className="text-lg font-semibold leading-snug text-slate-50">{opportunity.title}</h3>
+              <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${meta.badgeCls}`}>
                 <span className={`h-1.5 w-1.5 rounded-full ${meta.dotCls}`} />
                 {meta.label}
               </span>
-              <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs tabular-nums text-slate-500">
-                {plural(opportunity.evidence_count, 'quote')}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-medium text-slate-500">
+                {plural(opportunity.evidence_count, 'quote')} · {plural(sourceCount, 'source')}
               </span>
-              {theme && <ClusterLink id={theme.id} marketId={marketId}>{theme.theme}</ClusterLink>}
-            </div>
-          </div>
-
-          {opportunity.pain_summary && (
-            <div className="mb-3">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Observed pain</p>
-              <p className="text-sm leading-relaxed text-slate-400">{opportunity.pain_summary}</p>
-            </div>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            {opportunity.target_user && (
-              <div className="rounded-lg border border-slate-800/50 bg-slate-800/20 px-3 py-2">
-                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Affected user</p>
-                <p className="text-xs text-slate-400">{opportunity.target_user}</p>
-              </div>
-            )}
-            {opportunity.suggested_wedge && (
-              <div className="rounded-lg border border-violet-500/15 bg-violet-500/[0.04] px-3 py-2">
-                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-700">Possible wedge</p>
-                <p className="text-xs text-violet-300">{opportunity.suggested_wedge}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-xs text-slate-600">
-              Evidence trail:
-              {' '}<span className="font-medium text-slate-400">{plural(opportunity.evidence_count, 'quote')}</span>
-              {' '}· <span className="font-medium text-slate-400">{plural(opportunity.evidence_source_count ?? 0, 'source')}</span>
-              {opportunity.company_count > 0 && (
-                <>
-                  {' '}· <span className="font-medium text-slate-400">{opportunity.company_count}</span>
-                  {opportunity.market_company_count != null && (
-                    <>/{opportunity.market_company_count}</>
-                  )}{' '}
-                  {opportunity.company_count === 1 ? 'company' : 'companies'}
-                </>
+              {needLabel && (
+                <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] font-medium text-slate-400">{needLabel}</span>
               )}
-            </span>
-            {opportunity.company_names.slice(0, 4).map(name => (
-              <span key={name} className="rounded-md bg-slate-800/50 px-2 py-0.5 text-[11px] text-slate-500">{name}</span>
-            ))}
-          </div>
-
-          {opportunity.evidence_strength === 'early' && (
-            <div className="mt-3 rounded-lg border border-slate-800/70 bg-slate-950/30 px-3 py-2">
-              <p className="text-xs leading-relaxed text-slate-500">
-                Treat this as a lead to verify. The agent found a narrow signal, but it needs more evidence before it should drive roadmap decisions.
-              </p>
-            </div>
-          )}
-
-          {opportunity.why_it_matters && (
-            <p className="mt-2.5 text-xs leading-relaxed text-slate-500">{opportunity.why_it_matters}</p>
-          )}
-
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-800/50 pt-3">
-            <div className="flex items-center gap-1.5">
-              <FeedbackButton
-                active={saved}
-                onClick={() => onItemFeedback('save')}
-                icon={<IconBookmark filled={saved} />}
-                label={saved ? 'Saved' : 'Save'}
-                activeClass="border-violet-500/30 bg-violet-500/10 text-violet-400"
-              />
-              <FeedbackButton
-                active={dismissed}
-                onClick={() => onItemFeedback('dismiss')}
-                icon={<IconX />}
-                label={dismissed ? 'Dismissed' : 'Dismiss'}
-                activeClass="border-slate-600 text-slate-400"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <IconFeedbackButton
-                active={trainingAction === 'more_like_this'}
-                onClick={() => onTrainingFeedback('more_like_this')}
-                icon={<IconThumbUp />}
-                activeClass="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                title="More like this"
-              />
-              <IconFeedbackButton
-                active={trainingAction === 'less_like_this'}
-                onClick={() => onTrainingFeedback('less_like_this')}
-                icon={<IconThumbDown />}
-                activeClass="border-rose-500/30 bg-rose-500/10 text-rose-400"
-                title="Less like this"
-              />
+              {theme && <ClusterLink id={theme.id} marketId={marketId}>{theme.theme}</ClusterLink>}
+              {companyBreadth && (
+                <span className="rounded-md bg-slate-800/50 px-2 py-0.5 text-[11px] text-slate-500">Across {companyBreadth}</span>
+              )}
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <div className="px-5 py-4">
+        {opportunity.pain_summary && (
+          <section>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Observed pain</p>
+            <p className="max-w-4xl text-sm leading-relaxed text-slate-300">{opportunity.pain_summary}</p>
+          </section>
+        )}
+
+        <div className="my-3 h-px bg-white/[0.07]" />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {opportunity.target_user && (
+            <section className="md:border-r md:border-white/[0.07] md:pr-4">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Affected user</p>
+              <p className="text-sm leading-relaxed text-slate-200">{opportunity.target_user}</p>
+            </section>
+          )}
+          {opportunity.suggested_wedge && (
+            <section>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Possible wedge</p>
+              <p className="text-sm leading-relaxed text-violet-200">{opportunity.suggested_wedge}</p>
+            </section>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-slate-800/80 bg-slate-950/30 px-3 py-2.5">
+          <span className="text-sm text-slate-400">
+            Evidence trail:
+            {' '}<span className="font-semibold text-slate-200">{plural(opportunity.evidence_count, 'quote')}</span>
+            {' '}· <span className="font-semibold text-slate-200">{plural(sourceCount, 'source')}</span>
+          </span>
+          <Link
+            href={theme ? `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(theme.id)}` : `/markets/${encodeURIComponent(marketId)}/findings`}
+            className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold text-blue-200 transition hover:bg-blue-500/15"
+          >
+            View evidence
+          </Link>
+          {opportunity.company_names.slice(0, 4).map(name => (
+            <span key={name} className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] text-slate-400">{name}</span>
+          ))}
+          {opportunity.company_names.length > 4 && (
+            <span className="text-[11px] text-slate-600">+{opportunity.company_names.length - 4}</span>
+          )}
+        </div>
+
+        {opportunity.why_it_matters && (
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">{opportunity.why_it_matters}</p>
+        )}
+
+        {evidenceStrength(opportunity) === 'early' && (
+          <div className="mt-3 rounded-lg border border-blue-400/20 bg-blue-400/[0.05] px-3 py-2">
+            <p className="text-xs leading-relaxed text-blue-100/75">
+              Verification note: early lead. The agent found a narrow signal and needs more evidence before this should drive roadmap decisions.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] px-5 py-3">
+        <div className="flex items-center gap-1.5">
+          <FeedbackButton
+            active={saved}
+            onClick={() => onItemFeedback('save')}
+            icon={<IconBookmark filled={saved} />}
+            label={saved ? 'Saved' : 'Save'}
+            activeClass="border-violet-500/30 bg-violet-500/10 text-violet-400"
+          />
+          <FeedbackButton
+            active={dismissed}
+            onClick={() => onItemFeedback('dismiss')}
+            icon={<IconX />}
+            label={dismissed ? 'Dismissed' : 'Dismiss'}
+            activeClass="border-slate-600 text-slate-400"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <IconFeedbackButton
+            active={trainingAction === 'more_like_this'}
+            onClick={() => onTrainingFeedback('more_like_this')}
+            icon={<IconThumbUp />}
+            activeClass="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+            title="More like this"
+          />
+          <IconFeedbackButton
+            active={trainingAction === 'less_like_this'}
+            onClick={() => onTrainingFeedback('less_like_this')}
+            icon={<IconThumbDown />}
+            activeClass="border-rose-500/30 bg-rose-500/10 text-rose-400"
+            title="Less like this"
+          />
+        </div>
+      </footer>
+    </article>
   );
 }
 
@@ -1027,7 +1076,7 @@ function FeedbackButton({
     <button
       onClick={onClick}
       title={title}
-      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition ${active ? activeClass : 'border-slate-700/50 text-slate-600 hover:border-slate-600 hover:text-slate-400'}`}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${active ? activeClass : 'border-slate-700/70 bg-slate-900/60 text-slate-400 hover:border-slate-600 hover:bg-slate-800/70 hover:text-slate-200'}`}
     >
       {icon}
       {label}
@@ -1053,7 +1102,7 @@ function IconFeedbackButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`inline-flex items-center justify-center rounded-md border p-1.5 transition ${active ? activeClass : 'border-slate-700/50 text-slate-600 hover:border-slate-600 hover:text-slate-400'}`}
+      className={`inline-flex items-center justify-center rounded-md border p-1.5 transition ${active ? activeClass : 'border-slate-700/70 bg-slate-900/60 text-slate-400 hover:border-slate-600 hover:bg-slate-800/70 hover:text-slate-200'}`}
     >
       {icon}
     </button>

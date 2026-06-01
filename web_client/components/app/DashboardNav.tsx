@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { AddNicheFlow } from '@/components/app/AddNicheFlow';
 import { signalApi } from '@/lib/api';
-import { useAuth } from '@/lib/context/AuthContext';
 import { Market } from '@/lib/types/signals';
 
 function IconRadar() {
@@ -57,12 +56,10 @@ function IconTrash() {
 function NicheList({
   markets,
   activeId,
-  onAddNiche,
   onDelete,
 }: {
   markets: Market[];
   activeId: string | null;
-  onAddNiche: () => void;
   onDelete: (id: string) => Promise<void>;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -80,12 +77,9 @@ function NicheList({
 
   if (markets.length === 0) {
     return (
-      <button
-        onClick={onAddNiche}
-        className="w-full rounded-lg border border-dashed border-slate-800 px-3 py-3 text-left text-xs text-slate-600 transition hover:border-slate-700 hover:text-slate-500"
-      >
+      <div className="w-full rounded-lg border border-dashed border-slate-800 px-3 py-3 text-left text-xs text-slate-600">
         No markets yet - add one
-      </button>
+      </div>
     );
   }
 
@@ -121,14 +115,27 @@ function NicheList({
           <div key={market.id} className="group relative">
             <Link
               href={nicheHref(market.id)}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2.5 pr-8 text-sm font-medium transition ${
+              title={market.name}
+              className={`flex gap-2 rounded-lg px-3 py-2.5 pr-8 text-sm font-medium transition ${
                 active
-                  ? 'bg-violet-600/[0.13] text-violet-300'
-                  : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+                  ? 'items-start bg-violet-600/[0.13] text-violet-300'
+                  : 'items-start text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
               }`}
             >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.9)]' : 'bg-slate-700 group-hover:bg-slate-500'}`} />
-              <span className="min-w-0 flex-1 truncate">{market.name}</span>
+              <svg
+                width="13" height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`mt-[3px] shrink-0 transition-colors ${active ? 'text-violet-400 drop-shadow-[0_0_5px_rgba(167,139,250,0.8)]' : 'text-slate-700 group-hover:text-slate-500'}`}
+              >
+                <circle cx="11" cy="11" r="7" />
+                <line x1="16.5" y1="16.5" x2="22" y2="22" />
+              </svg>
+              <span className={`min-w-0 flex-1 leading-snug ${active ? 'line-clamp-2' : 'line-clamp-2'}`}>{market.name}</span>
             </Link>
             <button
               onClick={e => { e.preventDefault(); setConfirmId(market.id); }}
@@ -140,14 +147,6 @@ function NicheList({
           </div>
         );
       })}
-      <button
-        onClick={onAddNiche}
-        className="mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-800 px-3 py-3 text-left text-sm font-medium text-blue-400 transition hover:border-slate-700 hover:bg-white/[0.03] hover:text-blue-300"
-      >
-        <IconPlus />
-        <span className="min-w-0 flex-1 truncate">Add market</span>
-        <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-slate-500">⌘K</span>
-      </button>
     </div>
   );
 }
@@ -178,10 +177,10 @@ function MobileNicheMenu({
     <div ref={ref} className="relative min-w-0 flex-1 px-3">
       <button
         onClick={() => setOpen(value => !value)}
-        className="flex w-full items-center gap-2 rounded-lg border border-slate-800/60 bg-slate-900/40 px-3 py-2 text-left text-xs transition hover:border-slate-700/60 hover:bg-slate-800/40"
+        className="flex w-full items-center gap-2 rounded-lg border border-slate-800/70 bg-slate-900/55 px-3 py-2.5 text-left text-xs shadow-sm shadow-black/10 transition hover:border-slate-700/60 hover:bg-slate-800/50"
       >
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-violet-500' : 'bg-slate-700'}`} />
-        <span className="min-w-0 flex-1 truncate font-medium text-slate-400">
+        <span className="min-w-0 flex-1 truncate font-semibold text-slate-200">
           {active ? active.name : 'No markets'}
         </span>
         <span className={`shrink-0 text-slate-700 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
@@ -218,7 +217,6 @@ function MobileNicheMenu({
 export default function DashboardNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
   const activeId = activeNicheFromPath(pathname);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [showAddNiche, setShowAddNiche] = useState(false);
@@ -251,7 +249,7 @@ export default function DashboardNav() {
 
   return (
     <>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[220px] flex-col border-r border-white/[0.06] bg-[#07091a] lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] flex-col border-r border-white/[0.06] bg-[#07091a] lg:flex">
         <Link href="/markets" className="flex h-[62px] items-center gap-3 px-5 transition hover:opacity-80">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white shadow-lg shadow-violet-950">
             <IconRadar />
@@ -277,26 +275,25 @@ export default function DashboardNav() {
               <IconPlus />
             </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            <NicheList markets={markets} activeId={activeId} onAddNiche={() => setShowAddNiche(true)} onDelete={handleDeleteNiche} />
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(71,85,105,0.45)_transparent]">
+            <NicheList markets={markets} activeId={activeId} onDelete={handleDeleteNiche} />
           </div>
+          <div className="mt-2 h-px shrink-0 bg-white/[0.06]" />
+          <button
+            onClick={() => setShowAddNiche(true)}
+            className="mt-2 flex w-full shrink-0 items-center gap-2 rounded-lg border border-dashed border-slate-800 px-3 py-2.5 text-left text-sm font-medium text-blue-400 transition hover:border-slate-700 hover:bg-white/[0.03] hover:text-blue-300"
+          >
+            <IconPlus />
+            <span className="min-w-0 flex-1 truncate">Add market</span>
+            <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-slate-500">⌘K</span>
+          </button>
         </nav>
 
-        <div className="mx-4 mb-4 mt-2 border-t border-white/[0.06] pt-3">
-          {user && (
-            <p className="mb-2 truncate px-2 text-[10px] text-slate-700">{user.email}</p>
-          )}
-          <button
-            onClick={logout}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Sign out
-          </button>
+        <div className="mx-4 mb-4 mt-3 border-t border-white/[0.06] pt-3">
+          <div className="flex items-center gap-2 px-2 text-xs text-slate-600">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span>API online</span>
+          </div>
         </div>
       </aside>
 

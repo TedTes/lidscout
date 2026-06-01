@@ -88,6 +88,44 @@ function IconChevronLeft() {
   );
 }
 
+function LoadingTemplates() {
+  return (
+    <div className="px-8 py-6">
+      <div className="mb-5 flex items-center gap-3 text-sm font-medium text-slate-400">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-violet-400/20 bg-violet-500/10 text-violet-300">
+          <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+            <path className="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+        </span>
+        Loading curated markets...
+      </div>
+      <div className="space-y-3">
+        {[0, 1, 2].map(index => (
+          <div
+            key={index}
+            className="grid grid-cols-[minmax(0,1fr)_auto] gap-5 rounded-xl border border-white/10 bg-white/[0.02] p-4"
+          >
+            <div className="min-w-0 space-y-3">
+              <div className="h-4 w-64 max-w-full animate-pulse rounded bg-white/10" />
+              <div className="h-3 w-full max-w-2xl animate-pulse rounded bg-white/[0.07]" />
+              <div className="flex gap-2">
+                <div className="h-6 w-20 animate-pulse rounded-full bg-white/[0.06]" />
+                <div className="h-6 w-24 animate-pulse rounded-full bg-white/[0.06]" />
+                <div className="h-6 w-16 animate-pulse rounded-full bg-white/[0.06]" />
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="h-7 w-20 animate-pulse rounded-full bg-white/[0.06]" />
+              <div className="h-7 w-28 animate-pulse rounded-full bg-white/[0.06]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TemplatePickerStep({
   loading,
   templates,
@@ -212,7 +250,7 @@ function TemplatePickerStep({
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10">
         {loading && (
-          <p className="px-8 py-6 text-sm text-slate-500">Loading curated markets...</p>
+          <LoadingTemplates />
         )}
         {!loading && filtered.length === 0 && (
           <div className="px-8 py-12 text-sm text-slate-500">No curated markets match that search.</div>
