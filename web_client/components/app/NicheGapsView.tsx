@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, StatRow } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
   AgentActivity,
@@ -72,15 +72,6 @@ function formatElapsed(isoString: string | null | undefined): string | null {
   return plural(minutes, 'min') + ' ago';
 }
 
-function formatUntil(isoString: string | null): string | null {
-  if (!isoString) return null;
-  const ms = new Date(isoString).getTime() - Date.now();
-  if (ms <= 0) return 'soon';
-  const hours = Math.floor(ms / 3600000);
-  if (hours > 0) return `${hours}h`;
-  return `${Math.floor((ms % 3600000) / 60000)}m`;
-}
-
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
 function IconBookmark({ filled }: { filled?: boolean }) {
@@ -129,7 +120,6 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
   const [, setCompetitors] = useState<NicheCompany[]>([]);
   const [, setSources] = useState<MonitoredSource[]>([]);
-  const [nextScanAt, setNextScanAt] = useState<string | null>(null);
   const [showBrief, setShowBrief] = useState(false);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -146,13 +136,12 @@ export default function NicheWorkspacePage({ params }: Props) {
     setColdStart(null);
     setCompetitors([]);
     setSources([]);
-    setNextScanAt(null);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     setPipelineStatus(null);
     setProgressActivity([]);
     try {
-      const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes, scheduleRes] = await Promise.all([
+      const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
@@ -160,7 +149,6 @@ export default function NicheWorkspacePage({ params }: Props) {
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
         signalApi.getMarketCompanies(marketId).catch(() => null),
         signalApi.getMarketSources(marketId).catch(() => null),
-        signalApi.getPipelineSchedule().catch(() => null),
       ]);
       setNiche(market);
       setOpportunities(oppsRes.opportunities);
@@ -168,7 +156,6 @@ export default function NicheWorkspacePage({ params }: Props) {
       setColdStart(coldStartRes);
       setCompetitors(competitorsRes?.companies ?? []);
       setSources(sourcesRes?.sources ?? []);
-      setNextScanAt(scheduleRes?.next_run_at ?? null);
       setShowBrief(coldStartRes !== null && coldStartRes.status === 'setup_needed');
 
       if (feedbackRes?.feedback) {
@@ -371,14 +358,17 @@ export default function NicheWorkspacePage({ params }: Props) {
       title={title}
       subtitle={subtitle}
       actions={
-        <div className="grid w-full gap-3 lg:grid-cols-[minmax(140px,1fr)_auto_minmax(48px,1fr)] lg:items-start">
-          <div className="flex min-h-9 items-center">
-            <AgentStatusPill
-              pipelineStatus={pipelineStatus}
-              runStartedAt={runStartedEvent?.created_at}
-              nextScanAt={nextScanAt}
-            />
-          </div>
+        <div className="grid w-full gap-2 lg:grid-cols-[minmax(140px,1fr)_auto_minmax(48px,1fr)] lg:items-start lg:gap-3">
+          {pipelineStatus === 'running' ? (
+            <div className="flex min-h-9 min-w-0 items-center">
+              <AgentStatusPill
+                pipelineStatus={pipelineStatus}
+                runStartedAt={runStartedEvent?.created_at}
+              />
+            </div>
+          ) : (
+            <div className="hidden lg:block" />
+          )}
           <NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />
           <div className="hidden lg:block" />
         </div>
@@ -388,7 +378,7 @@ export default function NicheWorkspacePage({ params }: Props) {
       {status === 'error' && error && <ErrorPanel message={error} />}
 
       {status === 'ready' && (
-        <div className="space-y-5 animate-fade-in">
+        <div className="space-y-4 animate-fade-in lg:space-y-5">
 
           {pipelineStatus === 'running' && opportunities.length === 0 && (
             <>
@@ -411,11 +401,11 @@ export default function NicheWorkspacePage({ params }: Props) {
                 <p className="text-xs text-slate-600">Awaiting first candidates from this scan</p>
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <GapMetric label="Candidates surfaced" value={opportunities.length} active={opportunities.length > 0} />
-                    <GapMetric label="Strong signals" value={strongCount} active={strongCount > 0} />
-                    <GapMetric label="Evidence items" value={evidenceCount} />
-                  </div>
+                  <StatRow compact stats={[
+                    { label: 'Candidates surfaced', value: opportunities.length, accent: opportunities.length > 0 },
+                    { label: 'Strong signals', value: strongCount, accent: strongCount > 0 },
+                    { label: 'Evidence items', value: evidenceCount },
+                  ]} />
                   <div className="ml-auto flex flex-wrap items-center gap-3">
                     <div className="flex items-center divide-x divide-slate-700/80 text-sm font-semibold">
                       {(['all', 'saved', 'dismissed'] as const).map(filter => (
@@ -497,11 +487,9 @@ export default function NicheWorkspacePage({ params }: Props) {
 function AgentStatusPill({
   pipelineStatus,
   runStartedAt,
-  nextScanAt,
 }: {
   pipelineStatus: string | null;
   runStartedAt: string | null | undefined;
-  nextScanAt: string | null;
 }) {
   if (!pipelineStatus || pipelineStatus === 'pending') return null;
 
@@ -524,13 +512,7 @@ function AgentStatusPill({
     );
   }
 
-  const until = formatUntil(nextScanAt);
-  return (
-    <div className="flex items-center gap-1.5 rounded-full border border-slate-800/60 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-600 whitespace-nowrap">
-      <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
-      <span>Agent idle{until ? ` · next in ${until}` : ''}</span>
-    </div>
-  );
+  return null;
 }
 
 // ── Pipeline Progress Strip ────────────────────────────────────────────────────
@@ -882,19 +864,6 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
           Add companies
         </Link>
       </div>
-    </div>
-  );
-}
-
-function GapMetric({ label, value, active }: { label: string; value: number; active?: boolean }) {
-  return (
-    <div className={`rounded-md border px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${
-      active
-        ? 'border-slate-700/80 bg-slate-900/50 text-slate-400'
-        : 'border-slate-800/70 bg-transparent text-slate-600'
-    }`}>
-      <span className={`mr-2 text-sm leading-none tabular-nums ${active ? 'text-slate-200' : 'text-slate-500'}`}>{value}</span>
-      {label}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, StatRow, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
@@ -19,15 +19,6 @@ export default function NicheFindingsPage({ params }: Props) {
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [urgency, setUrgency] = useState<UrgencyFilter>('all');
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleQueryChange = (value: string) => {
-    setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setDebouncedQuery(value), 150);
-  };
 
   const load = async () => {
     setStatus('loading');
@@ -61,16 +52,7 @@ export default function NicheFindingsPage({ params }: Props) {
 
   const filtered = signals.filter(signal => {
     if (urgency !== 'all' && signal.urgency !== urgency) return false;
-    if (!debouncedQuery.trim()) return true;
-    const haystack = [
-      signal.pain,
-      signal.job_to_be_done,
-      signal.evidence_text,
-      signal.category,
-      signal.company_name,
-      signal.user_type,
-    ].filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(debouncedQuery.trim().toLowerCase());
+    return true;
   });
 
   const highUrgency = signals.filter(signal => signal.urgency === 'high').length;
@@ -102,17 +84,6 @@ export default function NicheFindingsPage({ params }: Props) {
                   {filter}
                 </button>
               ))}
-            </div>
-            <div className="relative ml-auto">
-              <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-              </svg>
-              <input
-                value={query}
-                onChange={event => handleQueryChange(event.target.value)}
-                placeholder="Search findings…"
-                className="min-w-[180px] rounded-lg border border-slate-700/70 bg-slate-900/60 py-2 pl-8 pr-3 text-sm text-slate-300 outline-none placeholder:text-slate-600 focus:border-violet-500/40"
-              />
             </div>
           </div>
 
@@ -167,4 +138,3 @@ export default function NicheFindingsPage({ params }: Props) {
     </DashboardShell>
   );
 }
-

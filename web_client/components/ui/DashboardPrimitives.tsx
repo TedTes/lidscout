@@ -122,20 +122,28 @@ export function StatRow({
   compact?: boolean;
 }) {
   return (
-    <div className={`flex items-stretch overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/40 ${compact ? 'w-fit shrink-0' : ''}`}>
+    <div className={`flex flex-wrap items-center gap-1.5 ${compact ? 'w-fit shrink-0' : ''}`}>
       {stats.map((s, i) => (
         <div
           key={s.label}
-          className={`flex items-center gap-2 ${compact ? 'px-3 py-1.5' : 'px-4 py-2.5 min-w-0 flex-1'} ${i > 0 ? 'border-l border-slate-800/60' : ''}`}
+          className={`flex items-center gap-2 rounded-md border ${
+            compact ? 'px-2.5 py-1.5' : 'px-3 py-2'
+          } ${
+            s.danger
+              ? 'border-rose-500/25 bg-rose-500/[0.04]'
+              : s.accent
+                ? 'border-slate-700/80 bg-slate-900/50'
+                : 'border-slate-800/70 bg-transparent'
+          }`}
         >
           <span
-            className={`${compact ? 'text-sm font-semibold' : 'text-lg font-bold'} tabular-nums tracking-tight ${
-              s.danger ? 'text-rose-300' : s.accent ? 'text-violet-300' : 'text-slate-100'
+            className={`${compact ? 'text-sm' : 'text-base'} font-semibold tabular-nums tracking-tight ${
+              s.danger ? 'text-rose-300' : s.accent ? 'text-slate-200' : 'text-slate-500'
             }`}
           >
             {s.value}
           </span>
-          <span className={`text-[10px] font-semibold uppercase tracking-wider text-slate-600 ${compact ? 'whitespace-nowrap' : 'truncate'}`}>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">
             {s.label}
           </span>
         </div>
