@@ -363,15 +363,18 @@ def _record_agent_activity(
 ) -> None:
     if activity_repository is None or user_niche_id is None:
         return
-    activity_repository.save_agent_activity(
-        AgentActivity.create(
-            user_niche_id=user_niche_id,
-            event_type=event_type,
-            title=title,
-            detail=detail,
-            metadata=metadata,
+    try:
+        activity_repository.save_agent_activity(
+            AgentActivity.create(
+                user_niche_id=user_niche_id,
+                event_type=event_type,
+                title=title,
+                detail=detail,
+                metadata=metadata,
+            )
         )
-    )
+    except Exception:
+        pass
 
 
 def _record_pipeline_activity(
