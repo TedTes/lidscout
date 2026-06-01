@@ -31,14 +31,14 @@ export function AddMarketPanel({ onAdd, onCancel }: Props) {
       });
       onAdd(market);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create niche');
+      setError(err instanceof Error ? err.message : 'Failed to create market');
       setSaving(false);
     }
   };
 
   return (
     <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-5">
-      <h3 className="mb-4 text-sm font-semibold text-slate-200">New niche</h3>
+      <h3 className="mb-4 text-sm font-semibold text-slate-200">New market</h3>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Name *</label>
@@ -56,7 +56,7 @@ export function AddMarketPanel({ onAdd, onCancel }: Props) {
             <input
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="What niche or problem space?"
+              placeholder="What market or problem space?"
               className="rounded-md border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60"
             />
           </div>
@@ -77,7 +77,7 @@ export function AddMarketPanel({ onAdd, onCancel }: Props) {
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
           >
-            {saving ? 'Creating…' : 'Create niche'}
+            {saving ? 'Creating…' : 'Create market'}
           </button>
           <button
             type="button"

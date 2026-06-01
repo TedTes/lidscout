@@ -84,7 +84,7 @@ function NicheList({
         onClick={onAddNiche}
         className="w-full rounded-lg border border-dashed border-slate-800 px-3 py-3 text-left text-xs text-slate-600 transition hover:border-slate-700 hover:text-slate-500"
       >
-        No niches yet — add one
+        No markets yet - add one
       </button>
     );
   }
@@ -140,6 +140,14 @@ function NicheList({
           </div>
         );
       })}
+      <button
+        onClick={onAddNiche}
+        className="mt-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-800 px-3 py-3 text-left text-sm font-medium text-blue-400 transition hover:border-slate-700 hover:bg-white/[0.03] hover:text-blue-300"
+      >
+        <IconPlus />
+        <span className="min-w-0 flex-1 truncate">Add market</span>
+        <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-slate-500">⌘K</span>
+      </button>
     </div>
   );
 }
@@ -174,7 +182,7 @@ function MobileNicheMenu({
       >
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-violet-500' : 'bg-slate-700'}`} />
         <span className="min-w-0 flex-1 truncate font-medium text-slate-400">
-          {active ? active.name : 'No niches'}
+          {active ? active.name : 'No markets'}
         </span>
         <span className={`shrink-0 text-slate-700 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
           <IconCaret />
@@ -199,7 +207,7 @@ function MobileNicheMenu({
             onClick={() => { setOpen(false); onAddNiche(); }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-violet-500 transition hover:bg-white/[0.04] hover:text-violet-400"
           >
-            <IconPlus /> Add niche
+            <IconPlus /> Add market
           </button>
         </div>
       )}
@@ -264,7 +272,7 @@ export default function DashboardNav() {
             <button
               onClick={() => setShowAddNiche(true)}
               className="rounded p-1 text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200"
-              aria-label="Add niche"
+              aria-label="Add market"
             >
               <IconPlus />
             </button>
@@ -303,7 +311,7 @@ export default function DashboardNav() {
         <button
           onClick={() => setShowAddNiche(true)}
           className="rounded-md border border-slate-800/70 bg-slate-900/50 p-2 text-slate-500 transition hover:text-slate-300"
-          aria-label="Add niche"
+          aria-label="Add market"
         >
           <IconPlus />
         </button>
@@ -313,6 +321,7 @@ export default function DashboardNav() {
         isOpen={showAddNiche}
         onClose={() => setShowAddNiche(false)}
         onCreated={handleNicheCreated}
+        existingMarkets={markets}
       />
     </>
   );

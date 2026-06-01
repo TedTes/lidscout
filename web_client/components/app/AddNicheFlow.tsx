@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { signalApi } from '@/lib/api';
 import { Market } from '@/lib/types/signals';
 
@@ -12,10 +12,28 @@ interface TemplateCard {
   sourceFamilies: string[];
 }
 
-// ── Shared styles ──────────────────────────────────────────────────────────────
+type CategoryFilter = 'all' | 'devtools' | 'data' | 'vertical_saas' | 'sales' | 'marketing' | 'more';
+type Step = 'pick' | 'custom';
+
+type Props = {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreated: (market: Market) => void;
+  existingMarkets?: Market[];
+};
+
+const CATEGORY_LABELS: Record<CategoryFilter, string> = {
+  all: 'All',
+  devtools: 'Devtools',
+  data: 'Data',
+  vertical_saas: 'Vertical SaaS',
+  sales: 'Sales',
+  marketing: 'Marketing',
+  more: 'More',
+};
 
 const inputCls =
-  'w-full rounded-md border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/10';
+  'w-full rounded-lg border border-slate-700/70 bg-slate-950/30 px-3 py-2.5 text-sm text-slate-200 outline-none placeholder:text-slate-600 transition focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/10';
 
 const labelCls = 'text-[10px] font-semibold uppercase tracking-wider text-slate-600';
 
@@ -23,12 +41,41 @@ function toSlug(name: string) {
   return name.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 60);
 }
 
-// ── Icons ──────────────────────────────────────────────────────────────────────
+function normalize(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function categoryForTemplate(template: TemplateCard): CategoryFilter {
+  const text = `${template.id} ${template.name} ${template.description} ${template.sourceFamilies.join(' ')}`.toLowerCase();
+  if (/dbt|warehouse|data|analytics|etl|pipeline|sql/.test(text)) return 'data';
+  if (/crm|sales|pipeline|revenue|lead/.test(text)) return 'sales';
+  if (/marketing|campaign|seo|content|ads/.test(text)) return 'marketing';
+  if (/therapy|ehr|construction|clinic|dental|legal|vertical|practice|billing/.test(text)) return 'vertical_saas';
+  if (/devtool|developer|deploy|frontend|backend|admin|database|error|api|github|devops/.test(text)) return 'devtools';
+  return 'more';
+}
+
+function sourceAccessLabel(template: TemplateCard) {
+  const hasProxyLikelySource = template.sourceFamilies.some(family =>
+    /review|g2|capterra|trust/.test(family.toLowerCase())
+  );
+  return hasProxyLikelySource ? 'Proxy required' : 'All sources gate-free';
+}
 
 function IconX() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
@@ -41,156 +88,212 @@ function IconChevronLeft() {
   );
 }
 
-// ── Step: Template Picker ──────────────────────────────────────────────────────
-
 function TemplatePickerStep({
   loading,
   templates,
+  existingMarkets,
+  creatingTemplateId,
+  error,
   onSelect,
   onCustom,
 }: {
   loading: boolean;
   templates: TemplateCard[];
+  existingMarkets: Market[];
+  creatingTemplateId: string | null;
+  error: string | null;
   onSelect: (template: TemplateCard) => void;
   onCustom: () => void;
 }) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-1 px-5 pb-3 pt-1">
-        <p className="text-xs text-slate-500">
-          Start with a curated niche — companies, sources, and a research brief are pre-configured.
-        </p>
-      </div>
+  const [query, setQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
-        {loading && (
-          <p className="mb-3 text-xs text-slate-600">Loading curated niches…</p>
-        )}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {templates.map(t => (
-            <button
-              key={t.id}
-              onClick={() => onSelect(t)}
-              className="group flex flex-col gap-2 rounded-xl border border-slate-800/60 bg-slate-900/40 p-4 text-left transition hover:border-violet-500/30 hover:bg-violet-500/[0.04]"
-            >
-              <p className="text-sm font-semibold text-slate-200 group-hover:text-violet-200">{t.name}</p>
-              <p className="text-xs leading-relaxed text-slate-500 line-clamp-2">{t.description}</p>
-              <div className="flex flex-wrap gap-1 pt-0.5">
-                {t.companies.slice(0, 4).map(c => (
-                  <span key={c} className="rounded bg-slate-800/70 px-1.5 py-0.5 text-[10px] text-slate-500">{c}</span>
-                ))}
-                {t.companies.length > 4 && (
-                  <span className="rounded bg-slate-800/40 px-1.5 py-0.5 text-[10px] text-slate-600">+{t.companies.length - 4}</span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
+  useEffect(() => {
+    const timer = setTimeout(() => inputRef.current?.focus(), 40);
+    return () => clearTimeout(timer);
+  }, []);
 
-        <div className="mt-4 border-t border-slate-800/50 pt-4">
-          <button
-            onClick={onCustom}
-            className="w-full rounded-xl border border-dashed border-slate-800 bg-slate-900/20 px-4 py-3 text-left text-sm font-medium text-slate-500 transition hover:border-slate-700 hover:text-slate-300"
-          >
-            Start from scratch — define your own niche
-          </button>
-        </div>
-      </div>
-    </div>
+  const existingNames = useMemo(
+    () => new Set(existingMarkets.map(market => normalize(market.name))),
+    [existingMarkets],
   );
-}
 
-// ── Step: Confirm template ─────────────────────────────────────────────────────
+  const templatesWithCategory = useMemo(
+    () => templates.map(template => ({
+      template,
+      category: categoryForTemplate(template),
+      alreadyAdded: existingNames.has(normalize(template.name)),
+    })),
+    [existingNames, templates],
+  );
 
-function ConfirmStep({
-  template,
-  onConfirm,
-  onBack,
-}: {
-  template: TemplateCard;
-  onConfirm: () => void;
-  onBack: () => void;
-}) {
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const counts = useMemo(() => {
+    const next: Record<CategoryFilter, number> = {
+      all: templates.length,
+      devtools: 0,
+      data: 0,
+      vertical_saas: 0,
+      sales: 0,
+      marketing: 0,
+      more: 0,
+    };
+    for (const item of templatesWithCategory) next[item.category] += 1;
+    return next;
+  }, [templates.length, templatesWithCategory]);
 
-  const handleConfirm = async () => {
-    setCreating(true);
-    setError(null);
-    try {
-      await onConfirm();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create niche');
-      setCreating(false);
-    }
+  const filtered = useMemo(() => {
+    const normalizedQuery = normalize(query);
+    return templatesWithCategory.filter(({ template, category }) => {
+      if (activeCategory !== 'all' && category !== activeCategory) return false;
+      if (!normalizedQuery) return true;
+      const haystack = normalize([
+        template.name,
+        template.description,
+        template.companies.join(' '),
+        template.sourceFamilies.join(' '),
+      ].join(' '));
+      return haystack.includes(normalizedQuery);
+    });
+  }, [activeCategory, query, templatesWithCategory]);
+
+  const firstSelectable = filtered.find(item => !item.alreadyAdded)?.template ?? null;
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || !firstSelectable) return;
+    event.preventDefault();
+    onSelect(firstSelectable);
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1 space-y-4">
-        <div>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Niche</p>
-          <p className="text-sm font-semibold text-slate-200">{template.name}</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{template.description}</p>
+      <div className="px-8 pb-4">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+            <IconSearch />
+          </span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Search by job, tool, or buyer - e.g. 'shopify', 'devtools', 'therapy'"
+            className="w-full rounded-xl border border-white/10 bg-black/15 py-4 pl-11 pr-4 text-base font-medium text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-500/40"
+          />
         </div>
 
-        <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-            {template.companies.length} companies pre-configured
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {template.companies.map(c => (
-              <span key={c} className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] text-slate-400">{c}</span>
-            ))}
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-slate-500">Filter:</span>
+          {(Object.keys(CATEGORY_LABELS) as CategoryFilter[]).map(category => (
+            <button
+              key={category}
+              type="button"
+              onClick={() => setActiveCategory(category)}
+              className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+                activeCategory === category
+                  ? 'border-violet-400/20 bg-violet-100 text-violet-700'
+                  : 'border-white/10 bg-white/[0.025] text-slate-400 hover:border-white/20 hover:text-slate-200'
+              }`}
+            >
+              {CATEGORY_LABELS[category]}
+              <span className="ml-1 text-current opacity-65">· {counts[category]}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={onCustom}
+            className="ml-auto rounded-full border border-dashed border-white/10 px-4 py-1.5 text-sm font-semibold text-slate-500 transition hover:border-white/20 hover:text-slate-300"
+          >
+            Custom
+          </button>
         </div>
-
-        <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Source channels</p>
-          <div className="flex flex-wrap gap-1.5">
-            {template.sourceFamilies.map(f => (
-              <span key={f} className="rounded-md border border-slate-800/50 bg-slate-800/40 px-2 py-0.5 text-[11px] capitalize text-slate-500">
-                {f.replace(/_/g, ' ')}
-              </span>
-            ))}
-            <span className="rounded-md border border-slate-800/50 bg-slate-800/40 px-2 py-0.5 text-[11px] text-slate-500">
-              Reddit per company
-            </span>
-            <span className="rounded-md border border-slate-800/50 bg-slate-800/40 px-2 py-0.5 text-[11px] text-slate-500">
-              Hacker News per company
-            </span>
-          </div>
-        </div>
-
-        <p className="text-[11px] leading-relaxed text-slate-600">
-          Companies and sources are copied at creation time. You can add, remove, or edit them after.
-        </p>
-
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-white/[0.06] px-5 py-4">
-        <button
-          onClick={handleConfirm}
-          disabled={creating}
-          className="flex-1 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {creating ? 'Creating…' : 'Create niche'}
-        </button>
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={creating}
-          className="rounded-lg border border-slate-700/60 bg-slate-800/60 px-4 py-2 text-sm font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-40"
-        >
-          Back
-        </button>
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10">
+        {loading && (
+          <p className="px-8 py-6 text-sm text-slate-500">Loading curated markets...</p>
+        )}
+        {!loading && filtered.length === 0 && (
+          <div className="px-8 py-12 text-sm text-slate-500">No curated markets match that search.</div>
+        )}
+        {!loading && filtered.map(({ template, category, alreadyAdded }, index) => {
+          const accessLabel = sourceAccessLabel(template);
+          const creating = creatingTemplateId === template.id;
+          const disabled = alreadyAdded || creatingTemplateId !== null;
+          return (
+            <button
+              key={template.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => onSelect(template)}
+              className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-5 border-b border-white/10 px-8 py-5 text-left transition ${
+                alreadyAdded
+                  ? 'cursor-default opacity-45'
+                  : 'hover:bg-white/[0.035]'
+              }`}
+            >
+              <div className="min-w-0">
+                <div className="flex items-start gap-3">
+                  <h3 className="max-w-2xl text-base font-bold leading-tight text-slate-100">
+                    {template.name}
+                  </h3>
+                  {index === 0 && !alreadyAdded && !query && (
+                    <span className="hidden text-xs text-slate-600 sm:inline">Enter</span>
+                  )}
+                </div>
+                <p className="mt-1 max-w-3xl text-sm font-medium leading-snug text-slate-400">
+                  {template.description}
+                  <span className="text-slate-500"> · {plural(template.companies.length, 'tool')} · {plural(Math.max(template.sourceFamilies.length, 1), 'source')}</span>
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {template.companies.slice(0, 5).map(company => (
+                    <span key={company} className="rounded-full bg-black/20 px-2.5 py-1 text-xs font-semibold text-slate-400">
+                      {company}
+                    </span>
+                  ))}
+                  {template.companies.length > 5 && (
+                    <span className="rounded-full px-2.5 py-1 text-xs font-semibold text-slate-500">
+                      +{template.companies.length - 5}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex min-w-[185px] flex-col items-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <span className="rounded-full bg-black/20 px-3 py-1 text-xs font-semibold text-slate-400">
+                    {CATEGORY_LABELS[category]}
+                  </span>
+                  {alreadyAdded ? (
+                    <span className="rounded-full bg-black/20 px-3 py-1 text-xs font-semibold text-slate-500">
+                      Already added
+                    </span>
+                  ) : (
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      accessLabel === 'Proxy required'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {accessLabel}
+                    </span>
+                  )}
+                </div>
+                {creating && (
+                  <span className="text-xs font-semibold text-violet-400">Adding...</span>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// ── Step: Custom niche form ────────────────────────────────────────────────────
+function plural(n: number, singular: string, pluralForm = `${singular}s`) {
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
 
 function CustomStep({
   onCreated,
@@ -207,12 +310,12 @@ function CustomStep({
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => nameRef.current?.focus(), 30);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => nameRef.current?.focus(), 30);
+    return () => clearTimeout(timer);
   }, []);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) return;
     setSaving(true);
@@ -226,22 +329,22 @@ function CustomStep({
       });
       onCreated(market);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create niche');
+      setError(err instanceof Error ? err.message : 'Failed to create market');
       setSaving(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 pb-8 pt-2">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-niche-name" className={labelCls}>Name *</label>
+          <label htmlFor="custom-market-name" className={labelCls}>Name *</label>
           <input
             ref={nameRef}
-            id="custom-niche-name"
+            id="custom-market-name"
             required
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={event => setName(event.target.value)}
             placeholder="e.g. Developer tools"
             className={inputCls}
             autoComplete="off"
@@ -249,49 +352,49 @@ function CustomStep({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-niche-description" className={labelCls}>Description</label>
+          <label htmlFor="custom-market-description" className={labelCls}>Description</label>
           <input
-            id="custom-niche-description"
+            id="custom-market-description"
             value={description}
-            onChange={e => setDescription(e.target.value)}
-            placeholder="Problem space or niche focus"
+            onChange={event => setDescription(event.target.value)}
+            placeholder="Problem space or market focus"
             className={inputCls}
             autoComplete="off"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-niche-target" className={labelCls}>Target user</label>
+          <label htmlFor="custom-market-target" className={labelCls}>Target user</label>
           <input
-            id="custom-niche-target"
+            id="custom-market-target"
             value={targetUser}
-            onChange={e => setTargetUser(e.target.value)}
+            onChange={event => setTargetUser(event.target.value)}
             placeholder="e.g. Seed-stage founders"
             className={inputCls}
             autoComplete="off"
           />
         </div>
 
-        <p className="text-[11px] leading-relaxed text-slate-600">
-          You&apos;ll add companies and sources after creating the niche.
+        <p className="text-sm leading-relaxed text-slate-500">
+          You can add companies and sources after creating the market.
         </p>
 
-        {error && <p className="shrink-0 text-xs text-rose-400">{error}</p>}
+        {error && <p className="shrink-0 text-sm text-rose-400">{error}</p>}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-white/[0.06] px-5 py-4">
+      <div className="flex items-center gap-2 border-t border-white/10 px-8 py-5">
         <button
           type="submit"
           disabled={saving || !name.trim()}
-          className="flex-1 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {saving ? 'Creating…' : 'Create niche'}
+          {saving ? 'Creating...' : 'Create market'}
         </button>
         <button
           type="button"
           onClick={onBack}
           disabled={saving}
-          className="rounded-lg border border-slate-700/60 bg-slate-800/60 px-4 py-2 text-sm font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-40"
+          className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-40"
         >
           Back
         </button>
@@ -300,47 +403,37 @@ function CustomStep({
   );
 }
 
-// ── Main drawer ────────────────────────────────────────────────────────────────
-
-type Step = 'pick' | 'confirm' | 'custom';
-
-const STEP_TITLES: Record<Step, string> = {
-  pick: 'Add niche',
-  confirm: 'Confirm niche',
-  custom: 'Custom niche',
-};
-
-type Props = {
-  isOpen: boolean;
-  onClose: () => void;
-  onCreated: (market: Market) => void;
-};
-
-export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
+export function AddNicheFlow({
+  isOpen,
+  onClose,
+  onCreated,
+  existingMarkets = [],
+}: Props) {
   const [step, setStep] = useState<Step>('pick');
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateCard | null>(null);
   const [templates, setTemplates] = useState<TemplateCard[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setStep('pick');
-      setSelectedTemplate(null);
-      setTemplatesLoading(true);
-      signalApi.getTemplates()
-        .then(response => {
-          setTemplates(response.templates.map(template => ({
-            id: template.id,
-            name: template.name,
-            description: template.description,
-            companies: template.company_names,
-            sourceFamilies: template.source_families,
-          })));
-        })
-        .catch(() => setTemplates([]))
-        .finally(() => setTemplatesLoading(false));
-    }
+    if (!isOpen) return;
+    setStep('pick');
+    setCreatingTemplateId(null);
+    setError(null);
+    setTemplatesLoading(true);
+    signalApi.getTemplates()
+      .then(response => {
+        setTemplates(response.templates.map(template => ({
+          id: template.id,
+          name: template.name,
+          description: template.description,
+          companies: template.company_names,
+          sourceFamilies: template.source_families,
+        })));
+      })
+      .catch(() => setTemplates([]))
+      .finally(() => setTemplatesLoading(false));
   }, [isOpen]);
 
   useEffect(() => {
@@ -352,58 +445,72 @@ export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
 
-  const handleSelectTemplate = (template: TemplateCard) => {
-    setSelectedTemplate(template);
-    setStep('confirm');
+  const handleSelectTemplate = async (template: TemplateCard) => {
+    setCreatingTemplateId(template.id);
+    setError(null);
+    try {
+      const market = await signalApi.applyTemplate(template.id);
+      onCreated(market);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add market');
+      setCreatingTemplateId(null);
+    }
   };
-
-  const handleConfirm = async () => {
-    if (!selectedTemplate) return;
-    const market = await signalApi.applyTemplate(selectedTemplate.id);
-    onCreated(market);
-  };
-
-  const canGoBack = step !== 'pick';
 
   return (
     <>
       <div
         aria-hidden="true"
         onClick={onClose}
-        className={`fixed inset-0 z-[35] bg-black/30 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+        className={`fixed inset-0 z-[35] bg-black/60 backdrop-blur-sm transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
       />
 
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Add niche"
-        className={`fixed left-0 top-0 z-40 flex h-screen w-full flex-col border-r border-white/[0.06] bg-[#07091a] shadow-[6px_0_40px_rgba(0,0,0,0.7)] transition-transform duration-200 ease-in-out sm:w-[480px] ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        aria-label="Add market"
+        className={`fixed inset-x-4 top-[7vh] z-40 mx-auto flex max-h-[86vh] max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#20211f] shadow-[0_24px_80px_rgba(0,0,0,0.75)] transition duration-200 ${
+          isOpen
+            ? 'translate-y-0 opacity-100'
+            : 'pointer-events-none translate-y-4 opacity-0'
+        }`}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-5 py-4">
-          <div className="flex items-center gap-2">
-            {canGoBack && (
-              <button
-                type="button"
-                onClick={() => setStep('pick')}
-                className="rounded p-1 text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
-                aria-label="Back"
-              >
-                <IconChevronLeft />
-              </button>
-            )}
-            <h2 className="text-sm font-semibold text-slate-200">{STEP_TITLES[step]}</h2>
+        <div className="flex shrink-0 items-start justify-between px-8 pb-5 pt-7">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {step === 'custom' && (
+                <button
+                  type="button"
+                  onClick={() => setStep('pick')}
+                  className="rounded p-1 text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
+                  aria-label="Back"
+                >
+                  <IconChevronLeft />
+                </button>
+              )}
+              <h2 className="text-xl font-bold tracking-tight text-slate-100">
+                {step === 'custom' ? 'Create a custom market' : 'Add a market to monitor'}
+              </h2>
+            </div>
+            <p className="mt-2 max-w-xl text-sm font-medium leading-snug text-slate-400">
+              {step === 'custom'
+                ? 'Define a market manually. You can add companies, sources, and research scope next.'
+                : 'Pick a curated template - companies, sources, and research brief are pre-configured'}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded p-1 text-slate-600 transition hover:bg-white/[0.04] hover:text-slate-400"
+            className="rounded p-2 text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
           >
             <IconX />
           </button>
@@ -413,16 +520,11 @@ export function AddNicheFlow({ isOpen, onClose, onCreated }: Props) {
           <TemplatePickerStep
             loading={templatesLoading}
             templates={templates}
+            existingMarkets={existingMarkets}
+            creatingTemplateId={creatingTemplateId}
+            error={error}
             onSelect={handleSelectTemplate}
             onCustom={() => setStep('custom')}
-          />
-        )}
-
-        {step === 'confirm' && selectedTemplate && (
-          <ConfirmStep
-            template={selectedTemplate}
-            onConfirm={handleConfirm}
-            onBack={() => setStep('pick')}
           />
         )}
 

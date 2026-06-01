@@ -82,7 +82,7 @@ export function AddNicheDrawer({ isOpen, onClose, onCreated }: Props) {
       });
       onCreated(market);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create niche');
+      setError(err instanceof Error ? err.message : 'Failed to create market');
       setSaving(false);
     }
   };
@@ -99,11 +99,11 @@ export function AddNicheDrawer({ isOpen, onClose, onCreated }: Props) {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Add niche"
+        aria-label="Add market"
         className={`fixed left-0 top-0 z-40 flex h-screen w-full flex-col border-r border-white/[0.06] bg-[#07091a] shadow-[6px_0_40px_rgba(0,0,0,0.7)] transition-transform duration-200 ease-in-out sm:w-80 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
-          <h2 className="text-sm font-semibold text-slate-200">New niche</h2>
+          <h2 className="text-sm font-semibold text-slate-200">New market</h2>
           <button
             type="button"
             onClick={onClose}
@@ -136,7 +136,7 @@ export function AddNicheDrawer({ isOpen, onClose, onCreated }: Props) {
                 id="niche-description"
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="Problem space or niche focus"
+                placeholder="Problem space or market focus"
                 className={inputCls}
                 autoComplete="off"
               />
