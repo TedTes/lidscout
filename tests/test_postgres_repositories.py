@@ -682,6 +682,22 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(connection.calls[2][1], ("source-1",))
         self.assertEqual(connection.commit_count, 1)
 
+    def test_niche_source_repository_updates_quality_score(self):
+        connection = FakeConnection([FakeCursor(rowcount=1)])
+        repository = PostgresNicheSourceRepository(connection=connection)
+
+        self.assertTrue(
+            repository.update_niche_source_quality(
+                "source-1",
+                0.74,
+                buyer_voice_verified=True,
+            )
+        )
+
+        self.assertIn("UPDATE niche_sources", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1], (0.74, True, "source-1"))
+        self.assertEqual(connection.commit_count, 1)
+
     @unittest.skip("PostgresSourceHealthRepository removed — health tracked on NicheSource")
     def test_source_health_repository_saves_and_loads_health(self):
         scanned_at = datetime(2026, 5, 25, 16, 20, tzinfo=UTC)

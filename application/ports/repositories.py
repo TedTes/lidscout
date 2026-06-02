@@ -310,6 +310,16 @@ class NicheSourceRepository(Protocol):
         """Update health status and last_scanned_at for one source."""
         ...
 
+    def update_niche_source_quality(
+        self,
+        source_id: str,
+        signal_quality_score: float,
+        *,
+        buyer_voice_verified: bool | None = None,
+    ) -> bool:
+        """Update the observed quality score for one source."""
+        ...
+
     def upsert_niche_source_run_stats(
         self,
         stats: NicheSourceRunStats,

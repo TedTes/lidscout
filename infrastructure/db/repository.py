@@ -492,6 +492,23 @@ class InMemoryNicheSourceRepository:
         )
         return True
 
+    def update_niche_source_quality(
+        self,
+        source_id: str,
+        signal_quality_score: float,
+        *,
+        buyer_voice_verified: bool | None = None,
+    ) -> bool:
+        source = self._sources.get(source_id)
+        if source is None:
+            return False
+        from dataclasses import replace
+        updates = {"signal_quality_score": signal_quality_score}
+        if buyer_voice_verified is not None:
+            updates["buyer_voice_verified"] = buyer_voice_verified
+        self._sources[source_id] = replace(source, **updates)
+        return True
+
     def upsert_niche_source_run_stats(self, stats) -> bool:
         self._run_stats[stats.niche_source_id] = stats
         return True

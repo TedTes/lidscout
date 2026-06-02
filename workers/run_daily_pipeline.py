@@ -37,6 +37,7 @@ from application.ports import (
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
+from application.source_quality import source_observed_quality_score
 from domain.cluster import SignalCluster
 from domain.agent import AgentActivity
 from domain.opportunity import Opportunity
@@ -579,14 +580,20 @@ def _record_niche_source_health(
             detail.error,
         )
         existing = niche_source_repository.get_niche_source_run_stats(source_id)
-        niche_source_repository.upsert_niche_source_run_stats(
-            _next_niche_source_run_stats(
-                source_id=source_id,
-                detail=detail,
-                relevance=relevance_stats.get(source_id),
-                existing=existing,
-                scanned_at=scanned_at,
-            )
+        stats = _next_niche_source_run_stats(
+            source_id=source_id,
+            detail=detail,
+            relevance=relevance_stats.get(source_id),
+            existing=existing,
+            scanned_at=scanned_at,
+        )
+        niche_source_repository.upsert_niche_source_run_stats(stats)
+        niche_source_repository.update_niche_source_quality(
+            source_id,
+            source_observed_quality_score(stats),
+            buyer_voice_verified=(
+                True if stats.relevant_posts_count >= 3 else None
+            ),
         )
 
 

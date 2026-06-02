@@ -807,6 +807,8 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         stats = repository.get_niche_source_run_stats("source-1")
 
         self.assertEqual(updated_source.health_status, "active")
+        self.assertEqual(updated_source.signal_quality_score, 0.53)
+        self.assertFalse(updated_source.buyer_voice_verified)
         self.assertIsNotNone(stats)
         self.assertEqual(stats.total_runs, 1)
         self.assertEqual(stats.posts_fetched_count, 5)

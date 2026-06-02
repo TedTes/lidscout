@@ -218,6 +218,26 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
         self.connection.commit()
         return _rowcount(cursor) > 0
 
+    def update_niche_source_quality(
+        self,
+        source_id: str,
+        signal_quality_score: float,
+        *,
+        buyer_voice_verified: bool | None = None,
+    ) -> bool:
+        cursor = self.connection.execute(
+            """
+            UPDATE niche_sources
+               SET signal_quality_score = %s,
+                   buyer_voice_verified = COALESCE(%s, buyer_voice_verified),
+                   updated_at = now()
+             WHERE id = %s
+            """,
+            (signal_quality_score, buyer_voice_verified, source_id),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
     def upsert_niche_source_run_stats(self, stats: NicheSourceRunStats) -> bool:
         cursor = self.connection.execute(
             """
