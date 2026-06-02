@@ -146,6 +146,40 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
         self.assertEqual(result.synthesized_count, 0)
         self.assertEqual(result.rejected_qualifications[0].reason, "no_cross_tool_pattern")
 
+    def test_rejects_thin_clusters_from_weak_only_sources(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        signals = [
+            Signal.create(
+                id="signal-1",
+                post_id="blog:1",
+                pain="Teams need faster billing reconciliation.",
+                niche_company_id="acme-billing",
+                evidence_url="https://example.com/blog/billing-tools",
+            ),
+            Signal.create(
+                id="signal-2",
+                post_id="blog:2",
+                pain="Billing reconciliation is still manual.",
+                niche_company_id="northstar-billing",
+                evidence_url="https://another-example.com/posts/reconciliation",
+            ),
+        ]
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Billing reconciliation",
+            summary="Teams still reconcile billing manually.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.6,
+        )
+
+        result = service.synthesize([cluster], signals)
+
+        self.assertEqual(result.synthesized_count, 0)
+        self.assertEqual(result.rejected_qualifications[0].reason, "weak_source_mix")
+        self.assertEqual(result.rejected_qualifications[0].high_signal_source_count, 0)
+
     def test_rejects_vendor_fix_only_clusters(self):
         repository = InMemoryOpportunityRepository()
         service = OpportunitySynthesisService(repository, minimum_average_score=0.0)

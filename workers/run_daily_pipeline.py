@@ -355,6 +355,7 @@ def _record_synthesis_qualification_activity(
                 "source_count": qualification.source_count,
                 "company_count": qualification.company_count,
                 "general_finding_count": qualification.general_finding_count,
+                "high_signal_source_count": qualification.high_signal_source_count,
             },
         )
 
@@ -365,6 +366,7 @@ def _qualification_reason_detail(reason: str | None) -> str:
         "no_cross_tool_pattern": "Needs cross-tool corroboration or broader non-vendor evidence.",
         "vendor_fix_only": "Looks like a vendor fix rather than a strategic gap.",
         "off_niche": "Evidence does not match the niche job-to-be-done.",
+        "weak_source_mix": "Needs stronger buyer-side sources or more corroborating evidence.",
     }.get(reason or "", "Theme did not meet strategic gap qualification criteria.")
 
 

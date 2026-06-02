@@ -34,6 +34,7 @@ class ClusterQualification:
     source_count: int
     company_count: int
     general_finding_count: int
+    high_signal_source_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -238,6 +239,7 @@ def qualify_cluster_for_opportunity(
     """Return whether a cluster is strong enough to become a strategic gap."""
     finding_count = len(signals)
     source_count = _source_diversity(signals)
+    high_signal_source_count = _high_signal_source_diversity(signals)
     company_ids = {
         signal.niche_company_id
         for signal in signals
@@ -256,6 +258,19 @@ def qualify_cluster_for_opportunity(
             source_count=source_count,
             company_count=company_count,
             general_finding_count=len(general_signals),
+            high_signal_source_count=high_signal_source_count,
+        )
+
+    if high_signal_source_count == 0 and finding_count < 3:
+        return ClusterQualification(
+            cluster_id=cluster.id,
+            qualified=False,
+            reason="weak_source_mix",
+            finding_count=finding_count,
+            source_count=source_count,
+            company_count=company_count,
+            general_finding_count=len(general_signals),
+            high_signal_source_count=high_signal_source_count,
         )
 
     if company_count <= 1 and _looks_vendor_fix_only(cluster, signals):
@@ -267,6 +282,7 @@ def qualify_cluster_for_opportunity(
             source_count=source_count,
             company_count=company_count,
             general_finding_count=len(general_signals),
+            high_signal_source_count=high_signal_source_count,
         )
 
     has_cross_tool_pattern = company_count >= 2 or (
@@ -281,6 +297,7 @@ def qualify_cluster_for_opportunity(
             source_count=source_count,
             company_count=company_count,
             general_finding_count=len(general_signals),
+            high_signal_source_count=high_signal_source_count,
         )
 
     if _looks_off_niche(cluster, signals, context):
@@ -292,6 +309,7 @@ def qualify_cluster_for_opportunity(
             source_count=source_count,
             company_count=company_count,
             general_finding_count=len(general_signals),
+            high_signal_source_count=high_signal_source_count,
         )
 
     return ClusterQualification(
@@ -302,6 +320,7 @@ def qualify_cluster_for_opportunity(
         source_count=source_count,
         company_count=company_count,
         general_finding_count=len(general_signals),
+        high_signal_source_count=high_signal_source_count,
     )
 
 
@@ -591,6 +610,50 @@ def _source_diversity(signals: list[Signal]) -> int:
     if not sources and signals:
         return 1
     return len(sources)
+
+
+def _high_signal_source_diversity(signals: list[Signal]) -> int:
+    sources = {
+        _source_key(signal)
+        for signal in signals
+        if _is_high_signal_source(signal)
+    }
+    sources.discard(None)
+    return len(sources)
+
+
+def _is_high_signal_source(signal: Signal) -> bool:
+    source_key = _source_key(signal) or ""
+    post_source = signal.post_id.split(":", 1)[0].lower() if ":" in signal.post_id else ""
+    combined = f"{source_key} {post_source}"
+    high_signal_hints = {
+        "github.com",
+        "api.github.com",
+        "stackoverflow.com",
+        "stackexchange.com",
+        "g2.com",
+        "capterra.com",
+        "trustradius.com",
+        "trustpilot.com",
+        "reddit.com",
+        "news.ycombinator.com",
+        "hn.algolia.com",
+        "producthunt.com",
+    }
+    if any(hint in combined for hint in high_signal_hints):
+        return True
+    return any(
+        token in combined
+        for token in {
+            "github",
+            "stackoverflow",
+            "hackernews",
+            "reddit",
+            "discourse",
+            "forum",
+            "reviews",
+        }
+    )
 
 
 def _source_key(signal: Signal) -> str | None:
