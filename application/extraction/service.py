@@ -164,6 +164,7 @@ class ExtractionService:
                 f"competitor_domain: {_metadata_text(post, 'competitor_domain') or ''}",
                 f"competitor_website: {_metadata_text(post, 'competitor_website') or ''}",
                 f"source_type: {_metadata_text(post, 'source_type') or ''}",
+                f"source_guidance: {_source_guidance(post)}",
                 f"url: {post.url or ''}",
                 f"title: {post.title}",
                 f"body: {post.body}",
@@ -188,6 +189,42 @@ def _has_competitor_context(post: RawPost) -> bool:
     return any(
         _metadata_text(post, key)
         for key in ("competitor_id", "competitor_name", "competitor_domain")
+    )
+
+
+def _source_guidance(post: RawPost) -> str:
+    source_type = (_metadata_text(post, "source_type") or post.source).lower()
+    locator = (post.url or "").lower()
+    combined = f"{source_type} {locator}"
+    if "github" in combined:
+        return (
+            "Treat issue reports, reproduction steps, maintainer won't-fix replies, "
+            "and repeated feature requests as strong evidence. Ignore routine pull "
+            "request/changelog noise."
+        )
+    if "stackoverflow" in combined or "stackexchange" in combined:
+        return (
+            "Treat blocked implementation questions and repeated workarounds as "
+            "evidence of unmet workflow needs. Ignore solved syntax-only questions."
+        )
+    if any(token in combined for token in ("g2", "capterra", "trustradius", "trustpilot", "review")):
+        return (
+            "Prioritize dislike, switching, comparison, pricing, and support complaints "
+            "from buyer/user review text."
+        )
+    if any(token in combined for token in ("reddit", "hackernews", "ycombinator", "forum", "discourse")):
+        return (
+            "Extract concrete user pain, switching intent, and workaround discussions. "
+            "Ignore jokes, broad opinions, hiring posts, tutorials, and hype."
+        )
+    if any(token in combined for token in ("changelog", "release", "pricing", "roadmap")):
+        return (
+            "Use owned-content signals as competitive context only. Extract a pain "
+            "signal only when unmet user need or customer demand is explicit."
+        )
+    return (
+        "Extract only concrete buyer/user pain with evidence. Ignore generic marketing, "
+        "SEO summaries, news, or vague commentary."
     )
 
 

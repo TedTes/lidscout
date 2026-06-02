@@ -107,6 +107,57 @@ class ExtractionServiceTests(unittest.TestCase):
         self.assertFalse(result.has_signal)
         self.assertIsNone(result.signal)
 
+    def test_includes_github_specific_source_guidance(self):
+        post = RawPost.create(
+            source="web_json",
+            source_id="issue-1",
+            title="State file corruption",
+            url="https://github.com/example/project/issues/1",
+            metadata={"source_type": "github_issues_search"},
+        )
+        llm_client = MockLLMClient(
+            """
+            {
+              "has_signal": false,
+              "is_about_competitor": false,
+              "competitor_match_reason": null,
+              "signal": null
+            }
+            """
+        )
+        service = ExtractionService(llm_client)
+
+        service.extract(post)
+
+        self.assertIn("source_guidance:", llm_client.calls[0][1])
+        self.assertIn("reproduction steps", llm_client.calls[0][1])
+        self.assertIn("won't-fix", llm_client.calls[0][1])
+
+    def test_includes_review_specific_source_guidance(self):
+        post = RawPost.create(
+            source="web",
+            source_id="review-1",
+            title="Review",
+            url="https://www.g2.com/products/example/reviews/1",
+            metadata={"source_type": "review_search"},
+        )
+        llm_client = MockLLMClient(
+            """
+            {
+              "has_signal": false,
+              "is_about_competitor": false,
+              "competitor_match_reason": null,
+              "signal": null
+            }
+            """
+        )
+        service = ExtractionService(llm_client)
+
+        service.extract(post)
+
+        self.assertIn("source_guidance:", llm_client.calls[0][1])
+        self.assertIn("buyer/user review text", llm_client.calls[0][1])
+
     def test_raises_extraction_error_for_invalid_json(self):
         post = RawPost.create(source="reddit", source_id="abc")
         service = ExtractionService(MockLLMClient("not json"))
