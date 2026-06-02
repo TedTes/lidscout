@@ -655,10 +655,15 @@ class SignalApiService {
     }
   }
 
-  async getMarketAgentActivity(marketId: string): Promise<AgentActivityResponse> {
+  async getMarketAgentActivity(
+    marketId: string,
+    options?: { includeDiagnostics?: boolean }
+  ): Promise<AgentActivityResponse> {
     try {
+      const params = options?.includeDiagnostics ? { include_diagnostics: true } : undefined;
       const response = await api.get<AgentActivityResponse>(
-        `/markets/${marketId}/agent/activity`
+        `/markets/${marketId}/agent/activity`,
+        { params }
       );
       return response.data;
     } catch (error) {

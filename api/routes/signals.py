@@ -927,6 +927,7 @@ async def list_market_agent_activity(
     current_user: User = Depends(get_current_user),
     limit: int = 25,
     event_type: str | None = None,
+    include_diagnostics: bool = False,
 ) -> dict[str, Any]:
     """Return recent user-visible activity for one niche research agent."""
     _get_owned_user_niche(market_id, dependencies, current_user)
@@ -934,8 +935,10 @@ async def list_market_agent_activity(
     activity = dependencies.agent_activity_repository.list_agent_activity(
         user_niche_id=market_id,
         event_type=event_type,
-        limit=bounded_limit,
+        limit=bounded_limit if event_type or include_diagnostics else 100,
     )
+    if not include_diagnostics and event_type is None:
+        activity = _user_visible_agent_activity(activity)[:bounded_limit]
     return {"activity": [_serialize_agent_activity(item) for item in activity]}
 
 
@@ -1863,6 +1866,21 @@ def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
             activity.created_at.isoformat() if activity.created_at else None
         ),
     }
+
+
+_DIAGNOSTIC_AGENT_ACTIVITY_TYPES = {
+    "post_evaluating",
+    "post_accepted",
+    "post_filtered",
+}
+
+
+def _user_visible_agent_activity(activity: list[AgentActivity]) -> list[AgentActivity]:
+    return [
+        item
+        for item in activity
+        if item.event_type not in _DIAGNOSTIC_AGENT_ACTIVITY_TYPES
+    ]
 
 
 def _serialize_agent_alert(alert: AgentAlert) -> dict[str, Any]:

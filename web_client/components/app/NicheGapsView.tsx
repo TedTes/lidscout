@@ -368,16 +368,11 @@ export default function NicheWorkspacePage({ params }: Props) {
         <div className="space-y-4 animate-fade-in lg:space-y-5">
 
           {pipelineStatus === 'running' && opportunities.length === 0 && (
-            <>
-              <PipelineProgressStrip
-                activity={progressActivity}
-                runStartedAt={runStartedEvent?.created_at}
-                currentItem={liveFeed.current_item}
-              />
-              {liveFeed.recent_decisions.length > 0 && (
-                <RecentDecisionsFeed decisions={liveFeed.recent_decisions} />
-              )}
-            </>
+            <PipelineProgressStrip
+              activity={progressActivity}
+              runStartedAt={runStartedEvent?.created_at}
+              currentItem={liveFeed.current_item}
+            />
           )}
 
           {needsSetup ? (
@@ -648,55 +643,6 @@ function PipelineProgressStrip({
       {currentlyText && (
         <p className="text-[11px] text-slate-600">Currently: {currentlyText}</p>
       )}
-    </div>
-  );
-}
-
-// ── Recent Decisions Mini-Feed ─────────────────────────────────────────────────
-
-const REJECTION_LABELS: Record<string, string> = {
-  empty: 'no content',
-  wrong_subject: 'off-topic',
-  tutorial_or_template: 'tutorial',
-  promotional: 'promotional',
-  news: 'news',
-  job_posting: 'job posting',
-  no_pain_signal: 'no pain signal',
-  other: 'filtered',
-};
-
-function RecentDecisionsFeed({ decisions }: { decisions: AgentActivity[] }) {
-  return (
-    <div className="rounded-xl border border-slate-800/50 bg-slate-900/20 px-4 py-3">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
-        Recent decisions
-      </p>
-      <div className="space-y-1.5">
-        {decisions.map(d => {
-          const accepted = d.event_type === 'post_accepted';
-          const title = (d.metadata?.title as string) || d.title.replace(/^(Kept|Filtered):\s*/i, '');
-          const source = d.metadata?.source_label as string | undefined;
-          const reason = d.metadata?.reason as string | undefined;
-          return (
-            <div key={d.id} className="flex items-start gap-2 text-[11px]">
-              <span className={`mt-px shrink-0 font-semibold ${accepted ? 'text-emerald-500' : 'text-slate-600'}`}>
-                {accepted ? '✓' : '✗'}
-              </span>
-              <span className={`truncate ${accepted ? 'text-slate-400' : 'text-slate-600'}`}>
-                <span className="font-medium">{accepted ? 'Kept' : 'Filtered'}</span>
-                {' · '}
-                <span className="italic">&ldquo;{title}&rdquo;</span>
-                {source && <span className="text-slate-600"> · {source}</span>}
-                {!accepted && reason && (
-                  <span className="ml-1 rounded bg-slate-800/60 px-1 py-px text-[10px] text-slate-600">
-                    {REJECTION_LABELS[reason] ?? reason}
-                  </span>
-                )}
-              </span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
