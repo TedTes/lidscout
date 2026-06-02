@@ -4,7 +4,7 @@ from typing import Any
 from domain.agent import AgentPreferences
 from domain.competitor import Competitor
 from domain.market import Market
-from domain.niche import NicheSource
+from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
 from application.ingestion import SourceFetchDetail
@@ -26,6 +26,7 @@ from infrastructure.llm import EmbeddingClient, LLMClient
 from workers.run_daily_pipeline import (
     PipelineConfig,
     SourceRelevanceStats,
+    _configured_sources,
     _record_niche_source_health,
     run_daily_pipeline,
 )
@@ -816,6 +817,86 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(stats.rule_filtered_count, 1)
         self.assertEqual(stats.llm_filtered_count, 2)
         self.assertEqual(stats.rejection_breakdown, {"empty": 1, "wrong_subject": 2})
+
+    def test_configured_sources_prioritizes_observed_source_quality(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        source_repository = InMemoryNicheSourceRepository()
+        source_repository.save_niche_sources(
+            [
+                NicheSource.create(
+                    id="source-low",
+                    niche_id="niche-1",
+                    locator="https://example.com/low",
+                    source_type="hackernews_search",
+                    source_family="technical_forum",
+                    is_gate_free=True,
+                    signal_quality_score=0.45,
+                ),
+                NicheSource.create(
+                    id="source-high",
+                    niche_id="niche-1",
+                    locator="https://example.com/high",
+                    source_type="github_issues_search",
+                    source_family="technical_forum",
+                    is_gate_free=True,
+                    signal_quality_score=0.7,
+                ),
+                NicheSource.create(
+                    id="source-failing",
+                    niche_id="niche-1",
+                    locator="https://example.com/failing",
+                    source_type="github_issues_search",
+                    source_family="technical_forum",
+                    is_gate_free=True,
+                    signal_quality_score=0.9,
+                ),
+            ]
+        )
+        source_repository.upsert_niche_source_run_stats(
+            NicheSourceRunStats.create(
+                niche_source_id="source-high",
+                total_runs=3,
+                success_count=3,
+                posts_fetched_count=30,
+                relevant_posts_count=10,
+                rule_filtered_count=5,
+            )
+        )
+        source_repository.upsert_niche_source_run_stats(
+            NicheSourceRunStats.create(
+                niche_source_id="source-failing",
+                total_runs=3,
+                failure_count=3,
+                consecutive_failures=3,
+            )
+        )
+
+        sources = _configured_sources(
+            source_repository,
+            None,
+            user_niche_repository,
+            None,
+            "market-1",
+        )
+
+        self.assertEqual(
+            [source.locator for source in sources],
+            [
+                "https://example.com/high",
+                "https://example.com/low",
+                "https://example.com/failing",
+            ],
+        )
 
 
 if __name__ == "__main__":

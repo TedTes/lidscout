@@ -907,7 +907,10 @@ def _configured_sources(
                 )
                 return [
                     _niche_source_input(s, user_niche_obj, preferences)
-                    for s in filtered
+                    for s in _prioritize_niche_sources(
+                        filtered,
+                        niche_source_repository,
+                    )
                 ]
     if source_locator_repository is None:
         return []
@@ -915,6 +918,47 @@ def _configured_sources(
         locator.to_source_input()
         for locator in source_locator_repository.list_source_locators(enabled=True)
     ]
+
+
+def _prioritize_niche_sources(
+    sources: list[NicheSource],
+    niche_source_repository: NicheSourceRepository,
+) -> list[NicheSource]:
+    if not sources:
+        return []
+    stats_by_source = {
+        stats.niche_source_id: stats
+        for stats in niche_source_repository.list_niche_source_run_stats(
+            [source.id for source in sources]
+        )
+    }
+    return sorted(
+        sources,
+        key=lambda source: (
+            -_niche_source_priority_score(source, stats_by_source.get(source.id)),
+            source.id,
+        ),
+    )
+
+
+def _niche_source_priority_score(
+    source: NicheSource,
+    stats: NicheSourceRunStats | None,
+) -> float:
+    quality = source.signal_quality_score if source.signal_quality_score is not None else 0.5
+    if stats is not None and stats.total_runs > 0:
+        quality = (0.7 * quality) + (0.3 * source_observed_quality_score(stats))
+
+    if source.tier is not None:
+        quality += max(0, 7 - source.tier) * 0.01
+
+    if stats is not None:
+        if stats.consecutive_failures >= 3:
+            quality -= 0.25
+        elif stats.consecutive_failures > 0:
+            quality -= 0.08
+
+    return max(0.0, min(1.0, quality))
 
 
 def _niche_source_input(
