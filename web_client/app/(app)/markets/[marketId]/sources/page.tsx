@@ -5,7 +5,7 @@ import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { NicheCompany, Market, MonitoredSource, SourceCoverageSummary, SourceSuggestion } from '@/lib/types/signals';
+import { NicheCompany, Market, MonitoredSource, SourceCoverageSummary } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
@@ -57,51 +57,34 @@ function IconCopy() {
   );
 }
 
-function IconChevron({ open }: { open: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}>
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
 export default function NicheSourcesPage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
   const [niche, setNiche] = useState<Market | null>(null);
   const [sources, setSources] = useState<MonitoredSource[]>([]);
   const [summary, setSummary] = useState<SourceCoverageSummary | null>(null);
   const [companies, setCompanies] = useState<NicheCompany[]>([]);
-  const [suggestions, setSuggestions] = useState<SourceSuggestion[]>([]);
   const [status, setStatus] = useState<Status>('loading');
-  const [suggestionStatus, setSuggestionStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [showAddSource, setShowAddSource] = useState(false);
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
   const load = async () => {
     setStatus('loading');
-    setSuggestionStatus('loading');
     setError(null);
     try {
-      const [market, sourcesRes, companiesRes, suggestionsRes] = await Promise.all([
+      const [market, sourcesRes, companiesRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getSources({ market_id: marketId }),
         signalApi.getMarketCompanies(marketId),
-        signalApi.getMarketSourceSuggestions(marketId),
       ]);
       const loadedSources = sourcesRes.sources;
       setNiche(market);
       setSources(loadedSources);
       setSummary(sourcesRes.summary ?? null);
       setCompanies(companiesRes.companies);
-      setSuggestions(suggestionsRes.suggestions);
       setStatus('ready');
-      setSuggestionStatus('ready');
-      if (loadedSources.length === 0) setSuggestionsOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sources');
       setStatus('error');
-      setSuggestionStatus('error');
     }
   };
 
@@ -110,7 +93,6 @@ export default function NicheSourcesPage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
-  const newSuggestions = suggestions.filter(s => !s.already_monitored);
   const activeCount = sources.filter(s => sourceHealth(s) === 'active').length;
   const errorCount = sources.filter(s => sourceHealth(s) === 'failing').length;
 
@@ -155,27 +137,6 @@ export default function NicheSourcesPage({ params }: Props) {
     setSummary(null);
   };
 
-  const addSuggestion = async (suggestion: SourceSuggestion) => {
-    if (suggestion.already_monitored) return;
-    if (suggestion.company_id) {
-      await signalApi.createCompanySource(suggestion.company_id, {
-        locator: suggestion.locator,
-        source_type: suggestion.source_type,
-        limit: suggestion.limit,
-        options: suggestion.options,
-        market_id: marketId,
-      });
-    } else {
-      await signalApi.createMarketSource(marketId, {
-        locator: suggestion.locator,
-        source_type: suggestion.source_type,
-        limit: suggestion.limit,
-        options: suggestion.options,
-      });
-    }
-    await load();
-  };
-
   return (
     <DashboardShell
       title="Sources"
@@ -184,17 +145,6 @@ export default function NicheSourcesPage({ params }: Props) {
         <NicheViewSwitcher
           marketId={marketId}
           active="sources"
-          trailingAction={
-            <button
-              type="button"
-              onClick={() => setShowAddSource(v => !v)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 transition hover:bg-violet-500/15 hover:text-violet-200"
-              aria-label="Add source"
-              title="Add source"
-            >
-              <IconPlus />
-            </button>
-          }
         />
       }
     >
@@ -222,7 +172,17 @@ export default function NicheSourcesPage({ params }: Props) {
             <div className="border-b border-slate-800/70 px-5 py-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-slate-300">Monitored sources</h2>
-                {sources.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSource(v => !v)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300 transition hover:bg-violet-500/15 hover:text-violet-200"
+                    aria-label="Add source"
+                    title="Add source"
+                  >
+                    <IconPlus />
+                  </button>
+                  {sources.length > 0 && (
                   <button
                     type="button"
                     onClick={copySources}
@@ -232,7 +192,8 @@ export default function NicheSourcesPage({ params }: Props) {
                     <IconCopy />
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
-                )}
+                  )}
+                </div>
               </div>
               <p className="mt-0.5 text-xs text-slate-600">What this niche is currently watching.</p>
             </div>
@@ -241,7 +202,7 @@ export default function NicheSourcesPage({ params }: Props) {
               <div className="p-5">
                 <EmptyPanel
                   title="No sources monitored yet"
-                  detail="Add from the suggested sources below, or use the + button to add manually."
+                  detail="Use the + button to add a source manually."
                 />
               </div>
             ) : (
@@ -269,47 +230,6 @@ export default function NicheSourcesPage({ params }: Props) {
                   </div>
                 ))}
               </div>
-            )}
-          </section>
-
-          {/* ── Suggested sources ── */}
-          <section className="rounded-xl border border-slate-800/60 bg-slate-900/25">
-            <button
-              type="button"
-              onClick={() => setSuggestionsOpen(v => !v)}
-              className="flex w-full items-center justify-between px-5 py-4 text-left"
-            >
-              <div>
-                <h2 className="text-sm font-medium text-slate-500">Suggested sources</h2>
-                {!suggestionsOpen && newSuggestions.length > 0 && (
-                  <p className="mt-0.5 text-xs text-slate-700">{newSuggestions.length} new suggestions available</p>
-                )}
-              </div>
-              <span className="text-slate-700">
-                <IconChevron open={suggestionsOpen} />
-              </span>
-            </button>
-
-            {suggestionsOpen && (
-              <>
-                {suggestionStatus === 'loading' && <div className="border-t border-slate-800/60 p-5"><LoadingPanel label="Loading suggestions" /></div>}
-                {suggestionStatus === 'ready' && newSuggestions.length === 0 && (
-                  <div className="border-t border-slate-800/60 p-5">
-                    <EmptyPanel title="No new suggestions" detail="All ranked suggestions are already monitored." />
-                  </div>
-                )}
-                {suggestionStatus === 'ready' && newSuggestions.length > 0 && (
-                  <div className="divide-y divide-slate-800/50 border-t border-slate-800/60">
-                    {newSuggestions.slice(0, 8).map(suggestion => (
-                      <SuggestionRow
-                        key={`${suggestion.template_id ?? suggestion.locator}-${suggestion.company_id ?? 'niche'}`}
-                        suggestion={suggestion}
-                        onAdd={() => addSuggestion(suggestion)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
             )}
           </section>
         </div>
@@ -419,48 +339,6 @@ function SourceRow({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function SuggestionRow({
-  suggestion,
-  onAdd,
-}: {
-  suggestion: SourceSuggestion;
-  onAdd: () => Promise<void>;
-}) {
-  const [adding, setAdding] = useState(false);
-
-  const handleAdd = async () => {
-    setAdding(true);
-    try {
-      await onAdd();
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-slate-400">{suggestion.label}</h3>
-          <Chip label={familyLabel(suggestion.source_family)} />
-          {suggestion.company_name
-            ? <Chip label={suggestion.company_name} />
-            : <Chip label="Niche-wide" />}
-        </div>
-        <p className="mt-1 text-xs leading-relaxed text-slate-600">{suggestion.rationale}</p>
-        <p className="mt-1.5 truncate font-mono text-[11px] text-slate-700">{suggestion.locator}</p>
-      </div>
-      <button
-        onClick={handleAdd}
-        disabled={adding}
-        className="rounded-lg border border-violet-500/25 bg-violet-500/[0.07] px-3 py-1.5 text-xs font-semibold text-violet-400 transition hover:bg-violet-500/12 disabled:opacity-50"
-      >
-        {adding ? 'Adding…' : 'Add source'}
-      </button>
     </div>
   );
 }
