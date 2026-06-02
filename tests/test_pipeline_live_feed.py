@@ -85,6 +85,7 @@ class PipelineLiveFeedTests(unittest.TestCase):
             metadata={
                 "competitor_name": "Supabase",
                 "source_type": "github_issues_search",
+                "niche_source_id": "source-1",
             },
         )
 
@@ -98,9 +99,36 @@ class PipelineLiveFeedTests(unittest.TestCase):
         activity = activity_repository.list_agent_activity(user_niche_id="market-1")
 
         self.assertEqual(result.failed_count, 1)
+        self.assertEqual(result.source_stats["source-1"].failed_count, 1)
+        self.assertEqual(result.source_stats["source-1"].rejection_breakdown, {"other": 1})
         self.assertEqual(activity[0].event_type, "post_filtered")
         self.assertEqual(activity[0].metadata["reason"], "other")
+        self.assertEqual(activity[0].metadata["niche_source_id"], "source-1")
         self.assertEqual(activity[1].event_type, "post_evaluating")
+
+    def test_relevance_result_tracks_source_level_rule_outcomes(self) -> None:
+        accepted = RawPost.create(
+            source="web",
+            source_id="post-1",
+            title="Billing export bug",
+            body="The billing export bug keeps failing and blocks our reporting workflow.",
+            metadata={"niche_source_id": "source-1"},
+        )
+        rejected = RawPost.create(
+            source="web",
+            source_id="post-2",
+            title="",
+            body="",
+            metadata={"niche_source_id": "source-1"},
+        )
+
+        result = _filter_relevant_posts([accepted, rejected], None)
+
+        self.assertEqual(result.posts, [accepted])
+        self.assertEqual(result.rule_filtered_count, 1)
+        self.assertEqual(result.source_stats["source-1"].relevant_count, 1)
+        self.assertEqual(result.source_stats["source-1"].rule_filtered_count, 1)
+        self.assertEqual(result.source_stats["source-1"].rejection_breakdown, {"empty": 1})
 
 
 if __name__ == "__main__":

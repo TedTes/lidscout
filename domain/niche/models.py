@@ -269,14 +269,22 @@ class NicheSourceRunStats:
     consecutive_failures: int = 0
     posts_fetched_count: int = 0
     relevant_posts_count: int = 0
+    rule_filtered_count: int = 0
+    llm_filtered_count: int = 0
+    relevance_failed_count: int = 0
     extracted_signals_count: int = 0
     gap_count: int = 0
     last_status: str = "unknown"
     last_error: str | None = None
     last_fetched_count: int = 0
     last_relevant_count: int = 0
+    last_rule_filtered_count: int = 0
+    last_llm_filtered_count: int = 0
+    last_relevance_failed_count: int = 0
     last_extracted_count: int = 0
     last_gap_count: int = 0
+    rejection_breakdown: dict[str, int] = field(default_factory=dict)
+    last_rejection_breakdown: dict[str, int] = field(default_factory=dict)
     last_scanned_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -291,14 +299,22 @@ class NicheSourceRunStats:
         consecutive_failures: int = 0,
         posts_fetched_count: int = 0,
         relevant_posts_count: int = 0,
+        rule_filtered_count: int = 0,
+        llm_filtered_count: int = 0,
+        relevance_failed_count: int = 0,
         extracted_signals_count: int = 0,
         gap_count: int = 0,
         last_status: str = "unknown",
         last_error: str | None = None,
         last_fetched_count: int = 0,
         last_relevant_count: int = 0,
+        last_rule_filtered_count: int = 0,
+        last_llm_filtered_count: int = 0,
+        last_relevance_failed_count: int = 0,
         last_extracted_count: int = 0,
         last_gap_count: int = 0,
+        rejection_breakdown: dict[str, int] | None = None,
+        last_rejection_breakdown: dict[str, int] | None = None,
         last_scanned_at: datetime | None = None,
         updated_at: datetime | None = None,
     ) -> "NicheSourceRunStats":
@@ -313,16 +329,24 @@ class NicheSourceRunStats:
             "consecutive_failures": consecutive_failures,
             "posts_fetched_count": posts_fetched_count,
             "relevant_posts_count": relevant_posts_count,
+            "rule_filtered_count": rule_filtered_count,
+            "llm_filtered_count": llm_filtered_count,
+            "relevance_failed_count": relevance_failed_count,
             "extracted_signals_count": extracted_signals_count,
             "gap_count": gap_count,
             "last_fetched_count": last_fetched_count,
             "last_relevant_count": last_relevant_count,
+            "last_rule_filtered_count": last_rule_filtered_count,
+            "last_llm_filtered_count": last_llm_filtered_count,
+            "last_relevance_failed_count": last_relevance_failed_count,
             "last_extracted_count": last_extracted_count,
             "last_gap_count": last_gap_count,
         }
         negative = [name for name, value in counts.items() if value < 0]
         if negative:
             raise ValueError(f"{negative[0]} must be non-negative")
+        total_rejections = _clean_count_map(rejection_breakdown)
+        last_rejections = _clean_count_map(last_rejection_breakdown)
         return cls(
             niche_source_id=niche_source_id.strip(),
             total_runs=total_runs,
@@ -331,17 +355,40 @@ class NicheSourceRunStats:
             consecutive_failures=consecutive_failures,
             posts_fetched_count=posts_fetched_count,
             relevant_posts_count=relevant_posts_count,
+            rule_filtered_count=rule_filtered_count,
+            llm_filtered_count=llm_filtered_count,
+            relevance_failed_count=relevance_failed_count,
             extracted_signals_count=extracted_signals_count,
             gap_count=gap_count,
             last_status=last_status,
             last_error=last_error.strip() if last_error else None,
             last_fetched_count=last_fetched_count,
             last_relevant_count=last_relevant_count,
+            last_rule_filtered_count=last_rule_filtered_count,
+            last_llm_filtered_count=last_llm_filtered_count,
+            last_relevance_failed_count=last_relevance_failed_count,
             last_extracted_count=last_extracted_count,
             last_gap_count=last_gap_count,
+            rejection_breakdown=total_rejections,
+            last_rejection_breakdown=last_rejections,
             last_scanned_at=last_scanned_at,
             updated_at=updated_at or datetime.now(tz=UTC),
         )
+
+
+def _clean_count_map(value: dict[str, int] | None) -> dict[str, int]:
+    if not value:
+        return {}
+    cleaned: dict[str, int] = {}
+    for key, count in value.items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        normalized_count = int(count)
+        if normalized_count < 0:
+            raise ValueError("count map values must be non-negative")
+        cleaned[normalized_key] = normalized_count
+    return cleaned
 
 
 @dataclass(frozen=True)

@@ -4,8 +4,10 @@ from typing import Any
 from domain.agent import AgentPreferences
 from domain.competitor import Competitor
 from domain.market import Market
+from domain.niche import NicheSource
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
+from application.ingestion import SourceFetchDetail
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryAgentPreferencesRepository,
@@ -21,7 +23,12 @@ from infrastructure.db import (
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
-from workers.run_daily_pipeline import PipelineConfig, run_daily_pipeline
+from workers.run_daily_pipeline import (
+    PipelineConfig,
+    SourceRelevanceStats,
+    _record_niche_source_health,
+    run_daily_pipeline,
+)
 
 
 class FakeSourceAdapter:
@@ -767,6 +774,46 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         self.assertEqual(metrics.extracted_count, result.extracted_count)
         self.assertTrue(metrics.email_sent)
+
+    def test_records_niche_source_run_stats_with_relevance_outcomes(self):
+        repository = InMemoryNicheSourceRepository()
+        source = NicheSource.create(
+            id="source-1",
+            niche_id="niche-1",
+            locator="https://example.com/reviews",
+            source_type="hackernews_search",
+            source_family="technical_forum",
+            is_gate_free=True,
+        )
+        repository.save_niche_sources([source])
+        detail = SourceFetchDetail(
+            source=SourceInput.create(
+                locator="https://example.com/reviews",
+                options={"niche_source_id": "source-1"},
+            ),
+            fetched_count=5,
+        )
+        relevance = SourceRelevanceStats(
+            source_id="source-1",
+            relevant_count=2,
+            rule_filtered_count=1,
+            llm_filtered_count=2,
+            rejection_breakdown={"empty": 1, "wrong_subject": 2},
+        )
+
+        _record_niche_source_health(repository, [detail], {"source-1": relevance})
+
+        updated_source = repository.list_niche_sources("niche-1")[0]
+        stats = repository.get_niche_source_run_stats("source-1")
+
+        self.assertEqual(updated_source.health_status, "active")
+        self.assertIsNotNone(stats)
+        self.assertEqual(stats.total_runs, 1)
+        self.assertEqual(stats.posts_fetched_count, 5)
+        self.assertEqual(stats.relevant_posts_count, 2)
+        self.assertEqual(stats.rule_filtered_count, 1)
+        self.assertEqual(stats.llm_filtered_count, 2)
+        self.assertEqual(stats.rejection_breakdown, {"empty": 1, "wrong_subject": 2})
 
 
 if __name__ == "__main__":

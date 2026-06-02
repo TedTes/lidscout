@@ -224,11 +224,15 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
             INSERT INTO niche_source_health_stats (
                 niche_source_id, total_runs, success_count, failure_count,
                 consecutive_failures, posts_fetched_count, relevant_posts_count,
+                rule_filtered_count, llm_filtered_count, relevance_failed_count,
                 extracted_signals_count, gap_count, last_status, last_error,
-                last_fetched_count, last_relevant_count, last_extracted_count,
-                last_gap_count, last_scanned_at, updated_at
+                last_fetched_count, last_relevant_count, last_rule_filtered_count,
+                last_llm_filtered_count, last_relevance_failed_count,
+                last_extracted_count, last_gap_count, rejection_breakdown,
+                last_rejection_breakdown, last_scanned_at, updated_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s
             )
             ON CONFLICT (niche_source_id) DO UPDATE SET
                 total_runs = EXCLUDED.total_runs,
@@ -237,14 +241,22 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
                 consecutive_failures = EXCLUDED.consecutive_failures,
                 posts_fetched_count = EXCLUDED.posts_fetched_count,
                 relevant_posts_count = EXCLUDED.relevant_posts_count,
+                rule_filtered_count = EXCLUDED.rule_filtered_count,
+                llm_filtered_count = EXCLUDED.llm_filtered_count,
+                relevance_failed_count = EXCLUDED.relevance_failed_count,
                 extracted_signals_count = EXCLUDED.extracted_signals_count,
                 gap_count = EXCLUDED.gap_count,
                 last_status = EXCLUDED.last_status,
                 last_error = EXCLUDED.last_error,
                 last_fetched_count = EXCLUDED.last_fetched_count,
                 last_relevant_count = EXCLUDED.last_relevant_count,
+                last_rule_filtered_count = EXCLUDED.last_rule_filtered_count,
+                last_llm_filtered_count = EXCLUDED.last_llm_filtered_count,
+                last_relevance_failed_count = EXCLUDED.last_relevance_failed_count,
                 last_extracted_count = EXCLUDED.last_extracted_count,
                 last_gap_count = EXCLUDED.last_gap_count,
+                rejection_breakdown = EXCLUDED.rejection_breakdown,
+                last_rejection_breakdown = EXCLUDED.last_rejection_breakdown,
                 last_scanned_at = EXCLUDED.last_scanned_at,
                 updated_at = EXCLUDED.updated_at
             """,
@@ -256,14 +268,22 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
                 stats.consecutive_failures,
                 stats.posts_fetched_count,
                 stats.relevant_posts_count,
+                stats.rule_filtered_count,
+                stats.llm_filtered_count,
+                stats.relevance_failed_count,
                 stats.extracted_signals_count,
                 stats.gap_count,
                 stats.last_status,
                 stats.last_error,
                 stats.last_fetched_count,
                 stats.last_relevant_count,
+                stats.last_rule_filtered_count,
+                stats.last_llm_filtered_count,
+                stats.last_relevance_failed_count,
                 stats.last_extracted_count,
                 stats.last_gap_count,
+                json.dumps(stats.rejection_breakdown),
+                json.dumps(stats.last_rejection_breakdown),
                 stats.last_scanned_at,
                 stats.updated_at,
             ),
@@ -519,14 +539,28 @@ def _niche_source_run_stats_from_row(row: dict[str, Any]) -> NicheSourceRunStats
         consecutive_failures=int(row.get("consecutive_failures", 0)),
         posts_fetched_count=int(row.get("posts_fetched_count", 0)),
         relevant_posts_count=int(row.get("relevant_posts_count", 0)),
+        rule_filtered_count=int(row.get("rule_filtered_count", 0)),
+        llm_filtered_count=int(row.get("llm_filtered_count", 0)),
+        relevance_failed_count=int(row.get("relevance_failed_count", 0)),
         extracted_signals_count=int(row.get("extracted_signals_count", 0)),
         gap_count=int(row.get("gap_count", 0)),
         last_status=row.get("last_status", "unknown"),
         last_error=row.get("last_error"),
         last_fetched_count=int(row.get("last_fetched_count", 0)),
         last_relevant_count=int(row.get("last_relevant_count", 0)),
+        last_rule_filtered_count=int(row.get("last_rule_filtered_count", 0)),
+        last_llm_filtered_count=int(row.get("last_llm_filtered_count", 0)),
+        last_relevance_failed_count=int(row.get("last_relevance_failed_count", 0)),
         last_extracted_count=int(row.get("last_extracted_count", 0)),
         last_gap_count=int(row.get("last_gap_count", 0)),
+        rejection_breakdown={
+            key: int(value)
+            for key, value in _json_obj(row.get("rejection_breakdown")).items()
+        },
+        last_rejection_breakdown={
+            key: int(value)
+            for key, value in _json_obj(row.get("last_rejection_breakdown")).items()
+        },
         last_scanned_at=row.get("last_scanned_at"),
         updated_at=row.get("updated_at"),
     )

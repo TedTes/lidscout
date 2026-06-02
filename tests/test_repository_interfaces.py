@@ -212,13 +212,21 @@ class RepositoryInterfaceTests(unittest.TestCase):
             success_count=1,
             posts_fetched_count=10,
             relevant_posts_count=3,
+            rule_filtered_count=4,
+            llm_filtered_count=2,
+            relevance_failed_count=1,
             extracted_signals_count=2,
             gap_count=1,
             last_status="healthy",
             last_fetched_count=10,
             last_relevant_count=3,
+            last_rule_filtered_count=4,
+            last_llm_filtered_count=2,
+            last_relevance_failed_count=1,
             last_extracted_count=2,
             last_gap_count=1,
+            rejection_breakdown={"wrong_subject": 3, "tutorial_or_template": 2},
+            last_rejection_breakdown={"wrong_subject": 3, "tutorial_or_template": 2},
         )
 
         self.assertTrue(repository.upsert_niche_source_run_stats(stats))

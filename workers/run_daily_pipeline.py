@@ -43,7 +43,7 @@ from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
-from domain.niche import NicheSource, UserNiche
+from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
 from domain.source import SourceInput
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -117,6 +117,22 @@ class PipelineFetchResult:
     posts: list[RawPost]
     failed_count: int
     details: list[SourceFetchDetail]
+
+
+@dataclass
+class SourceRelevanceStats:
+    """Per-source relevance outcomes from one pipeline run."""
+
+    source_id: str
+    relevant_count: int = 0
+    rule_filtered_count: int = 0
+    llm_filtered_count: int = 0
+    failed_count: int = 0
+    rejection_breakdown: dict[str, int] = field(default_factory=dict)
+
+    def record_rejection(self, category: str | None) -> None:
+        reason = (category or "other").strip() or "other"
+        self.rejection_breakdown[reason] = self.rejection_breakdown.get(reason, 0) + 1
 
 
 def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
@@ -230,6 +246,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     _record_niche_source_health(
         config.niche_source_repository,
         fetch_result.details,
+        relevance_result.source_stats,
     )
 
     report = ReportingService().generate(
@@ -273,6 +290,7 @@ class RelevanceFilterResult:
     rule_filtered_count: int
     llm_filtered_count: int
     failed_count: int
+    source_stats: dict[str, SourceRelevanceStats] = field(default_factory=dict)
 
 
 def _synthesize_opportunities(
@@ -543,10 +561,12 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
 def _record_niche_source_health(
     niche_source_repository: NicheSourceRepository | None,
     details: list[SourceFetchDetail],
+    relevance_stats: dict[str, SourceRelevanceStats] | None = None,
 ) -> None:
     if niche_source_repository is None:
         return
     scanned_at = datetime.now(tz=UTC)
+    relevance_stats = relevance_stats or {}
     for detail in details:
         source_id = detail.source.options.get("niche_source_id")
         if not isinstance(source_id, str):
@@ -558,6 +578,87 @@ def _record_niche_source_health(
             scanned_at,
             detail.error,
         )
+        existing = niche_source_repository.get_niche_source_run_stats(source_id)
+        niche_source_repository.upsert_niche_source_run_stats(
+            _next_niche_source_run_stats(
+                source_id=source_id,
+                detail=detail,
+                relevance=relevance_stats.get(source_id),
+                existing=existing,
+                scanned_at=scanned_at,
+            )
+        )
+
+
+def _next_niche_source_run_stats(
+    *,
+    source_id: str,
+    detail: SourceFetchDetail,
+    relevance: SourceRelevanceStats | None,
+    existing: NicheSourceRunStats | None,
+    scanned_at: datetime,
+) -> NicheSourceRunStats:
+    was_failure = detail.error is not None
+    last_relevant_count = relevance.relevant_count if relevance else 0
+    last_rule_filtered_count = relevance.rule_filtered_count if relevance else 0
+    last_llm_filtered_count = relevance.llm_filtered_count if relevance else 0
+    last_relevance_failed_count = relevance.failed_count if relevance else 0
+    last_rejection_breakdown = (
+        dict(relevance.rejection_breakdown) if relevance else {}
+    )
+
+    return NicheSourceRunStats.create(
+        niche_source_id=source_id,
+        total_runs=(existing.total_runs if existing else 0) + 1,
+        success_count=(existing.success_count if existing else 0)
+        + (0 if was_failure else 1),
+        failure_count=(existing.failure_count if existing else 0)
+        + (1 if was_failure else 0),
+        consecutive_failures=(
+            (existing.consecutive_failures if existing else 0) + 1
+            if was_failure
+            else 0
+        ),
+        posts_fetched_count=(existing.posts_fetched_count if existing else 0)
+        + detail.fetched_count,
+        relevant_posts_count=(existing.relevant_posts_count if existing else 0)
+        + last_relevant_count,
+        rule_filtered_count=(existing.rule_filtered_count if existing else 0)
+        + last_rule_filtered_count,
+        llm_filtered_count=(existing.llm_filtered_count if existing else 0)
+        + last_llm_filtered_count,
+        relevance_failed_count=(existing.relevance_failed_count if existing else 0)
+        + last_relevance_failed_count,
+        extracted_signals_count=(
+            existing.extracted_signals_count if existing else 0
+        ),
+        gap_count=existing.gap_count if existing else 0,
+        last_status="failing" if was_failure else "healthy",
+        last_error=detail.error,
+        last_fetched_count=detail.fetched_count,
+        last_relevant_count=last_relevant_count,
+        last_rule_filtered_count=last_rule_filtered_count,
+        last_llm_filtered_count=last_llm_filtered_count,
+        last_relevance_failed_count=last_relevance_failed_count,
+        last_extracted_count=0,
+        last_gap_count=0,
+        rejection_breakdown=_merge_count_maps(
+            existing.rejection_breakdown if existing else {},
+            last_rejection_breakdown,
+        ),
+        last_rejection_breakdown=last_rejection_breakdown,
+        last_scanned_at=scanned_at,
+    )
+
+
+def _merge_count_maps(
+    left: dict[str, int],
+    right: dict[str, int],
+) -> dict[str, int]:
+    merged = dict(left)
+    for key, value in right.items():
+        merged[key] = merged.get(key, 0) + value
+    return merged
 
 
 def _filter_relevant_posts(
@@ -576,14 +677,23 @@ def _filter_relevant_posts(
     rule_filtered_count = 0
     llm_filtered_count = 0
     failed_count = 0
+    source_stats: dict[str, SourceRelevanceStats] = {}
 
     for post in posts:
+        source_id = _post_niche_source_id(post)
         rule_result = rule_filter.evaluate(post)
         if not rule_result.is_relevant:
             rule_filtered_count += 1
+            _record_source_relevance_decision(
+                source_stats,
+                source_id,
+                "rule_filtered",
+                rule_result.rejection_category,
+            )
             continue
 
         if llm_filter is None:
+            _record_source_relevance_decision(source_stats, source_id, "relevant")
             relevant_posts.append(post)
             continue
 
@@ -599,6 +709,12 @@ def _filter_relevant_posts(
             llm_result = llm_filter.evaluate(post)
         except Exception as exc:
             failed_count += 1
+            _record_source_relevance_decision(
+                source_stats,
+                source_id,
+                "failed",
+                "other",
+            )
             _record_agent_activity(
                 activity_repository,
                 user_niche_id=user_niche_id,
@@ -615,6 +731,12 @@ def _filter_relevant_posts(
 
         if not llm_result.is_relevant:
             llm_filtered_count += 1
+            _record_source_relevance_decision(
+                source_stats,
+                source_id,
+                "llm_filtered",
+                llm_result.rejection_category,
+            )
             _record_agent_activity(
                 activity_repository,
                 user_niche_id=user_niche_id,
@@ -634,6 +756,7 @@ def _filter_relevant_posts(
             title=f"Kept: {post.title[:80] or post.id}",
             metadata=_post_event_metadata(post),
         )
+        _record_source_relevance_decision(source_stats, source_id, "relevant")
         relevant_posts.append(post)
 
     return RelevanceFilterResult(
@@ -641,7 +764,44 @@ def _filter_relevant_posts(
         rule_filtered_count=rule_filtered_count,
         llm_filtered_count=llm_filtered_count,
         failed_count=failed_count,
+        source_stats=source_stats,
     )
+
+
+def _post_niche_source_id(post: RawPost) -> str | None:
+    source_id = post.metadata.get("niche_source_id")
+    if not isinstance(source_id, str):
+        return None
+    normalized = source_id.strip()
+    return normalized or None
+
+
+def _record_source_relevance_decision(
+    source_stats: dict[str, SourceRelevanceStats],
+    source_id: str | None,
+    decision: str,
+    rejection_category: str | None = None,
+) -> None:
+    if source_id is None:
+        return
+    stats = source_stats.setdefault(
+        source_id,
+        SourceRelevanceStats(source_id=source_id),
+    )
+    if decision == "relevant":
+        stats.relevant_count += 1
+        return
+    if decision == "rule_filtered":
+        stats.rule_filtered_count += 1
+        stats.record_rejection(rejection_category)
+        return
+    if decision == "llm_filtered":
+        stats.llm_filtered_count += 1
+        stats.record_rejection(rejection_category)
+        return
+    if decision == "failed":
+        stats.failed_count += 1
+        stats.record_rejection(rejection_category)
 
 
 _SOURCE_TYPE_LABELS: dict[str, str] = {
@@ -670,6 +830,7 @@ def _post_event_metadata(post: RawPost) -> dict[str, object]:
     return {
         "title": post.title[:120] if post.title else "",
         "source_label": _post_source_label(post),
+        "niche_source_id": _post_niche_source_id(post),
         "url": post.url,
         "post_date": post.created_at.isoformat() if post.created_at else None,
     }
