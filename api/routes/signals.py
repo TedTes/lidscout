@@ -1658,6 +1658,7 @@ def _serialize_niche_company(company: NicheCompany) -> dict[str, Any]:
 
 
 def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
+    lifecycle = _source_lifecycle(source)
     return {
         "id": source.id,
         "company_id": source.company_id,
@@ -1675,6 +1676,8 @@ def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
         ),
         "last_error": source.last_error,
         "health": None,
+        "lifecycle": lifecycle["label"],
+        "lifecycle_reason": lifecycle["reason"],
         "is_gate_free": source.is_gate_free,
         "buyer_voice_verified": source.buyer_voice_verified,
         "tier": source.tier,
@@ -1684,6 +1687,43 @@ def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
         "requires_auth": source.requires_auth,
         "recommended_cadence": source.recommended_cadence,
         "options": source.options,
+    }
+
+
+def _source_lifecycle(source: NicheSource) -> dict[str, str]:
+    if not source.enabled:
+        if source.requires_proxy:
+            return {
+                "label": "needs_proxy",
+                "reason": "Source is disabled until proxy access is configured.",
+            }
+        if source.requires_auth:
+            return {
+                "label": "needs_auth",
+                "reason": "Source is disabled until authenticated access is configured.",
+            }
+        return {
+            "label": "disabled",
+            "reason": "Source is disabled and will not be scanned.",
+        }
+    if source.health_status == "failing" or source.last_error:
+        return {
+            "label": "failing",
+            "reason": source.last_error or "Recent scans failed.",
+        }
+    if source.buyer_voice_verified:
+        return {
+            "label": "verified",
+            "reason": "Source has produced buyer-side evidence.",
+        }
+    if source.last_scanned_at:
+        return {
+            "label": "warming_up",
+            "reason": "Source is active but has not produced enough buyer evidence yet.",
+        }
+    return {
+        "label": "candidate",
+        "reason": "Source is queued for its first scan.",
     }
 
 

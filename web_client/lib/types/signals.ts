@@ -167,6 +167,8 @@ export type MonitoredSource = {
   last_scanned_at: string | null;
   last_error: string | null;
   health: SourceHealth | null;
+  lifecycle?: string;
+  lifecycle_reason?: string;
   is_gate_free?: boolean;
   buyer_voice_verified?: boolean;
   tier?: number | null;
