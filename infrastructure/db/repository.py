@@ -446,6 +446,7 @@ class InMemoryNicheSourceRepository:
     """In-memory niche source repository."""
 
     _sources: dict = field(default_factory=dict)
+    _run_stats: dict = field(default_factory=dict)
 
     def save_niche_sources(self, sources: list) -> int:
         count = 0
@@ -491,7 +492,25 @@ class InMemoryNicheSourceRepository:
         )
         return True
 
+    def upsert_niche_source_run_stats(self, stats) -> bool:
+        self._run_stats[stats.niche_source_id] = stats
+        return True
+
+    def get_niche_source_run_stats(self, source_id: str):
+        return self._run_stats.get(source_id)
+
+    def list_niche_source_run_stats(self, source_ids: list[str] | None = None) -> list:
+        if source_ids is None:
+            return list(self._run_stats.values())
+        allowed = set(source_ids)
+        return [
+            stats
+            for stats in self._run_stats.values()
+            if stats.niche_source_id in allowed
+        ]
+
     def delete_niche_source(self, source_id: str) -> bool:
+        self._run_stats.pop(source_id, None)
         return self._sources.pop(source_id, None) is not None
 
 

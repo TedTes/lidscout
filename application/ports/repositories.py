@@ -1,7 +1,14 @@
 """Persistence contracts for domain entities."""
 from typing import Protocol
 
-from domain.niche import Gap, Niche, NicheCompany, NicheSource, UserNiche
+from domain.niche import (
+    Gap,
+    Niche,
+    NicheCompany,
+    NicheSource,
+    NicheSourceRunStats,
+    UserNiche,
+)
 from domain.agent import (
     AgentActivity,
     AgentAlert,
@@ -301,6 +308,27 @@ class NicheSourceRepository(Protocol):
         last_error: str | None = None,
     ) -> bool:
         """Update health status and last_scanned_at for one source."""
+        ...
+
+    def upsert_niche_source_run_stats(
+        self,
+        stats: NicheSourceRunStats,
+    ) -> bool:
+        """Create or replace cumulative runtime stats for one source."""
+        ...
+
+    def get_niche_source_run_stats(
+        self,
+        source_id: str,
+    ) -> NicheSourceRunStats | None:
+        """Load cumulative runtime stats for one source."""
+        ...
+
+    def list_niche_source_run_stats(
+        self,
+        source_ids: list[str] | None = None,
+    ) -> list[NicheSourceRunStats]:
+        """Load cumulative runtime stats, optionally limited to source IDs."""
         ...
 
     def delete_niche_source(self, source_id: str) -> bool:

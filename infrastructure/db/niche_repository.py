@@ -12,7 +12,14 @@ from application.ports import (
     NicheSourceRepository,
     UserNicheRepository,
 )
-from domain.niche import Gap, Niche, NicheCompany, NicheSource, UserNiche
+from domain.niche import (
+    Gap,
+    Niche,
+    NicheCompany,
+    NicheSource,
+    NicheSourceRunStats,
+    UserNiche,
+)
 from infrastructure.db.repository import _PostgresRepository, _rowcount
 
 
@@ -210,6 +217,96 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
         )
         self.connection.commit()
         return _rowcount(cursor) > 0
+
+    def upsert_niche_source_run_stats(self, stats: NicheSourceRunStats) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO niche_source_health_stats (
+                niche_source_id, total_runs, success_count, failure_count,
+                consecutive_failures, posts_fetched_count, relevant_posts_count,
+                extracted_signals_count, gap_count, last_status, last_error,
+                last_fetched_count, last_relevant_count, last_extracted_count,
+                last_gap_count, last_scanned_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (niche_source_id) DO UPDATE SET
+                total_runs = EXCLUDED.total_runs,
+                success_count = EXCLUDED.success_count,
+                failure_count = EXCLUDED.failure_count,
+                consecutive_failures = EXCLUDED.consecutive_failures,
+                posts_fetched_count = EXCLUDED.posts_fetched_count,
+                relevant_posts_count = EXCLUDED.relevant_posts_count,
+                extracted_signals_count = EXCLUDED.extracted_signals_count,
+                gap_count = EXCLUDED.gap_count,
+                last_status = EXCLUDED.last_status,
+                last_error = EXCLUDED.last_error,
+                last_fetched_count = EXCLUDED.last_fetched_count,
+                last_relevant_count = EXCLUDED.last_relevant_count,
+                last_extracted_count = EXCLUDED.last_extracted_count,
+                last_gap_count = EXCLUDED.last_gap_count,
+                last_scanned_at = EXCLUDED.last_scanned_at,
+                updated_at = EXCLUDED.updated_at
+            """,
+            (
+                stats.niche_source_id,
+                stats.total_runs,
+                stats.success_count,
+                stats.failure_count,
+                stats.consecutive_failures,
+                stats.posts_fetched_count,
+                stats.relevant_posts_count,
+                stats.extracted_signals_count,
+                stats.gap_count,
+                stats.last_status,
+                stats.last_error,
+                stats.last_fetched_count,
+                stats.last_relevant_count,
+                stats.last_extracted_count,
+                stats.last_gap_count,
+                stats.last_scanned_at,
+                stats.updated_at,
+            ),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def get_niche_source_run_stats(
+        self,
+        source_id: str,
+    ) -> NicheSourceRunStats | None:
+        row = self.connection.execute(
+            """
+            SELECT *
+              FROM niche_source_health_stats
+             WHERE niche_source_id = %s
+            """,
+            (source_id,),
+        ).fetchone()
+        return _niche_source_run_stats_from_row(row) if row else None
+
+    def list_niche_source_run_stats(
+        self,
+        source_ids: list[str] | None = None,
+    ) -> list[NicheSourceRunStats]:
+        if source_ids == []:
+            return []
+        if source_ids is None:
+            rows = self.connection.execute(
+                "SELECT * FROM niche_source_health_stats ORDER BY updated_at DESC",
+            ).fetchall()
+        else:
+            placeholders = ", ".join(["%s"] * len(source_ids))
+            rows = self.connection.execute(
+                f"""
+                SELECT *
+                  FROM niche_source_health_stats
+                 WHERE niche_source_id IN ({placeholders})
+                 ORDER BY updated_at DESC
+                """,
+                tuple(source_ids),
+            ).fetchall()
+        return [_niche_source_run_stats_from_row(row) for row in rows]
 
     def delete_niche_source(self, source_id: str) -> bool:
         cursor = self.connection.execute(
@@ -409,6 +506,28 @@ def _niche_source_from_row(row: dict[str, Any]) -> NicheSource:
         requires_auth=bool(row.get("requires_auth", False)),
         recommended_cadence=row.get("recommended_cadence"),
         created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+def _niche_source_run_stats_from_row(row: dict[str, Any]) -> NicheSourceRunStats:
+    return NicheSourceRunStats.create(
+        niche_source_id=str(row["niche_source_id"]),
+        total_runs=int(row.get("total_runs", 0)),
+        success_count=int(row.get("success_count", 0)),
+        failure_count=int(row.get("failure_count", 0)),
+        consecutive_failures=int(row.get("consecutive_failures", 0)),
+        posts_fetched_count=int(row.get("posts_fetched_count", 0)),
+        relevant_posts_count=int(row.get("relevant_posts_count", 0)),
+        extracted_signals_count=int(row.get("extracted_signals_count", 0)),
+        gap_count=int(row.get("gap_count", 0)),
+        last_status=row.get("last_status", "unknown"),
+        last_error=row.get("last_error"),
+        last_fetched_count=int(row.get("last_fetched_count", 0)),
+        last_relevant_count=int(row.get("last_relevant_count", 0)),
+        last_extracted_count=int(row.get("last_extracted_count", 0)),
+        last_gap_count=int(row.get("last_gap_count", 0)),
+        last_scanned_at=row.get("last_scanned_at"),
         updated_at=row.get("updated_at"),
     )
 

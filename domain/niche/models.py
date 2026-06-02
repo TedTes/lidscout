@@ -259,6 +259,92 @@ class NicheSource:
 
 
 @dataclass(frozen=True)
+class NicheSourceRunStats:
+    """Cumulative runtime stats for one niche source."""
+
+    niche_source_id: str
+    total_runs: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    consecutive_failures: int = 0
+    posts_fetched_count: int = 0
+    relevant_posts_count: int = 0
+    extracted_signals_count: int = 0
+    gap_count: int = 0
+    last_status: str = "unknown"
+    last_error: str | None = None
+    last_fetched_count: int = 0
+    last_relevant_count: int = 0
+    last_extracted_count: int = 0
+    last_gap_count: int = 0
+    last_scanned_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        niche_source_id: str,
+        total_runs: int = 0,
+        success_count: int = 0,
+        failure_count: int = 0,
+        consecutive_failures: int = 0,
+        posts_fetched_count: int = 0,
+        relevant_posts_count: int = 0,
+        extracted_signals_count: int = 0,
+        gap_count: int = 0,
+        last_status: str = "unknown",
+        last_error: str | None = None,
+        last_fetched_count: int = 0,
+        last_relevant_count: int = 0,
+        last_extracted_count: int = 0,
+        last_gap_count: int = 0,
+        last_scanned_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "NicheSourceRunStats":
+        if not niche_source_id.strip():
+            raise ValueError("niche_source_id is required")
+        if last_status not in {"unknown", "healthy", "failing"}:
+            raise ValueError("last_status must be unknown, healthy, or failing")
+        counts = {
+            "total_runs": total_runs,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "consecutive_failures": consecutive_failures,
+            "posts_fetched_count": posts_fetched_count,
+            "relevant_posts_count": relevant_posts_count,
+            "extracted_signals_count": extracted_signals_count,
+            "gap_count": gap_count,
+            "last_fetched_count": last_fetched_count,
+            "last_relevant_count": last_relevant_count,
+            "last_extracted_count": last_extracted_count,
+            "last_gap_count": last_gap_count,
+        }
+        negative = [name for name, value in counts.items() if value < 0]
+        if negative:
+            raise ValueError(f"{negative[0]} must be non-negative")
+        return cls(
+            niche_source_id=niche_source_id.strip(),
+            total_runs=total_runs,
+            success_count=success_count,
+            failure_count=failure_count,
+            consecutive_failures=consecutive_failures,
+            posts_fetched_count=posts_fetched_count,
+            relevant_posts_count=relevant_posts_count,
+            extracted_signals_count=extracted_signals_count,
+            gap_count=gap_count,
+            last_status=last_status,
+            last_error=last_error.strip() if last_error else None,
+            last_fetched_count=last_fetched_count,
+            last_relevant_count=last_relevant_count,
+            last_extracted_count=last_extracted_count,
+            last_gap_count=last_gap_count,
+            last_scanned_at=last_scanned_at,
+            updated_at=updated_at or datetime.now(tz=UTC),
+        )
+
+
+@dataclass(frozen=True)
 class Gap:
     """A synthesised product gap — the strategic output of monitoring a niche.
 

@@ -7,6 +7,7 @@ from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
+from domain.niche import NicheSourceRunStats
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -610,6 +611,60 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(json.loads(connection.calls[3][1][-2]), {"section": "support"})
         self.assertEqual(connection.calls[3][1][-1], "source-1")
         self.assertEqual(connection.commit_count, 2)
+
+    def test_niche_source_repository_persists_run_stats(self):
+        scanned_at = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
+        updated_at = datetime(2026, 6, 2, 12, 1, tzinfo=UTC)
+        stats = NicheSourceRunStats.create(
+            niche_source_id="source-1",
+            total_runs=2,
+            success_count=1,
+            failure_count=1,
+            consecutive_failures=1,
+            posts_fetched_count=30,
+            relevant_posts_count=6,
+            extracted_signals_count=3,
+            gap_count=1,
+            last_status="failing",
+            last_error="blocked",
+            last_scanned_at=scanned_at,
+            updated_at=updated_at,
+        )
+        row = {
+            "niche_source_id": "source-1",
+            "total_runs": 2,
+            "success_count": 1,
+            "failure_count": 1,
+            "consecutive_failures": 1,
+            "posts_fetched_count": 30,
+            "relevant_posts_count": 6,
+            "extracted_signals_count": 3,
+            "gap_count": 1,
+            "last_status": "failing",
+            "last_error": "blocked",
+            "last_fetched_count": 0,
+            "last_relevant_count": 0,
+            "last_extracted_count": 0,
+            "last_gap_count": 0,
+            "last_scanned_at": scanned_at,
+            "updated_at": updated_at,
+        }
+        connection = FakeConnection([
+            FakeCursor(rowcount=1),
+            FakeCursor(row=row),
+            FakeCursor(rows=[row]),
+        ])
+        repository = PostgresNicheSourceRepository(connection=connection)
+
+        self.assertTrue(repository.upsert_niche_source_run_stats(stats))
+        self.assertEqual(repository.get_niche_source_run_stats("source-1"), stats)
+        self.assertEqual(repository.list_niche_source_run_stats(["source-1"]), [stats])
+        self.assertIn("INSERT INTO niche_source_health_stats", connection.calls[0][0])
+        self.assertIn("ON CONFLICT (niche_source_id)", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "source-1")
+        self.assertEqual(connection.calls[1][1], ("source-1",))
+        self.assertEqual(connection.calls[2][1], ("source-1",))
+        self.assertEqual(connection.commit_count, 1)
 
     @unittest.skip("PostgresSourceHealthRepository removed — health tracked on NicheSource")
     def test_source_health_repository_saves_and_loads_health(self):

@@ -4,6 +4,7 @@ from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
+from domain.niche import NicheSourceRunStats
 from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
@@ -202,6 +203,29 @@ class RepositoryInterfaceTests(unittest.TestCase):
     @unittest.skip("InMemoryNicheSourceRepository API changed — MonitoredSource replaced by NicheSource")
     def test_monitored_source_repository_filters_sources(self):
         pass
+
+    def test_niche_source_repository_persists_run_stats(self):
+        repository = InMemoryNicheSourceRepository()
+        stats = NicheSourceRunStats.create(
+            niche_source_id="source-1",
+            total_runs=1,
+            success_count=1,
+            posts_fetched_count=10,
+            relevant_posts_count=3,
+            extracted_signals_count=2,
+            gap_count=1,
+            last_status="healthy",
+            last_fetched_count=10,
+            last_relevant_count=3,
+            last_extracted_count=2,
+            last_gap_count=1,
+        )
+
+        self.assertTrue(repository.upsert_niche_source_run_stats(stats))
+        self.assertEqual(repository.get_niche_source_run_stats("source-1"), stats)
+        self.assertEqual(repository.list_niche_source_run_stats(), [stats])
+        self.assertEqual(repository.list_niche_source_run_stats(["source-1"]), [stats])
+        self.assertEqual(repository.list_niche_source_run_stats(["missing"]), [])
 
     @unittest.skip("InMemorySourceHealthRepository removed — health tracked on NicheSource")
     def test_source_health_repository_persists_snapshots(self):
