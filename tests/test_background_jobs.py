@@ -2,6 +2,7 @@ import unittest
 from typing import Any
 
 from api.routes.signals import SignalApiDependencies
+from domain.niche import UserNiche
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput, SourceLocator
 from infrastructure.db import (
@@ -131,6 +132,40 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertEqual(result.extracted_count, 1)
         self.assertEqual(result.clustered_count, 1)
         self.assertTrue(result.email_result.sent)
+
+    def test_pipeline_persists_planned_agent_actions(self):
+        dependencies = SignalApiDependencies(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            source_adapters=[FakeSourceAdapter()],
+            llm_client=FakeLLMClient(),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+        )
+        dependencies.user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                template_niche_id="niche-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+            )
+        )
+
+        run_configured_daily_pipeline(
+            recipient="founder@example.com",
+            market_id="market-1",
+            dependencies=dependencies,
+        )
+
+        actions = dependencies.agent_action_repository.list_agent_actions(
+            user_niche_id="market-1",
+        )
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].action_type, "suggest_source")
 
 
 if __name__ == "__main__":

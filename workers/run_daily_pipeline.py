@@ -3,10 +3,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import json
 from urllib.parse import urlparse
 
 from application.clustering import ClusteringService
-from application.agent import generate_threshold_alerts
+from application.agent import (
+    AgentPlannerInput,
+    AgentPlannerService,
+    generate_threshold_alerts,
+)
 from application.extraction import ExtractionService
 from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from application.ingestion import (
@@ -22,8 +27,10 @@ from application.opportunity import (
     OpportunitySynthesisService,
 )
 from application.ports import (
+    AgentActionRepository,
     AgentActivityRepository,
     AgentAlertRepository,
+    AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
     NicheSourceRepository,
@@ -39,7 +46,7 @@ from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
 from application.source_quality import source_observed_quality_score
 from domain.cluster import SignalCluster
-from domain.agent import AgentActivity
+from domain.agent import AgentAction, AgentActivity
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -77,6 +84,8 @@ class PipelineConfig:
     agent_preferences_repository: AgentPreferencesRepository | None = None
     agent_activity_repository: AgentActivityRepository | None = None
     agent_alert_repository: AgentAlertRepository | None = None
+    agent_follow_up_repository: AgentFollowUpRepository | None = None
+    agent_action_repository: AgentActionRepository | None = None
     niche_source_repository: NicheSourceRepository | None = None
     user_niche_repository: UserNicheRepository | None = None
     source_locator_repository: SourceLocatorRepository | None = None
@@ -280,6 +289,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     _save_pipeline_run_metrics(config.pipeline_run_metrics_repository, result)
     _record_threshold_alerts(config, clusters, opportunity_synthesis_result.opportunities)
     _record_pipeline_activity(config, result)
+    _persist_planned_agent_actions(config)
     return result
 
 
@@ -484,6 +494,97 @@ def _record_pipeline_activity(
             "email_sent": result.email_result.sent,
             "email_error": result.email_result.error,
         },
+    )
+
+
+def _persist_planned_agent_actions(config: PipelineConfig) -> None:
+    if (
+        config.user_niche_id is None
+        or config.user_niche_repository is None
+        or config.agent_action_repository is None
+    ):
+        return
+    user_niche = config.user_niche_repository.get_user_niche(config.user_niche_id)
+    if user_niche is None:
+        return
+    sources = (
+        config.niche_source_repository.list_niche_sources(user_niche.template_niche_id)
+        if config.niche_source_repository is not None
+        and user_niche.template_niche_id is not None
+        else []
+    )
+    planner_input = AgentPlannerInput(
+        user_niche=user_niche,
+        preferences=(
+            config.agent_preferences_repository.get_agent_preferences(
+                config.user_niche_id,
+            )
+            if config.agent_preferences_repository is not None
+            else None
+        ),
+        sources=sources,
+        recent_activity=(
+            config.agent_activity_repository.list_agent_activity(
+                user_niche_id=config.user_niche_id,
+                limit=25,
+            )
+            if config.agent_activity_repository is not None
+            else []
+        ),
+        alerts=(
+            config.agent_alert_repository.list_agent_alerts(
+                user_niche_id=config.user_niche_id,
+                limit=25,
+            )
+            if config.agent_alert_repository is not None
+            else []
+        ),
+        follow_ups=(
+            config.agent_follow_up_repository.list_agent_follow_ups(
+                user_niche_id=config.user_niche_id,
+                limit=25,
+            )
+            if config.agent_follow_up_repository is not None
+            else []
+        ),
+        opportunities=(
+            config.opportunity_repository.list_opportunities()
+            if config.opportunity_repository is not None
+            else []
+        ),
+    )
+    proposed_actions = AgentPlannerService().plan_actions(planner_input)
+    existing_keys = {
+        _planned_agent_action_key(action)
+        for action in config.agent_action_repository.list_agent_actions(
+            user_niche_id=config.user_niche_id,
+            status="proposed",
+            limit=100,
+        )
+    }
+    saved_count = 0
+    for action in proposed_actions:
+        key = _planned_agent_action_key(action)
+        if key in existing_keys:
+            continue
+        if config.agent_action_repository.save_agent_action(action):
+            saved_count += 1
+            existing_keys.add(key)
+    if saved_count:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="actions_proposed",
+            title=f"Proposed {saved_count} next action(s)",
+            detail="The research agent planned follow-up work after this scan.",
+            metadata={"action_count": saved_count},
+        )
+
+
+def _planned_agent_action_key(action: AgentAction) -> tuple[str, str]:
+    return (
+        action.action_type,
+        json.dumps(action.metadata, sort_keys=True, separators=(",", ":")),
     )
 
 

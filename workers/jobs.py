@@ -55,6 +55,8 @@ def run_configured_daily_pipeline(
             ),
             agent_activity_repository=runtime_dependencies.agent_activity_repository,
             agent_alert_repository=runtime_dependencies.agent_alert_repository,
+            agent_follow_up_repository=runtime_dependencies.agent_follow_up_repository,
+            agent_action_repository=runtime_dependencies.agent_action_repository,
             niche_source_repository=runtime_dependencies.niche_source_repository,
             user_niche_repository=runtime_dependencies.user_niche_repository,
             source_locator_repository=runtime_dependencies.source_locator_repository,
