@@ -510,6 +510,7 @@ def _execute_approved_agent_actions(config: PipelineConfig) -> None:
         config.agent_action_repository,
         config.niche_source_repository,
         config.agent_follow_up_repository,
+        config.agent_alert_repository,
     ).execute_approved_actions(config.user_niche_id)
     if result.executed_count or result.failed_count:
         _record_agent_activity(

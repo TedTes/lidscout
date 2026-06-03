@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from application.ports import (
     AgentActionRepository,
+    AgentAlertRepository,
     AgentFollowUpRepository,
     NicheSourceRepository,
 )
@@ -26,10 +27,12 @@ class AgentActionExecutor:
         action_repository: AgentActionRepository,
         niche_source_repository: NicheSourceRepository,
         follow_up_repository: AgentFollowUpRepository | None = None,
+        alert_repository: AgentAlertRepository | None = None,
     ) -> None:
         self._action_repository = action_repository
         self._niche_source_repository = niche_source_repository
         self._follow_up_repository = follow_up_repository
+        self._alert_repository = alert_repository
 
     def execute_approved_actions(self, user_niche_id: str) -> AgentActionExecutionResult:
         """Execute approved actions for one niche agent."""
@@ -58,6 +61,20 @@ class AgentActionExecutor:
                 continue
             if action.action_type == "answer_follow_up":
                 if self._answer_follow_up(action):
+                    self._action_repository.update_agent_action_status(
+                        action.id,
+                        "completed",
+                    )
+                    executed_count += 1
+                else:
+                    self._action_repository.update_agent_action_status(
+                        action.id,
+                        "failed",
+                    )
+                    failed_count += 1
+                continue
+            if action.action_type == "send_alert":
+                if self._send_alert(action):
                     self._action_repository.update_agent_action_status(
                         action.id,
                         "completed",
@@ -103,3 +120,12 @@ class AgentActionExecutor:
             },
         )
         return updated is not None
+
+    def _send_alert(self, action: AgentAction) -> bool:
+        if self._alert_repository is None:
+            return False
+        alert_id = str(action.metadata.get("alert_id") or "").strip()
+        if not alert_id:
+            return False
+        acknowledged = self._alert_repository.acknowledge_agent_alert(alert_id)
+        return acknowledged is not None

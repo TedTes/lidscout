@@ -1,8 +1,9 @@
 from application.agent import AgentActionExecutor
-from domain.agent import AgentAction, AgentFollowUp
+from domain.agent import AgentAction, AgentAlert, AgentFollowUp
 from domain.niche import NicheSource
 from infrastructure.db import (
     InMemoryAgentActionRepository,
+    InMemoryAgentAlertRepository,
     InMemoryAgentFollowUpRepository,
     InMemoryNicheSourceRepository,
 )
@@ -147,3 +148,67 @@ def test_executor_marks_follow_up_action_failed_when_response_missing() -> None:
     assert result.failed_count == 1
     assert actions[0].status == "failed"
     assert follow_ups[0].status == "queued"
+
+
+def test_executor_acknowledges_alert_for_approved_action() -> None:
+    action_repository = InMemoryAgentActionRepository()
+    source_repository = InMemoryNicheSourceRepository()
+    alert_repository = InMemoryAgentAlertRepository()
+    alert_repository.save_agent_alert(
+        AgentAlert.create(
+            id="alert-1",
+            user_niche_id="market-1",
+            alert_type="threshold",
+            title="Theme crossed threshold",
+            severity="warning",
+        )
+    )
+    action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="send_alert",
+            status="approved",
+            metadata={"alert_id": "alert-1"},
+        )
+    )
+
+    result = AgentActionExecutor(
+        action_repository,
+        source_repository,
+        alert_repository=alert_repository,
+    ).execute_approved_actions("market-1")
+
+    actions = action_repository.list_agent_actions(user_niche_id="market-1")
+    alert = alert_repository.get_agent_alert("alert-1")
+    assert result.executed_count == 1
+    assert result.failed_count == 0
+    assert actions[0].status == "completed"
+    assert alert is not None
+    assert alert.status == "acknowledged"
+
+
+def test_executor_marks_alert_action_failed_when_alert_id_missing() -> None:
+    action_repository = InMemoryAgentActionRepository()
+    source_repository = InMemoryNicheSourceRepository()
+    alert_repository = InMemoryAgentAlertRepository()
+    action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="send_alert",
+            status="approved",
+            metadata={},
+        )
+    )
+
+    result = AgentActionExecutor(
+        action_repository,
+        source_repository,
+        alert_repository=alert_repository,
+    ).execute_approved_actions("market-1")
+
+    actions = action_repository.list_agent_actions(user_niche_id="market-1")
+    assert result.executed_count == 0
+    assert result.failed_count == 1
+    assert actions[0].status == "failed"

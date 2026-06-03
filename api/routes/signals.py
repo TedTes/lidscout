@@ -821,6 +821,7 @@ async def execute_market_agent_actions(
         dependencies.agent_action_repository,
         dependencies.niche_source_repository,
         dependencies.agent_follow_up_repository,
+        dependencies.agent_alert_repository,
     ).execute_approved_actions(market_id)
     return {
         "executed_count": result.executed_count,
