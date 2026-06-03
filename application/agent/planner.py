@@ -75,6 +75,31 @@ class AgentPlannerService:
                 )
             ]
 
+        low_quality_source = next(
+            (
+                source
+                for source in planner_input.sources
+                if source.enabled
+                and source.signal_quality_score is not None
+                and source.signal_quality_score < 0.15
+            ),
+            None,
+        )
+        if low_quality_source is not None:
+            return [
+                AgentAction.create(
+                    user_niche_id=planner_input.user_niche.id,
+                    action_type="pause_source",
+                    reason="An enabled source has repeatedly produced low-quality evidence.",
+                    metadata={
+                        "planner_version": "v1",
+                        "source_id": low_quality_source.id,
+                        "locator": low_quality_source.locator,
+                        "signal_quality_score": low_quality_source.signal_quality_score,
+                    },
+                )
+            ]
+
         healthy_sources = [
             source
             for source in planner_input.sources

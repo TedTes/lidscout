@@ -78,6 +78,27 @@ def test_agent_planner_pauses_failing_source() -> None:
     assert actions[0].metadata["source_id"] == "source-1"
 
 
+def test_agent_planner_pauses_low_quality_source() -> None:
+    actions = AgentPlannerService().plan_actions(
+        AgentPlannerInput(
+            user_niche=_user_niche(),
+            sources=[
+                _source(
+                    locator="https://example.com/noisy",
+                    signal_quality_score=0.05,
+                )
+            ],
+        )
+    )
+
+    assert actions[0].action_type == "pause_source"
+    assert actions[0].reason == (
+        "An enabled source has repeatedly produced low-quality evidence."
+    )
+    assert actions[0].metadata["source_id"] == "source-1"
+    assert actions[0].metadata["signal_quality_score"] == 0.05
+
+
 def test_agent_planner_suggests_source_without_healthy_sources() -> None:
     actions = AgentPlannerService().plan_actions(
         AgentPlannerInput(user_niche=_user_niche(), sources=[])
