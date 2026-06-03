@@ -41,6 +41,60 @@ AgentFollowUpStatus = Literal["queued", "answered", "dismissed"]
 
 
 @dataclass(frozen=True)
+class AgentAction:
+    """A planned action the agent can propose or execute."""
+
+    id: str
+    user_niche_id: str
+    action_type: str
+    status: str
+    reason: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_niche_id: str,
+        action_type: str,
+        id: str | None = None,
+        status: str = "proposed",
+        reason: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+        completed_at: datetime | None = None,
+    ) -> "AgentAction":
+        """Create a validated planned agent action."""
+        action_id = (id or f"agent-action-{uuid4().hex}").strip()
+        normalized_user_niche_id = user_niche_id.strip()
+        normalized_action_type = action_type.strip().lower()
+        normalized_status = status.strip().lower()
+
+        if not action_id:
+            raise ValueError("id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
+        if not normalized_action_type:
+            raise ValueError("action_type is required")
+        if not normalized_status:
+            raise ValueError("status is required")
+
+        created = created_at or datetime.now(tz=UTC)
+        return cls(
+            id=action_id,
+            user_niche_id=normalized_user_niche_id,
+            action_type=normalized_action_type,
+            status=normalized_status,
+            reason=_clean_optional(reason),
+            metadata=metadata or {},
+            created_at=created,
+            completed_at=completed_at,
+        )
+
+
+@dataclass(frozen=True)
 class AgentPreferences:
     """Persistent per-niche preferences that steer future agent runs."""
 
