@@ -195,7 +195,14 @@ class BackgroundJobTests(unittest.TestCase):
                 user_niche_id="market-1",
                 action_type="suggest_source",
                 status="completed",
-                metadata={"source_count": 0},
+                metadata={
+                    "source_count": 0,
+                    "niche_id": "niche-1",
+                    "locator": (
+                        "https://hn.algolia.com/api/v1/search_by_date"
+                        "?query=Build+internal+tools&tags=comment&hitsPerPage=25"
+                    ),
+                },
             )
         )
 
