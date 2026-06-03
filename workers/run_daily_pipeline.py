@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from application.clustering import ClusteringService
 from application.agent import (
+    AgentActionExecutor,
     AgentPlannerInput,
     AgentPlannerService,
     generate_threshold_alerts,
@@ -154,6 +155,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         title="Agent scan started",
         detail="The research agent started a scheduled scan.",
     )
+    _execute_approved_agent_actions(config)
     fetch_result = _fetch_posts(config)
     posts = fetch_result.posts
 
@@ -495,6 +497,35 @@ def _record_pipeline_activity(
             "email_error": result.email_result.error,
         },
     )
+
+
+def _execute_approved_agent_actions(config: PipelineConfig) -> None:
+    if (
+        config.user_niche_id is None
+        or config.agent_action_repository is None
+        or config.niche_source_repository is None
+    ):
+        return
+    result = AgentActionExecutor(
+        config.agent_action_repository,
+        config.niche_source_repository,
+    ).execute_approved_actions(config.user_niche_id)
+    if result.executed_count or result.failed_count:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="actions_executed",
+            title=f"Applied {result.executed_count} approved action(s)",
+            detail=(
+                f"{result.executed_count} action(s) completed. "
+                f"{result.failed_count} action(s) failed."
+            ),
+            metadata={
+                "executed_count": result.executed_count,
+                "failed_count": result.failed_count,
+                "skipped_count": result.skipped_count,
+            },
+        )
 
 
 def _persist_planned_agent_actions(config: PipelineConfig) -> None:
@@ -992,6 +1023,11 @@ def _configured_sources(
                 niche_id,
                 enabled=True,
             )
+            niche_sources = [
+                source
+                for source in niche_sources
+                if source.health_status != "paused"
+            ]
             if niche_sources:
                 filtered = _apply_agent_source_preferences(
                     niche_sources,
