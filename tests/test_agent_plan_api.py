@@ -4,11 +4,12 @@ from api.routes.signals import (
     SignalApiDependencies,
     approve_market_agent_action,
     dismiss_market_agent_action,
+    execute_market_agent_actions,
     get_market_agent_plan,
     list_market_agent_actions,
     propose_market_agent_actions,
 )
-from domain.agent import AgentFollowUp
+from domain.agent import AgentAction, AgentFollowUp
 from domain.niche import NicheSource, UserNiche
 from domain.user import User
 
@@ -129,6 +130,37 @@ def test_dismiss_market_agent_action_updates_status() -> None:
     )
 
     assert response["action"]["status"] == "dismissed"
+
+
+def test_execute_market_agent_actions_applies_approved_actions() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    dependencies.agent_action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="pause_source",
+            status="approved",
+            metadata={"source_id": "source-1"},
+        )
+    )
+
+    response = asyncio.run(
+        execute_market_agent_actions(
+            "market-1",
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    sources = dependencies.niche_source_repository.list_niche_sources("niche-1")
+    actions = dependencies.agent_action_repository.list_agent_actions(
+        user_niche_id="market-1",
+    )
+    assert response["executed_count"] == 1
+    assert response["failed_count"] == 0
+    assert sources[0].health_status == "paused"
+    assert actions[0].status == "completed"
 
 
 def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:

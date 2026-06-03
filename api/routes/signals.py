@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from application.agent import (
     AgentColdStartPlan,
     AgentColdStartService,
+    AgentActionExecutor,
     AgentPlannerInput,
     AgentPlannerService,
     build_agent_memory_summary,
@@ -806,6 +807,25 @@ async def dismiss_market_agent_action(
         dependencies,
         current_user,
     )
+
+
+@router.post("/markets/{market_id}/agent/actions/execute")
+async def execute_market_agent_actions(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Execute approved agent actions for one niche."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    result = AgentActionExecutor(
+        dependencies.agent_action_repository,
+        dependencies.niche_source_repository,
+    ).execute_approved_actions(market_id)
+    return {
+        "executed_count": result.executed_count,
+        "failed_count": result.failed_count,
+        "skipped_count": result.skipped_count,
+    }
 
 
 @router.get("/markets/{market_id}/agent/brief")
