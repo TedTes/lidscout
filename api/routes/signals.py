@@ -172,6 +172,13 @@ class AgentFollowUpRequest(BaseModel):
     cluster_id: str | None = None
 
 
+class AgentFollowUpAnswerRequest(BaseModel):
+    """HTTP request body for answering a follow-up question."""
+
+    response: str = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class NicheSourceRequest(BaseModel):
     """HTTP request body for adding a source to a niche."""
 
@@ -1200,6 +1207,65 @@ async def create_market_agent_follow_up(
     return _serialize_agent_follow_up(follow_up)
 
 
+@router.post("/markets/{market_id}/agent/follow-ups/{follow_up_id}/answer")
+async def answer_market_agent_follow_up(
+    market_id: str,
+    follow_up_id: str,
+    request: AgentFollowUpAnswerRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Store an answer for one follow-up question."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    if _find_market_follow_up(dependencies, market_id, follow_up_id) is None:
+        raise HTTPException(status_code=404, detail="Follow-up not found")
+    updated = dependencies.agent_follow_up_repository.update_agent_follow_up(
+        follow_up_id,
+        status="answered",
+        response=request.response,
+        metadata=request.metadata,
+    )
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Follow-up could not be answered")
+    _record_agent_activity(
+        dependencies,
+        user_niche_id=market_id,
+        event_type="follow_up_answered",
+        title="Follow-up answered",
+        detail=updated.question,
+        metadata={"follow_up_id": updated.id},
+    )
+    return _serialize_agent_follow_up(updated)
+
+
+@router.post("/markets/{market_id}/agent/follow-ups/{follow_up_id}/dismiss")
+async def dismiss_market_agent_follow_up(
+    market_id: str,
+    follow_up_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Dismiss one follow-up question."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    if _find_market_follow_up(dependencies, market_id, follow_up_id) is None:
+        raise HTTPException(status_code=404, detail="Follow-up not found")
+    updated = dependencies.agent_follow_up_repository.update_agent_follow_up(
+        follow_up_id,
+        status="dismissed",
+    )
+    if updated is None:
+        raise HTTPException(status_code=400, detail="Follow-up could not be dismissed")
+    _record_agent_activity(
+        dependencies,
+        user_niche_id=market_id,
+        event_type="follow_up_dismissed",
+        title="Follow-up dismissed",
+        detail=updated.question,
+        metadata={"follow_up_id": updated.id},
+    )
+    return _serialize_agent_follow_up(updated)
+
+
 @router.get("/markets/{market_id}/agent/memory")
 async def get_market_agent_memory(
     market_id: str,
@@ -2103,6 +2169,22 @@ def _apply_feedback_to_agent_preferences(
     dependencies.agent_preferences_repository.save_agent_preferences(
         updated_preferences,
     )
+
+
+def _find_market_follow_up(
+    dependencies: SignalApiDependencies,
+    market_id: str,
+    follow_up_id: str,
+) -> AgentFollowUp | None:
+    matching = [
+        item
+        for item in dependencies.agent_follow_up_repository.list_agent_follow_ups(
+            user_niche_id=market_id,
+            limit=100,
+        )
+        if item.id == follow_up_id
+    ]
+    return matching[0] if matching else None
 
 
 def _serialize_agent_action(action: AgentAction) -> dict[str, Any]:

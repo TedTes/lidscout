@@ -3,9 +3,12 @@ from unittest.mock import patch
 
 from api.routes.signals import (
     AgentFeedbackRequest,
+    AgentFollowUpAnswerRequest,
     SignalApiDependencies,
+    answer_market_agent_follow_up,
     approve_market_agent_action,
     create_opportunity_feedback,
+    dismiss_market_agent_follow_up,
     dismiss_market_agent_action,
     execute_market_agent_actions,
     get_market_agent_plan,
@@ -277,6 +280,52 @@ def test_more_like_this_feedback_removes_ignored_preferences() -> None:
     assert preferences is not None
     assert preferences.ignored_themes == []
     assert preferences.ignored_categories == []
+
+
+def test_answer_market_agent_follow_up_updates_status() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+
+    response = asyncio.run(
+        answer_market_agent_follow_up(
+            "market-1",
+            "follow-up-1",
+            AgentFollowUpAnswerRequest(
+                response="Two independent source families support this.",
+                metadata={"answered_by": "test"},
+            ),
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    activity = dependencies.agent_activity_repository.list_agent_activity(
+        user_niche_id="market-1",
+    )
+    assert response["status"] == "answered"
+    assert response["response"] == "Two independent source families support this."
+    assert response["metadata"]["answered_by"] == "test"
+    assert activity[0].event_type == "follow_up_answered"
+
+
+def test_dismiss_market_agent_follow_up_updates_status() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+
+    response = asyncio.run(
+        dismiss_market_agent_follow_up(
+            "market-1",
+            "follow-up-1",
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    activity = dependencies.agent_activity_repository.list_agent_activity(
+        user_niche_id="market-1",
+    )
+    assert response["status"] == "dismissed"
+    assert activity[0].event_type == "follow_up_dismissed"
 
 
 def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:

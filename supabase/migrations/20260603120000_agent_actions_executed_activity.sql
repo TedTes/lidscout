@@ -18,6 +18,8 @@ alter table if exists agent_activity
                 'brief_updated',
                 'alert_created',
                 'follow_up_recorded',
+                'follow_up_answered',
+                'follow_up_dismissed',
                 'post_evaluating',
                 'post_accepted',
                 'post_filtered',
