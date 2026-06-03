@@ -1,7 +1,11 @@
 from application.agent import AgentActionExecutor
-from domain.agent import AgentAction
+from domain.agent import AgentAction, AgentFollowUp
 from domain.niche import NicheSource
-from infrastructure.db import InMemoryAgentActionRepository, InMemoryNicheSourceRepository
+from infrastructure.db import (
+    InMemoryAgentActionRepository,
+    InMemoryAgentFollowUpRepository,
+    InMemoryNicheSourceRepository,
+)
 
 
 def test_executor_pauses_source_for_approved_action() -> None:
@@ -64,3 +68,82 @@ def test_executor_marks_pause_source_failed_when_source_id_missing() -> None:
     assert result.executed_count == 0
     assert result.failed_count == 1
     assert actions[0].status == "failed"
+
+
+def test_executor_answers_follow_up_for_approved_action() -> None:
+    action_repository = InMemoryAgentActionRepository()
+    source_repository = InMemoryNicheSourceRepository()
+    follow_up_repository = InMemoryAgentFollowUpRepository()
+    follow_up_repository.save_agent_follow_up(
+        AgentFollowUp.create(
+            id="follow-up-1",
+            user_niche_id="market-1",
+            question="Why is this credible?",
+        )
+    )
+    action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="answer_follow_up",
+            status="approved",
+            metadata={
+                "follow_up_id": "follow-up-1",
+                "response": "The agent found two independent evidence items.",
+            },
+        )
+    )
+
+    result = AgentActionExecutor(
+        action_repository,
+        source_repository,
+        follow_up_repository,
+    ).execute_approved_actions("market-1")
+
+    actions = action_repository.list_agent_actions(user_niche_id="market-1")
+    follow_ups = follow_up_repository.list_agent_follow_ups(
+        user_niche_id="market-1",
+    )
+    assert result.executed_count == 1
+    assert result.failed_count == 0
+    assert actions[0].status == "completed"
+    assert follow_ups[0].status == "answered"
+    assert follow_ups[0].response == "The agent found two independent evidence items."
+    assert follow_ups[0].metadata["answered_by_action_id"] == "action-1"
+
+
+def test_executor_marks_follow_up_action_failed_when_response_missing() -> None:
+    action_repository = InMemoryAgentActionRepository()
+    source_repository = InMemoryNicheSourceRepository()
+    follow_up_repository = InMemoryAgentFollowUpRepository()
+    follow_up_repository.save_agent_follow_up(
+        AgentFollowUp.create(
+            id="follow-up-1",
+            user_niche_id="market-1",
+            question="Why is this credible?",
+        )
+    )
+    action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="answer_follow_up",
+            status="approved",
+            metadata={"follow_up_id": "follow-up-1"},
+        )
+    )
+
+    result = AgentActionExecutor(
+        action_repository,
+        source_repository,
+        follow_up_repository,
+    ).execute_approved_actions("market-1")
+
+    actions = action_repository.list_agent_actions(user_niche_id="market-1")
+    follow_ups = follow_up_repository.list_agent_follow_ups(
+        user_niche_id="market-1",
+    )
+    assert result.executed_count == 0
+    assert result.failed_count == 1
+    assert actions[0].status == "failed"
+    assert follow_ups[0].status == "queued"

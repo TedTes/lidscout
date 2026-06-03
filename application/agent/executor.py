@@ -1,7 +1,11 @@
 """Execution service for approved niche research agent actions."""
 from dataclasses import dataclass
 
-from application.ports import AgentActionRepository, NicheSourceRepository
+from application.ports import (
+    AgentActionRepository,
+    AgentFollowUpRepository,
+    NicheSourceRepository,
+)
 from domain.agent import AgentAction
 
 
@@ -21,9 +25,11 @@ class AgentActionExecutor:
         self,
         action_repository: AgentActionRepository,
         niche_source_repository: NicheSourceRepository,
+        follow_up_repository: AgentFollowUpRepository | None = None,
     ) -> None:
         self._action_repository = action_repository
         self._niche_source_repository = niche_source_repository
+        self._follow_up_repository = follow_up_repository
 
     def execute_approved_actions(self, user_niche_id: str) -> AgentActionExecutionResult:
         """Execute approved actions for one niche agent."""
@@ -38,6 +44,20 @@ class AgentActionExecutor:
         for action in actions:
             if action.action_type == "pause_source":
                 if self._pause_source(action):
+                    self._action_repository.update_agent_action_status(
+                        action.id,
+                        "completed",
+                    )
+                    executed_count += 1
+                else:
+                    self._action_repository.update_agent_action_status(
+                        action.id,
+                        "failed",
+                    )
+                    failed_count += 1
+                continue
+            if action.action_type == "answer_follow_up":
+                if self._answer_follow_up(action):
                     self._action_repository.update_agent_action_status(
                         action.id,
                         "completed",
@@ -65,3 +85,21 @@ class AgentActionExecutor:
             source_id,
             "paused",
         )
+
+    def _answer_follow_up(self, action: AgentAction) -> bool:
+        if self._follow_up_repository is None:
+            return False
+        follow_up_id = str(action.metadata.get("follow_up_id") or "").strip()
+        response = str(action.metadata.get("response") or "").strip()
+        if not follow_up_id or not response:
+            return False
+        updated = self._follow_up_repository.update_agent_follow_up(
+            follow_up_id,
+            status="answered",
+            response=response,
+            metadata={
+                "answered_by_action_id": action.id,
+                "answer_source": action.metadata.get("answer_source", "agent_action"),
+            },
+        )
+        return updated is not None
