@@ -1,6 +1,7 @@
 """API endpoints for market signal workflows."""
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import json
 import logging
 from typing import Any
 
@@ -723,6 +724,34 @@ async def get_market_agent_plan(
     planner_input = _agent_planner_input(market_id, dependencies, current_user)
     actions = AgentPlannerService().plan_actions(planner_input)
     return {"actions": [_serialize_agent_action(action) for action in actions]}
+
+
+@router.post("/markets/{market_id}/agent/actions/plan")
+async def propose_market_agent_actions(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Persist the agent's current proposed next actions for one niche."""
+    planner_input = _agent_planner_input(market_id, dependencies, current_user)
+    planned_actions = AgentPlannerService().plan_actions(planner_input)
+    existing_keys = {
+        _agent_action_key(action)
+        for action in dependencies.agent_action_repository.list_agent_actions(
+            user_niche_id=market_id,
+            status="proposed",
+            limit=100,
+        )
+    }
+    saved_actions: list[AgentAction] = []
+    for action in planned_actions:
+        key = _agent_action_key(action)
+        if key in existing_keys:
+            continue
+        dependencies.agent_action_repository.save_agent_action(action)
+        existing_keys.add(key)
+        saved_actions.append(action)
+    return {"actions": [_serialize_agent_action(action) for action in saved_actions]}
 
 
 @router.get("/markets/{market_id}/agent/brief")
@@ -1921,6 +1950,13 @@ def _serialize_agent_action(action: AgentAction) -> dict[str, Any]:
             action.completed_at.isoformat() if action.completed_at else None
         ),
     }
+
+
+def _agent_action_key(action: AgentAction) -> tuple[str, str]:
+    return (
+        action.action_type,
+        json.dumps(action.metadata, sort_keys=True, separators=(",", ":")),
+    )
 
 
 def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
