@@ -161,6 +161,64 @@ class InMemoryOpportunityRepository(OpportunityRepository):
 
 
 @dataclass
+class InMemoryAgentActionRepository(AgentActionRepository):
+    """In-memory agent action repository."""
+
+    actions_by_id: dict[str, AgentAction] = field(default_factory=dict)
+
+    def save_agent_action(self, action: AgentAction) -> bool:
+        if action.id in self.actions_by_id:
+            return False
+        self.actions_by_id[action.id] = action
+        return True
+
+    def list_agent_actions(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+        action_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAction]:
+        actions = list(self.actions_by_id.values())
+        if user_niche_id is not None:
+            actions = [item for item in actions if item.user_niche_id == user_niche_id]
+        if status is not None:
+            actions = [item for item in actions if item.status == status]
+        if action_type is not None:
+            actions = [item for item in actions if item.action_type == action_type]
+        actions = sorted(
+            actions,
+            key=lambda item: item.created_at or datetime.min,
+            reverse=True,
+        )
+        return actions[:limit] if limit is not None else actions
+
+    def update_agent_action_status(
+        self,
+        action_id: str,
+        status: str,
+    ) -> AgentAction | None:
+        action = self.actions_by_id.get(action_id)
+        if action is None:
+            return None
+        updated = AgentAction.create(
+            id=action.id,
+            user_niche_id=action.user_niche_id,
+            action_type=action.action_type,
+            status=status,
+            reason=action.reason,
+            metadata=action.metadata,
+            created_at=action.created_at,
+            completed_at=datetime.now(UTC)
+            if status in {"completed", "failed"}
+            else action.completed_at,
+        )
+        self.actions_by_id[action_id] = updated
+        return updated
+
+
+@dataclass
 class InMemoryAgentPreferencesRepository(AgentPreferencesRepository):
     """In-memory agent preferences repository."""
 

@@ -23,6 +23,7 @@ from application.opportunity import (
 )
 from application.ingestion import SourceAdapter
 from application.ports import (
+    AgentActionRepository,
     AgentActivityRepository,
     AgentAlertRepository,
     AgentFeedbackRepository,
@@ -57,6 +58,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
 from domain.source import SourceInput
 from infrastructure.db import (
+    InMemoryAgentActionRepository,
     InMemoryAgentActivityRepository,
     InMemoryAgentAlertRepository,
     InMemoryAgentFeedbackRepository,
@@ -205,6 +207,9 @@ class SignalApiDependencies:
     )
     agent_follow_up_repository: AgentFollowUpRepository = field(
         default_factory=InMemoryAgentFollowUpRepository
+    )
+    agent_action_repository: AgentActionRepository = field(
+        default_factory=InMemoryAgentActionRepository
     )
     niche_repository: NicheRepository = field(
         default_factory=InMemoryNicheRepository

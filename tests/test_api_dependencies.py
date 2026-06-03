@@ -77,6 +77,9 @@ class ApiDependencyTests(unittest.TestCase):
             agent_follow_up_repository = stack.enter_context(
                 patch("api.dependencies.PostgresAgentFollowUpRepository")
             )
+            agent_action_repository = stack.enter_context(
+                patch("api.dependencies.PostgresAgentActionRepository")
+            )
             niche_repository = stack.enter_context(
                 patch("api.dependencies.PostgresNicheRepository")
             )
@@ -126,6 +129,7 @@ class ApiDependencyTests(unittest.TestCase):
         agent_activity_repository.assert_called_once_with(connection=connection)
         agent_alert_repository.assert_called_once_with(connection=connection)
         agent_follow_up_repository.assert_called_once_with(connection=connection)
+        agent_action_repository.assert_called_once_with(connection=connection)
         niche_repository.assert_called_once_with(connection=connection)
         niche_company_repository.assert_called_once_with(connection=connection)
         niche_source_repository.assert_called_once_with(connection=connection)
@@ -224,6 +228,7 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresAgentActivityRepository",
                 "api.dependencies.PostgresAgentAlertRepository",
                 "api.dependencies.PostgresAgentFollowUpRepository",
+                "api.dependencies.PostgresAgentActionRepository",
                 "api.dependencies.PostgresNicheRepository",
                 "api.dependencies.PostgresNicheCompanyRepository",
                 "api.dependencies.PostgresNicheSourceRepository",

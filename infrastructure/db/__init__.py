@@ -7,6 +7,7 @@ from infrastructure.db.niche_repository import (
     PostgresUserNicheRepository,
 )
 from infrastructure.db.repository import (
+    InMemoryAgentActionRepository,
     PostgresAgentActionRepository,
     InMemoryAgentActivityRepository,
     InMemoryAgentAlertRepository,
@@ -53,6 +54,7 @@ from infrastructure.db.repository import (
 
 __all__ = [
     "InMemoryClusterRepository",
+    "InMemoryAgentActionRepository",
     "InMemoryAgentActivityRepository",
     "InMemoryAgentAlertRepository",
     "InMemoryAgentFeedbackRepository",
