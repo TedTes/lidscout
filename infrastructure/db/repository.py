@@ -9,6 +9,7 @@ import sqlite3
 from typing import Any
 
 from application.ports import (
+    AgentActionRepository,
     AgentActivityRepository,
     AgentAlertRepository,
     AgentFeedbackRepository,
@@ -23,6 +24,7 @@ from application.ports import (
     SourceLocatorRepository,
 )
 from domain.agent import (
+    AgentAction,
     AgentActivity,
     AgentAlert,
     AgentFeedback,
@@ -1933,6 +1935,88 @@ class PostgresAgentFollowUpRepository(_PostgresRepository, AgentFollowUpReposito
         return [_agent_follow_up_from_row(row) for row in rows]
 
 
+class PostgresAgentActionRepository(_PostgresRepository, AgentActionRepository):
+    """Postgres-backed planned agent action repository."""
+
+    def save_agent_action(self, action: AgentAction) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO agent_actions (
+                id, user_niche_id, action_type, status, reason, metadata,
+                created_at, completed_at
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s::jsonb, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                status = EXCLUDED.status,
+                reason = EXCLUDED.reason,
+                metadata = EXCLUDED.metadata,
+                completed_at = EXCLUDED.completed_at
+            """,
+            _agent_action_values(action, sqlite=False),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def list_agent_actions(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+        action_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAction]:
+        query = "SELECT * FROM agent_actions"
+        clauses: list[str] = []
+        params: list[str | int] = []
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = %s")
+            params.append(user_niche_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status)
+        if action_type is not None:
+            clauses.append("action_type = %s")
+            params.append(action_type)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT %s"
+            params.append(limit)
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_agent_action_from_row(row) for row in rows]
+
+    def update_agent_action_status(
+        self,
+        action_id: str,
+        status: str,
+    ) -> AgentAction | None:
+        existing = self.connection.execute(
+            "SELECT * FROM agent_actions WHERE id = %s",
+            (action_id,),
+        ).fetchone()
+        if existing is None:
+            return None
+        completed_at = (
+            datetime.now(tz=UTC)
+            if status in {"completed", "failed", "dismissed"}
+            else None
+        )
+        self.connection.execute(
+            """
+            UPDATE agent_actions
+            SET status = %s, completed_at = %s
+            WHERE id = %s
+            """,
+            (status, completed_at, action_id),
+        )
+        self.connection.commit()
+        row = self.connection.execute(
+            "SELECT * FROM agent_actions WHERE id = %s",
+            (action_id,),
+        ).fetchone()
+        return _agent_action_from_row(row) if row else None
+
+
 class PostgresPipelineRunMetricsRepository(
     _PostgresRepository,
     PipelineRunMetricsRepository,
@@ -2145,6 +2229,32 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
         confidence=_float(row["confidence"]),
         evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
         unmet_need_type=_row_get(row, "unmet_need_type"),
+    )
+
+
+def _agent_action_values(action: AgentAction, *, sqlite: bool) -> tuple:
+    return (
+        action.id,
+        action.user_niche_id,
+        action.action_type,
+        action.status,
+        action.reason,
+        _to_json(action.metadata),
+        _datetime_to_text(action.created_at) if sqlite else action.created_at,
+        _datetime_to_text(action.completed_at) if sqlite else action.completed_at,
+    )
+
+
+def _agent_action_from_row(row: sqlite3.Row) -> AgentAction:
+    return AgentAction.create(
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
+        action_type=row["action_type"],
+        status=row["status"],
+        reason=row["reason"],
+        metadata=_from_json(row["metadata"]),
+        created_at=_datetime_from_text(row["created_at"]),
+        completed_at=_datetime_from_text(row["completed_at"]),
     )
 
 
