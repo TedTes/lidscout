@@ -2,6 +2,8 @@ import asyncio
 
 from api.routes.signals import (
     SignalApiDependencies,
+    approve_market_agent_action,
+    dismiss_market_agent_action,
     get_market_agent_plan,
     propose_market_agent_actions,
 )
@@ -52,6 +54,54 @@ def test_propose_market_agent_actions_persists_without_duplicates() -> None:
     assert repeated_response["actions"] == []
     assert len(stored_actions) == 1
     assert stored_actions[0].metadata["follow_up_id"] == "follow-up-1"
+
+
+def test_approve_market_agent_action_updates_status() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    propose_response = asyncio.run(
+        propose_market_agent_actions(
+            "market-1",
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+    action_id = propose_response["actions"][0]["id"]
+
+    response = asyncio.run(
+        approve_market_agent_action(
+            "market-1",
+            action_id,
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    assert response["action"]["status"] == "approved"
+
+
+def test_dismiss_market_agent_action_updates_status() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    propose_response = asyncio.run(
+        propose_market_agent_actions(
+            "market-1",
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+    action_id = propose_response["actions"][0]["id"]
+
+    response = asyncio.run(
+        dismiss_market_agent_action(
+            "market-1",
+            action_id,
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    assert response["action"]["status"] == "dismissed"
 
 
 def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:

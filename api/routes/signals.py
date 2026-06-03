@@ -754,6 +754,40 @@ async def propose_market_agent_actions(
     return {"actions": [_serialize_agent_action(action) for action in saved_actions]}
 
 
+@router.post("/markets/{market_id}/agent/actions/{action_id}/approve")
+async def approve_market_agent_action(
+    market_id: str,
+    action_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Approve a proposed agent action for one niche."""
+    return _update_market_agent_action_status(
+        market_id,
+        action_id,
+        "approved",
+        dependencies,
+        current_user,
+    )
+
+
+@router.post("/markets/{market_id}/agent/actions/{action_id}/dismiss")
+async def dismiss_market_agent_action(
+    market_id: str,
+    action_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Dismiss a proposed agent action for one niche."""
+    return _update_market_agent_action_status(
+        market_id,
+        action_id,
+        "dismissed",
+        dependencies,
+        current_user,
+    )
+
+
 @router.get("/markets/{market_id}/agent/brief")
 async def get_market_agent_brief(
     market_id: str,
@@ -1553,6 +1587,33 @@ def _agent_planner_input(
         ),
         opportunities=dependencies.opportunity_repository.list_opportunities(),
     )
+
+
+def _update_market_agent_action_status(
+    market_id: str,
+    action_id: str,
+    status: str,
+    dependencies: SignalApiDependencies,
+    current_user: User | Any,
+) -> dict[str, Any]:
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    matching_actions = [
+        action
+        for action in dependencies.agent_action_repository.list_agent_actions(
+            user_niche_id=market_id,
+            limit=100,
+        )
+        if action.id == action_id
+    ]
+    if not matching_actions:
+        raise HTTPException(status_code=404, detail="Agent action not found")
+    updated_action = dependencies.agent_action_repository.update_agent_action_status(
+        action_id,
+        status,
+    )
+    if updated_action is None:
+        raise HTTPException(status_code=404, detail="Agent action not found")
+    return {"action": _serialize_agent_action(updated_action)}
 
 
 def _scoped_signal_ids(
