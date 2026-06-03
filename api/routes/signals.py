@@ -1015,7 +1015,8 @@ async def create_opportunity_feedback(
 ) -> dict[str, Any]:
     """Record user feedback on one synthesized gap."""
     _get_owned_user_niche(request.market_id, dependencies, current_user)
-    if dependencies.opportunity_repository.get_opportunity(opportunity_id) is None:
+    opportunity = dependencies.opportunity_repository.get_opportunity(opportunity_id)
+    if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")
 
     try:
@@ -1029,6 +1030,12 @@ async def create_opportunity_feedback(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     dependencies.agent_feedback_repository.save_agent_feedback(feedback)
+    _apply_feedback_to_agent_preferences(
+        dependencies,
+        market_id=request.market_id,
+        opportunity=opportunity,
+        action=feedback.action,
+    )
     _record_agent_activity(
         dependencies,
         user_niche_id=request.market_id,
@@ -2049,6 +2056,53 @@ def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
         "reason": feedback.reason,
         "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
     }
+
+
+def _apply_feedback_to_agent_preferences(
+    dependencies: SignalApiDependencies,
+    *,
+    market_id: str,
+    opportunity: Opportunity,
+    action: str,
+) -> None:
+    if action not in {"save", "more_like_this", "less_like_this"}:
+        return
+    cluster = dependencies.cluster_repository.get_cluster(opportunity.cluster_id)
+    theme = cluster.theme if cluster is not None else None
+    category = opportunity.unmet_need_type
+    if theme is None and category is None:
+        return
+
+    preferences = (
+        dependencies.agent_preferences_repository.get_agent_preferences(market_id)
+        or AgentPreferences.create(user_niche_id=market_id)
+    )
+    ignored_themes = set(preferences.ignored_themes)
+    ignored_categories = set(preferences.ignored_categories)
+
+    if action == "less_like_this":
+        if theme:
+            ignored_themes.add(theme)
+        if category:
+            ignored_categories.add(category)
+    else:
+        if theme:
+            ignored_themes.discard(theme)
+        if category:
+            ignored_categories.discard(category)
+
+    updated_preferences = AgentPreferences.create(
+        user_niche_id=market_id,
+        preferred_source_families=preferences.preferred_source_families,
+        ignored_themes=sorted(ignored_themes),
+        ignored_categories=sorted(ignored_categories),
+        muted_source_ids=preferences.muted_source_ids,
+        extra_instructions=preferences.extra_instructions,
+        created_at=preferences.created_at,
+    )
+    dependencies.agent_preferences_repository.save_agent_preferences(
+        updated_preferences,
+    )
 
 
 def _serialize_agent_action(action: AgentAction) -> dict[str, Any]:

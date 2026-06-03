@@ -2,8 +2,10 @@ import asyncio
 from unittest.mock import patch
 
 from api.routes.signals import (
+    AgentFeedbackRequest,
     SignalApiDependencies,
     approve_market_agent_action,
+    create_opportunity_feedback,
     dismiss_market_agent_action,
     execute_market_agent_actions,
     get_market_agent_plan,
@@ -12,7 +14,9 @@ from api.routes.signals import (
     trigger_market_pipeline,
 )
 from domain.agent import AgentAction, AgentFollowUp
+from domain.cluster import SignalCluster
 from domain.niche import NicheSource, UserNiche
+from domain.opportunity import Opportunity
 from domain.user import User
 
 
@@ -214,6 +218,67 @@ def test_trigger_market_pipeline_enqueues_owned_market() -> None:
     enqueue.assert_called_once_with("market-1")
 
 
+def test_less_like_this_feedback_updates_agent_preferences() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    _seed_opportunity_context(dependencies)
+
+    asyncio.run(
+        create_opportunity_feedback(
+            "opportunity-1",
+            AgentFeedbackRequest(
+                market_id="market-1",
+                action="less_like_this",
+            ),
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        "market-1",
+    )
+    assert preferences is not None
+    assert preferences.ignored_themes == ["reporting"]
+    assert preferences.ignored_categories == ["time"]
+
+
+def test_more_like_this_feedback_removes_ignored_preferences() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    _seed_opportunity_context(dependencies)
+    asyncio.run(
+        create_opportunity_feedback(
+            "opportunity-1",
+            AgentFeedbackRequest(
+                market_id="market-1",
+                action="less_like_this",
+            ),
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    asyncio.run(
+        create_opportunity_feedback(
+            "opportunity-1",
+            AgentFeedbackRequest(
+                market_id="market-1",
+                action="more_like_this",
+            ),
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        "market-1",
+    )
+    assert preferences is not None
+    assert preferences.ignored_themes == []
+    assert preferences.ignored_categories == []
+
+
 def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:
     user_niche = UserNiche.create(
         id="market-1",
@@ -243,4 +308,36 @@ def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:
             user_niche_id="market-1",
             question="Why is this credible?",
         )
+    )
+
+
+def _seed_opportunity_context(dependencies: SignalApiDependencies) -> None:
+    dependencies.cluster_repository.save_clusters(
+        [
+            SignalCluster.create(
+                id="cluster-1",
+                theme="reporting",
+                summary="Teams need faster reports.",
+                signal_ids=["signal-1"],
+                frequency=1,
+                average_score=8.0,
+            )
+        ]
+    )
+    dependencies.opportunity_repository.save_opportunities(
+        [
+            Opportunity.create(
+                id="opportunity-1",
+                cluster_id="cluster-1",
+                title="Improve reports",
+                target_user="finance teams",
+                pain_summary="Reports are slow.",
+                why_it_matters="It wastes weekly ops time.",
+                suggested_wedge="Build a faster reporting assistant.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["signal-1"],
+                unmet_need_type="time",
+            )
+        ]
     )
