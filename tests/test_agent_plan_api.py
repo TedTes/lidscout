@@ -5,6 +5,7 @@ from api.routes.signals import (
     approve_market_agent_action,
     dismiss_market_agent_action,
     get_market_agent_plan,
+    list_market_agent_actions,
     propose_market_agent_actions,
 )
 from domain.agent import AgentFollowUp
@@ -78,6 +79,32 @@ def test_approve_market_agent_action_updates_status() -> None:
     )
 
     assert response["action"]["status"] == "approved"
+
+
+def test_list_market_agent_actions_returns_stored_actions() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    asyncio.run(
+        propose_market_agent_actions(
+            "market-1",
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    response = asyncio.run(
+        list_market_agent_actions(
+            "market-1",
+            status="proposed",
+            action_type="answer_follow_up",
+            limit=10,
+            dependencies=dependencies,
+            current_user=User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    assert len(response["actions"]) == 1
+    assert response["actions"][0]["action_type"] == "answer_follow_up"
 
 
 def test_dismiss_market_agent_action_updates_status() -> None:

@@ -754,6 +754,26 @@ async def propose_market_agent_actions(
     return {"actions": [_serialize_agent_action(action) for action in saved_actions]}
 
 
+@router.get("/markets/{market_id}/agent/actions")
+async def list_market_agent_actions(
+    market_id: str,
+    status: str | None = None,
+    action_type: str | None = None,
+    limit: int | None = None,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """List stored agent actions for one niche."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    actions = dependencies.agent_action_repository.list_agent_actions(
+        user_niche_id=market_id,
+        status=status,
+        action_type=action_type,
+        limit=limit,
+    )
+    return {"actions": [_serialize_agent_action(action) for action in actions]}
+
+
 @router.post("/markets/{market_id}/agent/actions/{action_id}/approve")
 async def approve_market_agent_action(
     market_id: str,
