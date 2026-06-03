@@ -10,6 +10,7 @@ from domain.niche import (
     UserNiche,
 )
 from domain.agent import (
+    AgentAction,
     AgentActivity,
     AgentAlert,
     AgentFeedback,
@@ -206,6 +207,33 @@ class AgentFollowUpRepository(Protocol):
         limit: int | None = None,
     ) -> list[AgentFollowUp]:
         """Load follow-ups, optionally filtered by scope and status."""
+        ...
+
+
+class AgentActionRepository(Protocol):
+    """Persistence boundary for planned agent actions."""
+
+    def save_agent_action(self, action: AgentAction) -> bool:
+        """Persist one planned action and return whether it changed."""
+        ...
+
+    def list_agent_actions(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+        action_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[AgentAction]:
+        """Load planned actions, optionally filtered by scope and state."""
+        ...
+
+    def update_agent_action_status(
+        self,
+        action_id: str,
+        status: str,
+    ) -> AgentAction | None:
+        """Update one planned action status and return the updated action."""
         ...
 
 
