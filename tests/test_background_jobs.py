@@ -168,6 +168,49 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertEqual(len(actions), 1)
         self.assertEqual(actions[0].action_type, "suggest_source")
 
+    def test_pipeline_skips_completed_duplicate_planned_actions(self):
+        dependencies = SignalApiDependencies(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            source_adapters=[FakeSourceAdapter()],
+            llm_client=FakeLLMClient(),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+        )
+        dependencies.user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                template_niche_id="niche-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+            )
+        )
+        dependencies.agent_action_repository.save_agent_action(
+            AgentAction.create(
+                id="completed-action",
+                user_niche_id="market-1",
+                action_type="suggest_source",
+                status="completed",
+                metadata={"source_count": 0},
+            )
+        )
+
+        run_configured_daily_pipeline(
+            recipient="founder@example.com",
+            market_id="market-1",
+            dependencies=dependencies,
+        )
+
+        actions = dependencies.agent_action_repository.list_agent_actions(
+            user_niche_id="market-1",
+        )
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].id, "completed-action")
+
     def test_pipeline_executes_approved_pause_source_actions_before_fetch(self):
         dependencies = SignalApiDependencies(
             post_repository=InMemoryPostRepository(),

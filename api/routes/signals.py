@@ -1,7 +1,6 @@
 """API endpoints for market signal workflows."""
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-import json
 import logging
 from typing import Any
 
@@ -18,6 +17,7 @@ from application.agent import (
     build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
+from application.agent.action_keys import agent_action_dedupe_key
 from application.opportunity import (
     OpportunitySynthesisContext,
     merge_near_duplicate_opportunities,
@@ -737,16 +737,15 @@ async def propose_market_agent_actions(
     planner_input = _agent_planner_input(market_id, dependencies, current_user)
     planned_actions = AgentPlannerService().plan_actions(planner_input)
     existing_keys = {
-        _agent_action_key(action)
+        agent_action_dedupe_key(action)
         for action in dependencies.agent_action_repository.list_agent_actions(
             user_niche_id=market_id,
-            status="proposed",
             limit=100,
         )
     }
     saved_actions: list[AgentAction] = []
     for action in planned_actions:
-        key = _agent_action_key(action)
+        key = agent_action_dedupe_key(action)
         if key in existing_keys:
             continue
         dependencies.agent_action_repository.save_agent_action(action)
@@ -2065,13 +2064,6 @@ def _serialize_agent_action(action: AgentAction) -> dict[str, Any]:
             action.completed_at.isoformat() if action.completed_at else None
         ),
     }
-
-
-def _agent_action_key(action: AgentAction) -> tuple[str, str]:
-    return (
-        action.action_type,
-        json.dumps(action.metadata, sort_keys=True, separators=(",", ":")),
-    )
 
 
 def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:

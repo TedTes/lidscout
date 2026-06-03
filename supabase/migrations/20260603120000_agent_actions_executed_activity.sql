@@ -23,6 +23,7 @@ alter table if exists agent_activity
                 'post_filtered',
                 'theme_promoted',
                 'theme_rejected',
+                'actions_proposed',
                 'actions_executed'
             )
         );

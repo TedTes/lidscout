@@ -60,6 +60,38 @@ def test_propose_market_agent_actions_persists_without_duplicates() -> None:
     assert stored_actions[0].metadata["follow_up_id"] == "follow-up-1"
 
 
+def test_propose_market_agent_actions_skips_completed_duplicates() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    dependencies.agent_action_repository.save_agent_action(
+        AgentAction.create(
+            id="completed-action",
+            user_niche_id="market-1",
+            action_type="answer_follow_up",
+            status="completed",
+            metadata={
+                "follow_up_id": "follow-up-1",
+                "question": "Previous wording",
+                "response": "Answered already.",
+            },
+        )
+    )
+
+    response = asyncio.run(
+        propose_market_agent_actions(
+            "market-1",
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    stored_actions = dependencies.agent_action_repository.list_agent_actions(
+        user_niche_id="market-1",
+    )
+    assert response["actions"] == []
+    assert len(stored_actions) == 1
+
+
 def test_approve_market_agent_action_updates_status() -> None:
     dependencies = SignalApiDependencies()
     _seed_market_with_follow_up(dependencies)

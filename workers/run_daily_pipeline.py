@@ -13,6 +13,7 @@ from application.agent import (
     AgentPlannerService,
     generate_threshold_alerts,
 )
+from application.agent.action_keys import agent_action_dedupe_key
 from application.extraction import ExtractionService
 from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from application.ingestion import (
@@ -588,16 +589,15 @@ def _persist_planned_agent_actions(config: PipelineConfig) -> None:
     )
     proposed_actions = AgentPlannerService().plan_actions(planner_input)
     existing_keys = {
-        _planned_agent_action_key(action)
+        agent_action_dedupe_key(action)
         for action in config.agent_action_repository.list_agent_actions(
             user_niche_id=config.user_niche_id,
-            status="proposed",
             limit=100,
         )
     }
     saved_count = 0
     for action in proposed_actions:
-        key = _planned_agent_action_key(action)
+        key = agent_action_dedupe_key(action)
         if key in existing_keys:
             continue
         if config.agent_action_repository.save_agent_action(action):
@@ -612,13 +612,6 @@ def _persist_planned_agent_actions(config: PipelineConfig) -> None:
             detail="The research agent planned follow-up work after this scan.",
             metadata={"action_count": saved_count},
         )
-
-
-def _planned_agent_action_key(action: AgentAction) -> tuple[str, str]:
-    return (
-        action.action_type,
-        json.dumps(action.metadata, sort_keys=True, separators=(",", ":")),
-    )
 
 
 def _record_threshold_alerts(

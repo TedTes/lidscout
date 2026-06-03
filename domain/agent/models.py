@@ -25,6 +25,7 @@ AgentActivityType = Literal[
     "post_filtered",
     "theme_promoted",
     "theme_rejected",
+    "actions_proposed",
     "actions_executed",
 ]
 
@@ -278,6 +279,7 @@ class AgentActivity:
             "post_filtered",
             "theme_promoted",
             "theme_rejected",
+            "actions_proposed",
             "actions_executed",
         }:
             raise ValueError("unsupported activity event type")
