@@ -3,7 +3,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
+from domain.agent import (
+    AgentActivity,
+    AgentFeedback,
+    AgentFollowUp,
+    AgentPreferences,
+)
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
@@ -16,6 +21,7 @@ from domain.source import SourceLocator
 from infrastructure.db import (
     SQLiteAgentActivityRepository,
     SQLiteAgentFeedbackRepository,
+    SQLiteAgentFollowUpRepository,
     SQLiteAgentPreferencesRepository,
     SQLiteClusterRepository,
     SQLiteOpportunityRepository,
@@ -285,6 +291,36 @@ class DatabaseRepositoryTests(unittest.TestCase):
                 repository.list_agent_activity(event_type="source_failed"),
                 [],
             )
+            repository.close()
+
+    def test_sqlite_agent_follow_up_repository_updates_status(self):
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "lidscout.sqlite"
+            repository = SQLiteAgentFollowUpRepository(database_path)
+            follow_up = AgentFollowUp.create(
+                id="follow-up-1",
+                user_niche_id="workspace-tools",
+                question="What evidence supports this?",
+                metadata={"source": "user"},
+                created_at=datetime(2026, 5, 25, 16, 25, tzinfo=UTC),
+            )
+
+            self.assertTrue(repository.save_agent_follow_up(follow_up))
+            updated = repository.update_agent_follow_up(
+                "follow-up-1",
+                status="answered",
+                response="The agent found two supporting quotes.",
+                metadata={"answered_by": "agent"},
+            )
+            repository.close()
+
+            repository = SQLiteAgentFollowUpRepository(database_path)
+            loaded = repository.list_agent_follow_ups(status="answered")
+            self.assertIsNotNone(updated)
+            self.assertEqual(loaded, [updated])
+            self.assertEqual(loaded[0].response, "The agent found two supporting quotes.")
+            self.assertEqual(loaded[0].metadata["source"], "user")
+            self.assertEqual(loaded[0].metadata["answered_by"], "agent")
             repository.close()
 
     def test_sqlite_pipeline_run_metrics_repository_saves_and_loads_metrics(self):

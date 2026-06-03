@@ -437,6 +437,47 @@ class AgentFollowUp:
             updated_at=updated_at or created,
         )
 
+    def answer(
+        self,
+        response: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        updated_at: datetime | None = None,
+    ) -> "AgentFollowUp":
+        """Return an answered copy of this follow-up."""
+        return AgentFollowUp.create(
+            id=self.id,
+            user_niche_id=self.user_niche_id,
+            question=self.question,
+            opportunity_id=self.opportunity_id,
+            cluster_id=self.cluster_id,
+            status="answered",
+            response=response,
+            metadata={**self.metadata, **(metadata or {})},
+            created_at=self.created_at,
+            updated_at=updated_at or datetime.now(tz=UTC),
+        )
+
+    def dismiss(
+        self,
+        *,
+        metadata: dict[str, Any] | None = None,
+        updated_at: datetime | None = None,
+    ) -> "AgentFollowUp":
+        """Return a dismissed copy of this follow-up."""
+        return AgentFollowUp.create(
+            id=self.id,
+            user_niche_id=self.user_niche_id,
+            question=self.question,
+            opportunity_id=self.opportunity_id,
+            cluster_id=self.cluster_id,
+            status="dismissed",
+            response=self.response,
+            metadata={**self.metadata, **(metadata or {})},
+            created_at=self.created_at,
+            updated_at=updated_at or datetime.now(tz=UTC),
+        )
+
 
 def _clean_list(values: list[str]) -> list[str]:
     cleaned: list[str] = []

@@ -372,6 +372,28 @@ class InMemoryAgentFollowUpRepository(AgentFollowUpRepository):
         )
         return follow_ups[:limit] if limit is not None else follow_ups
 
+    def update_agent_follow_up(
+        self,
+        follow_up_id: str,
+        *,
+        status: str,
+        response: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentFollowUp | None:
+        follow_up = self.follow_ups_by_id.get(follow_up_id)
+        if follow_up is None:
+            return None
+        updated = _updated_agent_follow_up(
+            follow_up,
+            status=status,
+            response=response,
+            metadata=metadata,
+        )
+        if updated is None:
+            return None
+        self.follow_ups_by_id[follow_up_id] = updated
+        return updated
+
 
 @dataclass
 class InMemoryPipelineRunMetricsRepository(PipelineRunMetricsRepository):
@@ -1286,6 +1308,45 @@ class SQLiteAgentFollowUpRepository(_SQLiteRepository, AgentFollowUpRepository):
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_follow_up_from_row(row) for row in rows]
 
+    def update_agent_follow_up(
+        self,
+        follow_up_id: str,
+        *,
+        status: str,
+        response: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentFollowUp | None:
+        row = self.connection.execute(
+            "SELECT * FROM agent_follow_ups WHERE id = ?",
+            (follow_up_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        updated = _updated_agent_follow_up(
+            _agent_follow_up_from_row(row),
+            status=status,
+            response=response,
+            metadata=metadata,
+        )
+        if updated is None:
+            return None
+        self.connection.execute(
+            """
+            UPDATE agent_follow_ups
+            SET status = ?, response = ?, metadata = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                updated.status,
+                updated.response,
+                _to_json(updated.metadata),
+                _datetime_to_text(updated.updated_at),
+                updated.id,
+            ),
+        )
+        self.connection.commit()
+        return updated
+
 
 class SQLitePipelineRunMetricsRepository(
     _SQLiteRepository,
@@ -1992,6 +2053,45 @@ class PostgresAgentFollowUpRepository(_PostgresRepository, AgentFollowUpReposito
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_follow_up_from_row(row) for row in rows]
 
+    def update_agent_follow_up(
+        self,
+        follow_up_id: str,
+        *,
+        status: str,
+        response: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AgentFollowUp | None:
+        row = self.connection.execute(
+            "SELECT * FROM agent_follow_ups WHERE id = %s",
+            (follow_up_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        updated = _updated_agent_follow_up(
+            _agent_follow_up_from_row(row),
+            status=status,
+            response=response,
+            metadata=metadata,
+        )
+        if updated is None:
+            return None
+        self.connection.execute(
+            """
+            UPDATE agent_follow_ups
+            SET status = %s, response = %s, metadata = %s::jsonb, updated_at = %s
+            WHERE id = %s
+            """,
+            (
+                updated.status,
+                updated.response,
+                _to_json(updated.metadata),
+                updated.updated_at,
+                updated.id,
+            ),
+        )
+        self.connection.commit()
+        return updated
+
 
 class PostgresAgentActionRepository(_PostgresRepository, AgentActionRepository):
     """Postgres-backed planned agent action repository."""
@@ -2447,6 +2547,36 @@ def _agent_follow_up_values(follow_up: AgentFollowUp, *, sqlite: bool) -> tuple:
             else follow_up.updated_at
         ),
     )
+
+
+def _updated_agent_follow_up(
+    follow_up: AgentFollowUp,
+    *,
+    status: str,
+    response: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> AgentFollowUp | None:
+    normalized_status = status.strip().lower()
+    if normalized_status == "answered":
+        if response is None:
+            return None
+        return follow_up.answer(response, metadata=metadata)
+    if normalized_status == "dismissed":
+        return follow_up.dismiss(metadata=metadata)
+    if normalized_status == "queued":
+        return AgentFollowUp.create(
+            id=follow_up.id,
+            user_niche_id=follow_up.user_niche_id,
+            question=follow_up.question,
+            opportunity_id=follow_up.opportunity_id,
+            cluster_id=follow_up.cluster_id,
+            status="queued",
+            response=response,
+            metadata={**follow_up.metadata, **(metadata or {})},
+            created_at=follow_up.created_at,
+            updated_at=datetime.now(tz=UTC),
+        )
+    return None
 
 
 def _agent_follow_up_from_row(row: sqlite3.Row) -> AgentFollowUp:

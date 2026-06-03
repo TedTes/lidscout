@@ -209,6 +209,17 @@ class AgentFollowUpRepository(Protocol):
         """Load follow-ups, optionally filtered by scope and status."""
         ...
 
+    def update_agent_follow_up(
+        self,
+        follow_up_id: str,
+        *,
+        status: str,
+        response: str | None = None,
+        metadata: dict | None = None,
+    ) -> AgentFollowUp | None:
+        """Update one follow-up state and return the updated follow-up."""
+        ...
+
 
 class AgentActionRepository(Protocol):
     """Persistence boundary for planned agent actions."""
