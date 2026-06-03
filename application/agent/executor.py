@@ -8,6 +8,7 @@ from application.ports import (
     NicheSourceRepository,
 )
 from domain.agent import AgentAction
+from domain.niche import NicheSource
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,20 @@ class AgentActionExecutor:
                     )
                     failed_count += 1
                 continue
+            if action.action_type == "suggest_source":
+                if self._suggest_source(action):
+                    self._action_repository.update_agent_action_status(
+                        action.id,
+                        "completed",
+                    )
+                    executed_count += 1
+                else:
+                    self._action_repository.update_agent_action_status(
+                        action.id,
+                        "failed",
+                    )
+                    failed_count += 1
+                continue
             skipped_count += 1
         return AgentActionExecutionResult(
             executed_count=executed_count,
@@ -129,3 +144,76 @@ class AgentActionExecutor:
             return False
         acknowledged = self._alert_repository.acknowledge_agent_alert(alert_id)
         return acknowledged is not None
+
+    def _suggest_source(self, action: AgentAction) -> bool:
+        source = self._source_from_action(action)
+        if source is None:
+            return False
+        return self._niche_source_repository.save_niche_sources([source]) > 0
+
+    def _source_from_action(self, action: AgentAction) -> NicheSource | None:
+        niche_id = str(action.metadata.get("niche_id") or "").strip()
+        locator = str(action.metadata.get("locator") or "").strip()
+        source_type = str(action.metadata.get("source_type") or "").strip()
+        source_family = str(action.metadata.get("source_family") or "").strip()
+        if not niche_id or not locator or not source_type or not source_family:
+            return None
+        try:
+            return NicheSource.create(
+                id=str(action.metadata.get("source_id") or "").strip() or None,
+                niche_id=niche_id,
+                locator=locator,
+                source_type=source_type,
+                source_family=source_family,
+                is_gate_free=bool(action.metadata.get("is_gate_free", False)),
+                company_id=_clean_optional_metadata(action.metadata.get("company_id")),
+                enabled=bool(action.metadata.get("enabled", True)),
+                limit=_int_optional_metadata(action.metadata.get("limit")),
+                scan_frequency=_clean_optional_metadata(
+                    action.metadata.get("scan_frequency"),
+                ),
+                buyer_voice_verified=bool(
+                    action.metadata.get("buyer_voice_verified", False),
+                ),
+                tier=_int_optional_metadata(action.metadata.get("tier")),
+                signal_quality_score=_float_optional_metadata(
+                    action.metadata.get("signal_quality_score"),
+                ),
+                access_mode=str(action.metadata.get("access_mode") or "unknown"),
+                requires_proxy=bool(action.metadata.get("requires_proxy", False)),
+                requires_auth=bool(action.metadata.get("requires_auth", False)),
+                recommended_cadence=_clean_optional_metadata(
+                    action.metadata.get("recommended_cadence"),
+                ),
+                options={
+                    "created_by_action_id": action.id,
+                    **dict(action.metadata.get("options") or {}),
+                },
+            )
+        except (TypeError, ValueError):
+            return None
+
+
+def _clean_optional_metadata(value: object) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def _int_optional_metadata(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_optional_metadata(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
