@@ -5,6 +5,7 @@ from application.agent.cold_start import (
     AgentColdStartService,
     AgentResearchBrief,
 )
+from application.agent.executor import AgentActionExecutionResult, AgentActionExecutor
 from application.agent.memory import AgentMemorySummary, build_agent_memory_summary
 from application.agent.planner import AgentPlannerInput, AgentPlannerService
 from application.agent.ranking import rank_opportunities_with_feedback
@@ -12,6 +13,8 @@ from application.agent.ranking import rank_opportunities_with_feedback
 __all__ = [
     "AgentColdStartPlan",
     "AgentColdStartService",
+    "AgentActionExecutionResult",
+    "AgentActionExecutor",
     "AgentMemorySummary",
     "AgentPlannerInput",
     "AgentPlannerService",
