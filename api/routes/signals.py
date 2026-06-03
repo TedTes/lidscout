@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from application.agent import (
     AgentColdStartPlan,
     AgentColdStartService,
+    AgentPlannerInput,
+    AgentPlannerService,
     build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
@@ -41,6 +43,7 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from domain.cluster import SignalCluster
 from domain.agent import (
+    AgentAction,
     AgentActivity,
     AgentAlert,
     AgentFeedback,
@@ -703,6 +706,18 @@ async def get_market_agent_cold_start(
         source_suggestions=[],
     )
     return _serialize_agent_cold_start_plan(plan)
+
+
+@router.get("/markets/{market_id}/agent/plan")
+async def get_market_agent_plan(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return the agent's current proposed next actions for one niche."""
+    planner_input = _agent_planner_input(market_id, dependencies, current_user)
+    actions = AgentPlannerService().plan_actions(planner_input)
+    return {"actions": [_serialize_agent_action(action) for action in actions]}
 
 
 @router.get("/markets/{market_id}/agent/brief")
@@ -1472,6 +1487,40 @@ def _get_owned_user_niche(
     return user_niche
 
 
+def _agent_planner_input(
+    market_id: str,
+    dependencies: SignalApiDependencies,
+    current_user: User | Any,
+) -> AgentPlannerInput:
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    niche_id = user_niche.template_niche_id
+    sources = (
+        dependencies.niche_source_repository.list_niche_sources(niche_id)
+        if niche_id is not None
+        else []
+    )
+    return AgentPlannerInput(
+        user_niche=user_niche,
+        preferences=dependencies.agent_preferences_repository.get_agent_preferences(
+            market_id,
+        ),
+        sources=sources,
+        recent_activity=dependencies.agent_activity_repository.list_agent_activity(
+            user_niche_id=market_id,
+            limit=25,
+        ),
+        alerts=dependencies.agent_alert_repository.list_agent_alerts(
+            user_niche_id=market_id,
+            limit=25,
+        ),
+        follow_ups=dependencies.agent_follow_up_repository.list_agent_follow_ups(
+            user_niche_id=market_id,
+            limit=25,
+        ),
+        opportunities=dependencies.opportunity_repository.list_opportunities(),
+    )
+
+
 def _scoped_signal_ids(
     dependencies: SignalApiDependencies,
     *,
@@ -1851,6 +1900,21 @@ def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
         "action": feedback.action,
         "reason": feedback.reason,
         "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
+    }
+
+
+def _serialize_agent_action(action: AgentAction) -> dict[str, Any]:
+    return {
+        "id": action.id,
+        "market_id": action.user_niche_id,
+        "action_type": action.action_type,
+        "status": action.status,
+        "reason": action.reason,
+        "metadata": action.metadata,
+        "created_at": action.created_at.isoformat() if action.created_at else None,
+        "completed_at": (
+            action.completed_at.isoformat() if action.completed_at else None
+        ),
     }
 
 
