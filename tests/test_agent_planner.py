@@ -7,6 +7,7 @@ def _user_niche() -> UserNiche:
     return UserNiche.create(
         id="market-1",
         user_id="user-1",
+        template_niche_id="niche-1",
         job="Build internal tools",
         buyer="Ops teams",
         category="devtools",
@@ -105,6 +106,10 @@ def test_agent_planner_suggests_source_without_healthy_sources() -> None:
     )
 
     assert actions[0].action_type == "suggest_source"
+    assert actions[0].metadata["niche_id"] == "niche-1"
+    assert actions[0].metadata["source_type"] == "hackernews_search"
+    assert actions[0].metadata["source_family"] == "technical_forum"
+    assert "Build+internal+tools" in str(actions[0].metadata["locator"])
 
 
 def test_agent_planner_sends_high_priority_alert() -> None:

@@ -1,5 +1,6 @@
 """Planning service for niche research agents."""
 from dataclasses import dataclass, field
+from urllib.parse import quote_plus
 
 from domain.agent import (
     AgentAction,
@@ -106,6 +107,7 @@ class AgentPlannerService:
             if source.enabled and source.health_status in {"active", "unknown"}
         ]
         if not healthy_sources:
+            source_metadata = _fallback_source_metadata(planner_input.user_niche)
             return [
                 AgentAction.create(
                     user_niche_id=planner_input.user_niche.id,
@@ -114,6 +116,7 @@ class AgentPlannerService:
                     metadata={
                         "planner_version": "v1",
                         "source_count": len(planner_input.sources),
+                        **source_metadata,
                     },
                 )
             ]
@@ -155,3 +158,25 @@ class AgentPlannerService:
                 },
             )
         ]
+
+
+def _fallback_source_metadata(user_niche: UserNiche) -> dict[str, object]:
+    if not user_niche.template_niche_id:
+        return {}
+    query = quote_plus(user_niche.job)
+    return {
+        "niche_id": user_niche.template_niche_id,
+        "locator": (
+            "https://hn.algolia.com/api/v1/search_by_date"
+            f"?query={query}&tags=comment&hitsPerPage=25"
+        ),
+        "source_type": "hackernews_search",
+        "source_family": "technical_forum",
+        "is_gate_free": True,
+        "enabled": True,
+        "limit": 25,
+        "tier": 2,
+        "signal_quality_score": 0.78,
+        "access_mode": "api",
+        "recommended_cadence": "daily",
+    }
