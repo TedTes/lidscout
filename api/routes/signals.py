@@ -1426,6 +1426,18 @@ async def get_market_pipeline_live_feed(
     }
 
 
+@router.post("/markets/{market_id}/pipeline/trigger")
+async def trigger_market_pipeline(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Enqueue a background pipeline run for one owned niche."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    _enqueue_pipeline(market_id)
+    return {"status": "queued"}
+
+
 def _enqueue_pipeline(market_id: str) -> None:
     """Push a pipeline task onto the Celery queue via the configured broker.
 

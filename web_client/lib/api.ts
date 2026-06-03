@@ -7,7 +7,13 @@ import { clearToken, getToken } from '@/lib/auth';
 import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
+  AgentAction,
   AgentActivityResponse,
+  AgentFollowUp,
+  AgentFollowUpRequest,
+  AgentFollowUpsResponse,
+  AgentPlan,
+  AgentRunsResponse,
   PipelineLiveFeedResponse,
   AgentColdStartPlan,
   AgentFeedback,
@@ -694,6 +700,86 @@ class SignalApiService {
       return response.data;
     } catch {
       return { cron: '0 8 * * *', next_run_at: null };
+    }
+  }
+
+  async triggerMarketPipeline(marketId: string): Promise<{ status: string }> {
+    try {
+      const response = await api.post<{ status: string }>(`/markets/${marketId}/pipeline/trigger`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to trigger scan');
+      throw error;
+    }
+  }
+
+  async getMarketAgentPlan(marketId: string): Promise<AgentPlan> {
+    try {
+      const response = await api.get<AgentPlan>(`/markets/${marketId}/agent/plan`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load agent plan');
+      throw error;
+    }
+  }
+
+  async proposeMarketAgentActions(marketId: string): Promise<AgentPlan> {
+    try {
+      const response = await api.post<AgentPlan>(`/markets/${marketId}/agent/actions/plan`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to plan agent actions');
+      throw error;
+    }
+  }
+
+  async getMarketAgentRuns(marketId: string): Promise<AgentRunsResponse> {
+    try {
+      const response = await api.get<AgentRunsResponse>(`/markets/${marketId}/agent/runs`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load agent runs');
+      throw error;
+    }
+  }
+
+  async getMarketAgentFollowUps(marketId: string): Promise<AgentFollowUpsResponse> {
+    try {
+      const response = await api.get<AgentFollowUpsResponse>(`/markets/${marketId}/agent/follow-ups`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load follow-ups');
+      throw error;
+    }
+  }
+
+  async createMarketAgentFollowUp(marketId: string, request: AgentFollowUpRequest): Promise<AgentFollowUp> {
+    try {
+      const response = await api.post<AgentFollowUp>(`/markets/${marketId}/agent/follow-ups`, request);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to submit question');
+      throw error;
+    }
+  }
+
+  async approveAgentAction(marketId: string, actionId: string): Promise<AgentAction> {
+    try {
+      const response = await api.post<{ action: AgentAction }>(`/markets/${marketId}/agent/actions/${actionId}/approve`);
+      return response.data.action;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to approve action');
+      throw error;
+    }
+  }
+
+  async dismissAgentAction(marketId: string, actionId: string): Promise<AgentAction> {
+    try {
+      const response = await api.post<{ action: AgentAction }>(`/markets/${marketId}/agent/actions/${actionId}/dismiss`);
+      return response.data.action;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to dismiss action');
+      throw error;
     }
   }
 }

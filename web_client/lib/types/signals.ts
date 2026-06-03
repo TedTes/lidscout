@@ -319,3 +319,60 @@ export type AgentMemorySummary = {
   source_notes: string[];
   feedback_notes: string[];
 };
+
+export type AgentActionType =
+  | 'scan_sources'
+  | 'pause_source'
+  | 'suggest_source'
+  | 'answer_follow_up'
+  | 'send_alert'
+  | 'wait';
+
+export type AgentActionStatus =
+  | 'proposed'
+  | 'approved'
+  | 'dismissed'
+  | 'completed'
+  | 'failed';
+
+export type AgentAction = {
+  id: string;
+  market_id: string;
+  action_type: AgentActionType;
+  status: AgentActionStatus;
+  reason: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+  completed_at: string | null;
+};
+
+export type AgentPlan = {
+  actions: AgentAction[];
+};
+
+export type AgentRunsResponse = {
+  runs: AgentActivity[];
+};
+
+export type AgentFollowUp = {
+  id: string;
+  market_id: string;
+  question: string;
+  opportunity_id: string | null;
+  cluster_id: string | null;
+  status: 'queued' | 'answered' | 'dismissed';
+  response: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AgentFollowUpsResponse = {
+  follow_ups: AgentFollowUp[];
+};
+
+export type AgentFollowUpRequest = {
+  question: string;
+  opportunity_id?: string | null;
+  cluster_id?: string | null;
+};

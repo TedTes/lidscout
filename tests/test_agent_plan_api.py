@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import patch
 
 from api.routes.signals import (
     SignalApiDependencies,
@@ -8,6 +9,7 @@ from api.routes.signals import (
     get_market_agent_plan,
     list_market_agent_actions,
     propose_market_agent_actions,
+    trigger_market_pipeline,
 )
 from domain.agent import AgentAction, AgentFollowUp
 from domain.niche import NicheSource, UserNiche
@@ -161,6 +163,23 @@ def test_execute_market_agent_actions_applies_approved_actions() -> None:
     assert response["failed_count"] == 0
     assert sources[0].health_status == "paused"
     assert actions[0].status == "completed"
+
+
+def test_trigger_market_pipeline_enqueues_owned_market() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+
+    with patch("api.routes.signals._enqueue_pipeline") as enqueue:
+        response = asyncio.run(
+            trigger_market_pipeline(
+                "market-1",
+                dependencies,
+                User(id="user-1", email="user@example.com"),
+            )
+        )
+
+    assert response == {"status": "queued"}
+    enqueue.assert_called_once_with("market-1")
 
 
 def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:
