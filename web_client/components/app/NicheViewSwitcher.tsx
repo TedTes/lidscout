@@ -6,12 +6,12 @@ import Link from 'next/link';
 type NicheView = 'gaps' | 'themes' | 'findings' | 'reports' | 'sources' | 'activity';
 
 const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => string }> = [
-  { id: 'gaps', label: 'Gaps', href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
-  { id: 'themes', label: 'Themes', href: marketId => `/markets/${encodeURIComponent(marketId)}/themes` },
-  { id: 'findings', label: 'Findings', href: marketId => `/markets/${encodeURIComponent(marketId)}/findings` },
-  { id: 'reports', label: 'Reports', href: marketId => `/markets/${encodeURIComponent(marketId)}/reports` },
-  { id: 'sources', label: 'Sources', href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
-  { id: 'activity', label: 'Activity', href: marketId => `/markets/${encodeURIComponent(marketId)}/activity` },
+  { id: 'gaps',     label: 'Opportunities',  href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
+  { id: 'themes',   label: 'Themes',         href: marketId => `/markets/${encodeURIComponent(marketId)}/themes` },
+  { id: 'findings', label: 'Findings',       href: marketId => `/markets/${encodeURIComponent(marketId)}/findings` },
+  { id: 'sources',  label: 'Sources',        href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
+  { id: 'reports',  label: 'Reports',        href: marketId => `/markets/${encodeURIComponent(marketId)}/reports` },
+  { id: 'activity', label: 'Agent Activity', href: marketId => `/markets/${encodeURIComponent(marketId)}/activity` },
 ];
 
 export function NicheViewSwitcher({

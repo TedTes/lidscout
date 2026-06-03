@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
+import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
   AgentActivity,
@@ -26,11 +26,11 @@ type ItemFeedbackAction = Extract<AgentFeedbackAction, 'save' | 'dismiss'>;
 type TrainingFeedbackAction = Extract<AgentFeedbackAction, 'more_like_this' | 'less_like_this'>;
 
 const STRENGTH_META: Record<EvidenceStrength, { label: string; dotCls: string; badgeCls: string }> = {
-  strong: { label: 'Strong signal', dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]', badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
-  moderate: { label: 'Moderate signal', dotCls: 'bg-amber-300 shadow-[0_0_7px_rgba(251,191,36,0.6)]', badgeCls: 'border-amber-400/35 bg-amber-400/15 text-amber-200' },
-  validated: { label: 'Validated gap', dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]', badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
-  emerging: { label: 'Emerging gap', dotCls: 'bg-amber-300 shadow-[0_0_7px_rgba(251,191,36,0.6)]', badgeCls: 'border-amber-400/35 bg-amber-400/15 text-amber-200' },
-  early: { label: 'Early signal', dotCls: 'bg-blue-300 shadow-[0_0_7px_rgba(96,165,250,0.55)]', badgeCls: 'border-blue-400/35 bg-blue-400/12 text-blue-200' },
+  strong:    { label: 'Strong signal',    dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]',   badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
+  moderate:  { label: 'Moderate signal',  dotCls: 'bg-amber-300 shadow-[0_0_7px_rgba(251,191,36,0.6)]',      badgeCls: 'border-amber-400/35 bg-amber-400/15 text-amber-200' },
+  validated: { label: 'Validated gap',    dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]',   badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
+  emerging:  { label: 'Emerging gap',     dotCls: 'bg-amber-300 shadow-[0_0_7px_rgba(251,191,36,0.6)]',      badgeCls: 'border-amber-400/35 bg-amber-400/15 text-amber-200' },
+  early:     { label: 'Early signal',     dotCls: 'bg-blue-300 shadow-[0_0_7px_rgba(96,165,250,0.55)]',      badgeCls: 'border-blue-400/35 bg-blue-400/12 text-blue-200' },
 };
 
 function evidenceStrength(opportunity: Opportunity): EvidenceStrength {
@@ -55,13 +55,7 @@ function plural(n: number, singular: string, pluralForm = `${singular}s`) {
 
 function unmetNeedLabel(type: Opportunity['unmet_need_type']) {
   if (!type) return null;
-  return {
-    time: 'Time sink',
-    money: 'Cost pressure',
-    effort: 'Manual effort',
-    capability: 'Missing capability',
-    fit: 'Poor fit',
-  }[type] ?? null;
+  return { time: 'Time sink', money: 'Cost pressure', effort: 'Manual effort', capability: 'Missing capability', fit: 'Poor fit' }[type] ?? null;
 }
 
 function formatElapsed(isoString: string | null | undefined): string | null {
@@ -84,8 +78,7 @@ function IconBookmark({ filled }: { filled?: boolean }) {
 function IconX() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
@@ -107,7 +100,6 @@ function IconThumbDown() {
     </svg>
   );
 }
-
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
@@ -181,6 +173,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   }, [marketId]);
 
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+  const [lastEventAt, setLastEventAt] = useState<string | null>(null);
   const [progressActivity, setProgressActivity] = useState<AgentActivity[]>([]);
   const [liveFeed, setLiveFeed] = useState<PipelineLiveFeedResponse>({ current_item: null, recent_decisions: [] });
   const prevPipelineStatusRef = useRef<string | null>(null);
@@ -216,13 +209,14 @@ export default function NicheWorkspacePage({ params }: Props) {
         const prev = prevPipelineStatusRef.current;
         prevPipelineStatusRef.current = res.status;
         setPipelineStatus(res.status);
+        if (res.last_event_at) setLastEventAt(res.last_event_at);
         if (prev === 'running' && res.status === 'done') {
           refreshData();
           setProgressActivity([]);
         }
       } catch (err: unknown) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 404) clearInterval(intervalRef.current ?? undefined);
+        const s = (err as { response?: { status?: number } })?.response?.status;
+        if (s === 404) clearInterval(intervalRef.current ?? undefined);
       }
     };
     poll();
@@ -279,10 +273,6 @@ export default function NicheWorkspacePage({ params }: Props) {
 
   const clusterById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters]);
 
-  const savedIds = useMemo(
-    () => new Set([...itemFeedbackMap].filter(([, v]) => v === 'save').map(([k]) => k)),
-    [itemFeedbackMap]
-  );
   const dismissedIds = useMemo(
     () => new Set([...itemFeedbackMap].filter(([, v]) => v === 'dismiss').map(([k]) => k)),
     [itemFeedbackMap]
@@ -291,10 +281,6 @@ export default function NicheWorkspacePage({ params }: Props) {
   const visibleOpportunities = opportunities.filter(o => !dismissedIds.has(o.id));
 
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
-  const subtitle = niche?.description
-    || coldStart?.brief?.objective
-    || (niche?.target_user ? `For ${niche.target_user}` : null)
-    || 'Ranked product gaps backed by public evidence.';
 
   const handleItemFeedback = async (opportunityId: string, action: ItemFeedbackAction) => {
     const previousAction = itemFeedbackMap.get(opportunityId);
@@ -338,68 +324,67 @@ export default function NicheWorkspacePage({ params }: Props) {
     }
   };
 
+  const handleRunScan = async () => {
+    signalApi.triggerMarketPipeline(marketId).catch(() => {});
+  };
+
   const needsSetup = coldStart?.status === 'setup_needed' && opportunities.length === 0;
 
   return (
     <DashboardShell
       title={title}
-      subtitle={subtitle}
       actions={
-        <div className="grid w-full gap-2 lg:grid-cols-[minmax(140px,1fr)_auto_minmax(48px,1fr)] lg:items-start lg:gap-3">
-          {pipelineStatus === 'running' ? (
-            <div className="flex min-h-9 min-w-0 items-center">
-              <AgentStatusPill
-                pipelineStatus={pipelineStatus}
-                runStartedAt={runStartedEvent?.created_at}
-              />
-            </div>
-          ) : (
-            <div className="hidden lg:block" />
-          )}
+        <div className="w-full space-y-2.5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <h1 className="min-w-0 flex-1 truncate text-xl font-semibold leading-tight tracking-tight text-slate-100 sm:text-2xl">
+              {title || <span className="invisible">.</span>}
+            </h1>
+            {pipelineStatus === 'running' && (
+              <AgentStatusPill pipelineStatus={pipelineStatus} runStartedAt={runStartedEvent?.created_at} />
+            )}
+            <button
+              onClick={handleRunScan}
+              disabled={pipelineStatus === 'running'}
+              className="shrink-0 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15 disabled:opacity-50"
+            >
+              Run Deep Scan
+            </button>
+          </div>
           <NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />
-          <div className="hidden lg:block" />
         </div>
       }
     >
-      {status === 'loading' && <LoadingPanel label="Loading gaps" />}
+      {status === 'loading' && <LoadingPanel label="Loading opportunities" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
       {status === 'ready' && (
-        <div className="space-y-4 animate-fade-in lg:space-y-5">
-
-          {pipelineStatus === 'running' && opportunities.length === 0 && (
-            <PipelineProgressStrip
-              activity={progressActivity}
-              runStartedAt={runStartedEvent?.created_at}
-              currentItem={liveFeed.current_item}
-            />
-          )}
-
+        <div className="animate-fade-in">
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
           ) : (
-            <>
-              {isRunningFirstScan ? (
-                <p className="text-xs text-slate-600">Awaiting first candidates from this scan</p>
-              ) : null}
-              {feedbackError && (
-                <p className="text-xs text-rose-400">{feedbackError}</p>
-              )}
+            <div className="grid gap-5 xl:grid-cols-[1fr_272px] xl:items-start">
 
-              {visibleOpportunities.length === 0 ? (
-                isRunningFirstScan ? (
-                  <p className="mt-2 text-xs text-slate-600">
-                    Candidates will appear here when the agent finishes grouping evidence.
-                  </p>
+              {/* ── Left: opportunities list ── */}
+              <div className="space-y-3">
+                <OpportunitiesStatsBar
+                  count={visibleOpportunities.length}
+                  lastEventAt={lastEventAt}
+                  isRunning={pipelineStatus === 'running'}
+                />
+
+                {feedbackError && <p className="text-xs text-rose-400">{feedbackError}</p>}
+
+                {visibleOpportunities.length === 0 ? (
+                  isRunningFirstScan ? (
+                    <p className="mt-2 text-xs text-slate-600">Candidates will appear here as the agent runs.</p>
+                  ) : (
+                    <EmptyPanel
+                      title="No candidates surfaced yet"
+                      detail="Opportunity candidates appear after active sources are scanned."
+                    />
+                  )
                 ) : (
-                  <EmptyPanel
-                    title="No candidates surfaced yet"
-                    detail="Opportunity candidates appear after active sources are scanned."
-                  />
-                )
-              ) : (
-                <div className="space-y-4">
-                  {visibleOpportunities.map((opportunity, index) => (
+                  visibleOpportunities.map((opportunity, index) => (
                     <GapCard
                       key={opportunity.id}
                       rank={index + 1}
@@ -412,10 +397,20 @@ export default function NicheWorkspacePage({ params }: Props) {
                       onItemFeedback={action => handleItemFeedback(opportunity.id, action)}
                       onTrainingFeedback={action => handleTrainingFeedback(opportunity.id, action)}
                     />
-                  ))}
-                </div>
-              )}
-            </>
+                  ))
+                )}
+              </div>
+
+              {/* ── Right: live agent panel ── */}
+              <LiveAgentPanel
+                pipelineStatus={pipelineStatus}
+                progressActivity={progressActivity}
+                liveFeed={liveFeed}
+                runStartedAt={runStartedEvent?.created_at}
+                marketId={marketId}
+                onRunScan={handleRunScan}
+              />
+            </div>
           )}
         </div>
       )}
@@ -425,15 +420,8 @@ export default function NicheWorkspacePage({ params }: Props) {
 
 // ── Agent Status Pill ──────────────────────────────────────────────────────────
 
-function AgentStatusPill({
-  pipelineStatus,
-  runStartedAt,
-}: {
-  pipelineStatus: string | null;
-  runStartedAt: string | null | undefined;
-}) {
+function AgentStatusPill({ pipelineStatus, runStartedAt }: { pipelineStatus: string | null; runStartedAt: string | null | undefined }) {
   if (!pipelineStatus || pipelineStatus === 'pending') return null;
-
   if (pipelineStatus === 'running') {
     const elapsed = formatElapsed(runStartedAt);
     return (
@@ -443,7 +431,6 @@ function AgentStatusPill({
       </div>
     );
   }
-
   if (pipelineStatus === 'failed') {
     return (
       <div className="flex items-center gap-1.5 rounded-full border border-rose-500/20 bg-rose-500/[0.06] px-3 py-1.5 text-xs text-rose-400 whitespace-nowrap">
@@ -452,199 +439,14 @@ function AgentStatusPill({
       </div>
     );
   }
-
   return null;
 }
 
-// ── Pipeline Progress Strip ────────────────────────────────────────────────────
+// ── Run grouping helper (used by PipelineProgressStrip) ────────────────────────
 
 function currentRunEvents(activity: AgentActivity[]): AgentActivity[] {
   const startIdx = activity.findIndex(a => a.event_type === 'run_started');
   return startIdx >= 0 ? activity.slice(0, startIdx + 1) : activity;
-}
-
-function PipelineProgressStrip({
-  activity,
-  runStartedAt,
-  currentItem,
-}: {
-  activity: AgentActivity[];
-  runStartedAt?: string | null;
-  currentItem?: AgentActivity | null;
-}) {
-  const [sourcesExpanded, setSourcesExpanded] = useState(false);
-  const run = currentRunEvents(activity);
-  const ev = (type: string) => run.find(a => a.event_type === type);
-
-  const sourcesEv = ev('sources_scanned');
-  const filteredEv = ev('posts_filtered');
-  const extractedEv = ev('signals_extracted');
-  const gapsEv = ev('gaps_synthesized');
-
-  const sourceCount = (sourcesEv?.metadata?.success_count ?? sourcesEv?.metadata?.source_count) as number | undefined;
-  const postCount = sourcesEv?.metadata?.post_count as number | undefined;
-  const relevantCount = filteredEv?.metadata?.relevant_count as number | undefined;
-  const filteredCount = filteredEv?.metadata?.filtered_count as number | undefined;
-  const signalCount = extractedEv?.metadata?.signal_count as number | undefined;
-  const gapCount = gapsEv?.metadata?.gap_count as number | undefined;
-
-  type Step = {
-    key: string;
-    label: string;
-    done: boolean;
-    completedDetail: string | null;
-    activeText: string;
-    futureText: string;
-  };
-
-  const steps: Step[] = [
-    {
-      key: 'sources',
-      label: 'Scanning sources',
-      done: !!sourcesEv,
-      completedDetail: sourceCount != null && postCount != null
-        ? `${plural(sourceCount, 'source')} · ${plural(postCount, 'post')}`
-        : null,
-      activeText: 'Fetching posts from active sources',
-      futureText: 'Waiting for sources',
-    },
-    {
-      key: 'filter',
-      label: 'Reviewing posts',
-      done: !!filteredEv,
-      completedDetail: relevantCount != null && filteredCount != null
-        ? `${plural(relevantCount, 'relevant')} · ${plural(filteredCount, 'filtered')}`
-        : null,
-      activeText: 'Checking posts against the research brief',
-      futureText: 'Waiting for post review',
-    },
-    {
-      key: 'signals',
-      label: 'Extracting findings',
-      done: !!extractedEv,
-      completedDetail: signalCount != null ? `${plural(signalCount, 'finding')} extracted` : null,
-      activeText: 'Extracting structured pain signals',
-      futureText: 'Waiting for findings',
-    },
-    {
-      key: 'gaps',
-      label: 'Identifying candidates',
-      done: !!gapsEv,
-      completedDetail: gapCount != null ? `${plural(gapCount, 'candidate')} surfaced` : null,
-      activeText: 'Grouping evidence into candidate gaps',
-      futureText: 'Waiting for themes',
-    },
-  ];
-
-  const activeIdx = steps.findLastIndex(s => s.done) + 1;
-  const fallbackText = activeIdx < steps.length ? steps[activeIdx].activeText : null;
-  const currentlyText = currentItem
-    ? `${currentItem.metadata?.title as string || 'post'} · ${currentItem.metadata?.source_label as string || ''}`
-    : fallbackText;
-  const elapsed = formatElapsed(runStartedAt);
-
-  return (
-    <div className="space-y-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.04] px-5 py-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.7)]" />
-          <p className="text-xs font-semibold text-violet-300">Research agent running…</p>
-        </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-          {elapsed && <span>Started {elapsed}</span>}
-          <span className="text-slate-800">·</span>
-          <span>Typical scan: 8–15 min</span>
-        </div>
-      </div>
-
-      <div className="flex items-start gap-1.5">
-        {steps.map((step, i) => {
-          const isActive = i === activeIdx;
-          const isDone = step.done;
-          const isFuture = i > activeIdx;
-          return (
-            <div key={step.key} className="flex min-w-0 flex-1 items-center gap-1.5">
-              <div className={`flex min-w-0 flex-1 flex-col rounded-lg border px-3 py-2 transition-colors ${
-                isDone
-                  ? 'border-violet-500/25 bg-violet-500/[0.07]'
-                  : isActive
-                  ? 'border-slate-700/60 bg-slate-800/40'
-                  : 'border-slate-800/40 bg-transparent'
-              }`}>
-                <div className="flex items-center gap-1.5">
-                  {isDone ? (
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-violet-400">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  ) : isActive ? (
-                    <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-slate-500" />
-                  ) : (
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-800" />
-                  )}
-                  <span className={`truncate text-[11px] font-medium ${isDone ? 'text-violet-300' : isActive ? 'text-slate-400' : 'text-slate-700'}`}>
-                    {step.label}
-                  </span>
-                  {isDone && step.key === 'sources' && (
-                    <button
-                      onClick={() => setSourcesExpanded(v => !v)}
-                      className="ml-auto shrink-0 text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
-                    >
-                      {sourcesExpanded ? '▲' : '▼'}
-                    </button>
-                  )}
-                </div>
-                {isDone && step.completedDetail && (
-                  <p className="mt-0.5 truncate pl-3 text-[10px] text-slate-500">{step.completedDetail}</p>
-                )}
-                {isDone && step.key === 'sources' && sourcesExpanded && (() => {
-                  const sourceList = sourcesEv?.metadata?.sources as Array<{
-                    source_label: string; post_count: number;
-                    posts: Array<{ title: string; url: string | null; post_date: string | null }>;
-                  }> | undefined;
-                  if (!sourceList?.length) {
-                    return <p className="mt-1 pl-3 text-[10px] text-slate-600">Source-level counts were not recorded for this run.</p>;
-                  }
-                  return (
-                    <div className="mt-1.5 space-y-2 pl-3">
-                      {sourceList.map((src, si) => (
-                        <div key={si}>
-                          <p className="text-[10px] font-semibold text-slate-500">{src.source_label} · {plural(src.post_count, 'post')}</p>
-                          <ul className="mt-0.5 space-y-0.5">
-                            {src.posts.slice(0, 8).map((p, pi) => (
-                              <li key={pi} className="truncate text-[10px] text-slate-600">
-                                {p.url
-                                  ? <a href={p.url} target="_blank" rel="noopener noreferrer" className="hover:text-slate-400 hover:underline">{p.title || p.url}</a>
-                                  : <span>{p.title || '(untitled)'}</span>}
-                              </li>
-                            ))}
-                            {src.posts.length > 8 && (
-                              <li className="text-[10px] text-slate-700">+{src.posts.length - 8} more</li>
-                            )}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-                {isFuture && (
-                  <p className="mt-0.5 truncate pl-3 text-[10px] text-slate-700">{step.futureText}</p>
-                )}
-              </div>
-              {i < steps.length - 1 && (
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${isDone ? 'text-violet-500/40' : 'text-slate-800'}`}>
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {currentlyText && (
-        <p className="text-[11px] text-slate-600">Currently: {currentlyText}</p>
-      )}
-    </div>
-  );
 }
 
 // ── Cold-start setup panel ─────────────────────────────────────────────────────
@@ -682,17 +484,171 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
         </ul>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link
-          href={`/markets/${encodeURIComponent(marketId)}/sources`}
-          className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15"
-        >
+        <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15">
           Add sources
         </Link>
-        <Link
-          href={`/markets/${encodeURIComponent(marketId)}/sources`}
-          className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-        >
+        <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200">
           Add companies
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── Opportunities stats bar ────────────────────────────────────────────────────
+
+function OpportunitiesStatsBar({ count, lastEventAt, isRunning }: { count: number; lastEventAt: string | null; isRunning: boolean }) {
+  const lastScan = relativeTime(lastEventAt);
+  return (
+    <div className="flex items-center gap-2 text-xs text-slate-500">
+      <span className="font-semibold text-slate-300">
+        {count} {count === 1 ? 'Opportunity' : 'Opportunities'}
+      </span>
+      {isRunning ? (
+        <span className="flex items-center gap-1.5 text-violet-400">
+          · <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" /> Scanning now
+        </span>
+      ) : lastScan ? (
+        <span>· Last scan: {lastScan}</span>
+      ) : null}
+    </div>
+  );
+}
+
+// ── Live agent panel ───────────────────────────────────────────────────────────
+
+function AgentRow({
+  name,
+  event,
+  currentItem,
+  isActive,
+}: {
+  name: string;
+  event: AgentActivity | undefined;
+  currentItem: AgentActivity | null | undefined;
+  isActive: boolean;
+}) {
+  const dotCls = event
+    ? 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.4)]'
+    : isActive
+    ? 'animate-pulse bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)]'
+    : 'bg-slate-800';
+
+  const detail = isActive && currentItem
+    ? (currentItem.metadata?.title as string) || 'Processing…'
+    : event?.detail ?? null;
+
+  const time = relativeTime(event?.created_at ?? null);
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center gap-2">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
+        <span className="text-xs font-semibold text-slate-300">{name}</span>
+        {time && <span className="ml-auto text-[10px] text-slate-600">{time}</span>}
+      </div>
+      {detail && (
+        <p className="ml-3.5 mt-0.5 truncate text-[11px] text-slate-500">· {detail}</p>
+      )}
+      {!detail && !event && !isActive && (
+        <p className="ml-3.5 mt-0.5 text-[11px] text-slate-700">Waiting</p>
+      )}
+    </div>
+  );
+}
+
+function LiveAgentPanel({
+  pipelineStatus,
+  progressActivity,
+  liveFeed,
+  runStartedAt,
+  marketId,
+  onRunScan,
+}: {
+  pipelineStatus: string | null;
+  progressActivity: AgentActivity[];
+  liveFeed: PipelineLiveFeedResponse;
+  runStartedAt: string | null | undefined;
+  marketId: string;
+  onRunScan: () => void;
+}) {
+  const isRunning = pipelineStatus === 'running';
+
+  const sourcesEv = progressActivity.find(a => a.event_type === 'sources_scanned');
+  const signalsEv = progressActivity.find(a => a.event_type === 'signals_extracted');
+  const gapsEv = progressActivity.find(a => a.event_type === 'gaps_synthesized');
+
+  const stepsCompleted = [sourcesEv, signalsEv, gapsEv].filter(Boolean).length;
+  const progressPct = isRunning ? Math.round((stepsCompleted / 3) * 100) : 0;
+
+  return (
+    <div className="sticky top-4 overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/50">
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+        <div className="flex items-center gap-2">
+          {isRunning && (
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)]" />
+          )}
+          <span className="text-sm font-semibold text-slate-200">Agent Activity</span>
+        </div>
+        {isRunning && (
+          <span className="text-xs font-bold tabular-nums text-violet-300">{progressPct}%</span>
+        )}
+      </div>
+
+      {isRunning && (
+        <div className="border-b border-white/[0.04] px-4 pb-3 pt-2.5">
+          <div className="mb-1.5 flex items-center justify-between text-[11px]">
+            <span className="text-slate-500">Live Agent Activity</span>
+            {runStartedAt && <span className="text-slate-600">{relativeTime(runStartedAt)}</span>}
+          </div>
+          <div className="h-1 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-violet-500 transition-all duration-700"
+              style={{ width: `${Math.max(progressPct, 4)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="divide-y divide-white/[0.04] px-4">
+        <AgentRow
+          name="Research Scout"
+          event={sourcesEv}
+          currentItem={isRunning && !sourcesEv ? liveFeed.current_item : null}
+          isActive={isRunning && !sourcesEv}
+        />
+        <AgentRow
+          name="Signal Analyst"
+          event={signalsEv}
+          currentItem={isRunning && !!sourcesEv && !signalsEv ? liveFeed.current_item : null}
+          isActive={isRunning && !!sourcesEv && !signalsEv}
+        />
+        <AgentRow
+          name="Gap Synthesizer"
+          event={gapsEv}
+          currentItem={null}
+          isActive={isRunning && !!signalsEv && !gapsEv}
+        />
+      </div>
+
+      <div className="space-y-2 border-t border-white/[0.06] px-4 py-3">
+        {isRunning ? (
+          <button disabled className="w-full cursor-default rounded-lg border border-slate-700/50 py-2 text-sm font-semibold text-slate-500">
+            Scanning…
+          </button>
+        ) : (
+          <button
+            onClick={onRunScan}
+            className="w-full rounded-lg border border-violet-500/25 bg-violet-500/10 py-2 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/15"
+          >
+            Run Deep Scan
+          </button>
+        )}
+        <Link
+          href={`/markets/${encodeURIComponent(marketId)}/activity`}
+          className="block text-center text-[11px] text-violet-400 transition hover:text-violet-300"
+        >
+          Configure agents for this niche →
         </Link>
       </div>
     </div>
@@ -722,105 +678,102 @@ function GapCard({
   onItemFeedback: (action: ItemFeedbackAction) => void;
   onTrainingFeedback: (action: TrainingFeedbackAction) => void;
 }) {
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [askSent, setAskSent] = useState(false);
+
   const saved = itemAction === 'save';
   const dismissed = itemAction === 'dismiss';
-  const needLabel = unmetNeedLabel(opportunity.unmet_need_type);
   const sourceCount = opportunity.evidence_source_count ?? 0;
-  const companyBreadth = opportunity.company_count > 0
-    ? `${opportunity.company_count}${opportunity.market_company_count != null ? ` of ${opportunity.market_company_count}` : ''} ${opportunity.company_count === 1 ? 'company' : 'companies'}`
-    : null;
+  const confidence = opportunity.confidence ? Math.round(opportunity.confidence * 100) : null;
+  const needLabel = unmetNeedLabel(opportunity.unmet_need_type);
+
+  const bullets: string[] = [
+    opportunity.pain_summary,
+    opportunity.why_it_matters,
+    opportunity.suggested_wedge,
+  ].filter(Boolean) as string[];
+
+  const evidenceHref = theme
+    ? `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(theme.id)}`
+    : `/markets/${encodeURIComponent(marketId)}/findings`;
+
+  async function handleAskDeeper() {
+    if (askSent) return;
+    try {
+      await signalApi.createMarketAgentFollowUp(marketId, {
+        question: `Tell me more about: ${opportunity.title}`,
+      });
+      setAskSent(true);
+      setTimeout(() => setAskSent(false), 3000);
+    } catch { /* silent */ }
+  }
 
   return (
-    <article className={`overflow-hidden rounded-xl border bg-slate-900/35 shadow-[0_18px_60px_rgba(0,0,0,0.18)] transition-colors hover:border-slate-700/80 ${dismissed ? 'border-slate-800/40 opacity-50' : 'border-slate-800/90'}`}>
-      <div className="border-b border-white/[0.06] bg-white/[0.035] px-5 py-4">
-        <div className="flex items-start gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-700/70 bg-slate-900/80 text-lg font-semibold tabular-nums text-slate-200">
-            {rank}
+    <article className={`overflow-hidden rounded-xl border bg-slate-900/40 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition hover:border-slate-700/70 ${dismissed ? 'border-slate-800/40 opacity-40' : 'border-slate-800/80'}`}>
+
+      {/* ── Card header (always visible, clickable to expand reasoning) ── */}
+      <div
+        className="flex cursor-pointer items-center gap-3 px-4 py-3 transition hover:bg-white/[0.015]"
+        onClick={() => setReasoningOpen(v => !v)}
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-700/60 bg-slate-950/70 text-xs font-bold tabular-nums text-slate-400">
+          {rank}
+        </span>
+        <p className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-snug tracking-tight text-slate-100 sm:text-base">
+          {opportunity.title}
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold ${meta.badgeCls}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${meta.dotCls}`} />
+            {meta.label}
+            {confidence != null && confidence > 0 && (
+              <span className="opacity-60">· {confidence}%</span>
+            )}
+          </span>
+          <svg
+            width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            className={`shrink-0 text-slate-600 transition-transform duration-200 ${reasoningOpen ? '-rotate-180' : ''}`}
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </div>
+
+      {/* ── Agent Reasoning (expandable) ── */}
+      {reasoningOpen && (
+        <div className="border-t border-white/[0.04] px-4 pb-3 pt-2.5">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-600">Agent Reasoning</p>
+          <div className="space-y-2">
+            {bullets.slice(0, 3).map((b, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-emerald-400">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <p className="text-xs leading-relaxed text-slate-400 line-clamp-2">{b}</p>
+              </div>
+            ))}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex max-w-4xl flex-wrap items-center gap-x-3 gap-y-2">
-              <h3 className="text-lg font-semibold leading-snug text-slate-50">{opportunity.title}</h3>
-              <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold ${meta.badgeCls}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${meta.dotCls}`} />
-                {meta.label}
-              </span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-medium text-slate-500">
-                {plural(opportunity.evidence_count, 'quote')} · {plural(sourceCount, 'source')}
-              </span>
+          {(needLabel || theme) && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               {needLabel && (
                 <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] font-medium text-slate-400">{needLabel}</span>
               )}
               {theme && <ClusterLink id={theme.id} marketId={marketId}>{theme.theme}</ClusterLink>}
-              {companyBreadth && (
-                <span className="rounded-md bg-slate-800/50 px-2 py-0.5 text-[11px] text-slate-500">Across {companyBreadth}</span>
-              )}
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-5 py-4">
-        {opportunity.pain_summary && (
-          <section>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Observed pain</p>
-            <p className="max-w-4xl text-sm leading-relaxed text-slate-300">{opportunity.pain_summary}</p>
-          </section>
-        )}
-
-        <div className="my-3 h-px bg-white/[0.07]" />
-
-        <div className="grid gap-4 md:grid-cols-2">
-          {opportunity.target_user && (
-            <section className="md:border-r md:border-white/[0.07] md:pr-4">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Affected user</p>
-              <p className="text-sm leading-relaxed text-slate-200">{opportunity.target_user}</p>
-            </section>
-          )}
-          {opportunity.suggested_wedge && (
-            <section>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Possible wedge</p>
-              <p className="text-sm leading-relaxed text-violet-200">{opportunity.suggested_wedge}</p>
-            </section>
           )}
         </div>
+      )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-slate-800/80 bg-slate-950/30 px-3 py-2.5">
-          <span className="text-sm text-slate-400">
-            Evidence trail:
-            {' '}<span className="font-semibold text-slate-200">{plural(opportunity.evidence_count, 'quote')}</span>
-            {' '}· <span className="font-semibold text-slate-200">{plural(sourceCount, 'source')}</span>
-          </span>
-          <Link
-            href={theme ? `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(theme.id)}` : `/markets/${encodeURIComponent(marketId)}/findings`}
-            className="rounded-md border border-blue-500/25 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold text-blue-200 transition hover:bg-blue-500/15"
-          >
-            View evidence
-          </Link>
-          {opportunity.company_names.slice(0, 4).map(name => (
-            <span key={name} className="rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] text-slate-400">{name}</span>
-          ))}
-          {opportunity.company_names.length > 4 && (
-            <span className="text-[11px] text-slate-600">+{opportunity.company_names.length - 4}</span>
-          )}
-        </div>
+      {/* ── Footer: evidence + actions ── */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/[0.04] px-4 py-2.5">
+        <Link
+          href={evidenceHref}
+          className="rounded-md border border-blue-500/20 bg-blue-500/[0.07] px-2.5 py-1 text-[11px] font-semibold text-blue-300 transition hover:bg-blue-500/10"
+        >
+          View {plural(opportunity.evidence_count, 'quote')} · {plural(sourceCount, 'source')}
+        </Link>
 
-        {opportunity.why_it_matters && (
-          <p className="mt-3 text-xs leading-relaxed text-slate-500">{opportunity.why_it_matters}</p>
-        )}
-
-        {evidenceStrength(opportunity) === 'early' && (
-          <div className="mt-3 rounded-lg border border-blue-400/20 bg-blue-400/[0.05] px-3 py-2">
-            <p className="text-xs leading-relaxed text-blue-100/75">
-              Verification note: early lead. The agent found a narrow signal and needs more evidence before this should drive roadmap decisions.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] px-5 py-3">
-        <div className="flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-1.5">
           <FeedbackButton
             active={saved}
             onClick={() => onItemFeedback('save')}
@@ -832,11 +785,19 @@ function GapCard({
             active={dismissed}
             onClick={() => onItemFeedback('dismiss')}
             icon={<IconX />}
-            label={dismissed ? 'Dismissed' : 'Dismiss'}
+            label="Dismiss"
             activeClass="border-slate-600 text-slate-400"
           />
-        </div>
-        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleAskDeeper}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
+              askSent
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                : 'border-violet-500/20 bg-violet-500/[0.06] text-violet-300 hover:bg-violet-500/12'
+            }`}
+          >
+            {askSent ? 'Sent ✓' : 'Ask deeper'}
+          </button>
           <IconFeedbackButton
             active={trainingAction === 'more_like_this'}
             onClick={() => onTrainingFeedback('more_like_this')}
@@ -852,25 +813,15 @@ function GapCard({
             title="Less like this"
           />
         </div>
-      </footer>
+      </div>
     </article>
   );
 }
 
 function FeedbackButton({
-  active,
-  onClick,
-  icon,
-  label,
-  activeClass,
-  title,
+  active, onClick, icon, label, activeClass, title,
 }: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  label: string;
-  activeClass: string;
-  title?: string;
+  active: boolean; onClick: () => void; icon: ReactNode; label: string; activeClass: string; title?: string;
 }) {
   return (
     <button
@@ -885,17 +836,9 @@ function FeedbackButton({
 }
 
 function IconFeedbackButton({
-  active,
-  onClick,
-  icon,
-  activeClass,
-  title,
+  active, onClick, icon, activeClass, title,
 }: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  activeClass: string;
-  title: string;
+  active: boolean; onClick: () => void; icon: ReactNode; activeClass: string; title: string;
 }) {
   return (
     <button

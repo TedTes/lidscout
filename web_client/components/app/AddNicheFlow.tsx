@@ -192,7 +192,7 @@ function TemplatePickerStep({
         template.sourceFamilies.join(' '),
       ].join(' '));
       return haystack.includes(normalizedQuery);
-    });
+    }).sort((a, b) => Number(a.alreadyAdded) - Number(b.alreadyAdded));
   }, [activeCategory, query, templatesWithCategory]);
 
   const firstSelectable = filtered.find(item => !item.alreadyAdded)?.template ?? null;

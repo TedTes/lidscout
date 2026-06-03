@@ -34,21 +34,137 @@ function IconCaret() {
   );
 }
 
-function IconLens({ className }: { className?: string }) {
+// ── Niche category icon ────────────────────────────────────────────────────────
+
+type MarketCategory =
+  | 'podcast' | 'education' | 'ecommerce' | 'software' | 'health'
+  | 'analytics' | 'real-estate' | 'finance' | 'content' | 'jobs' | 'local' | 'default';
+
+function detectCategory(name: string): MarketCategory {
+  const s = name.toLowerCase();
+  if (/podcast|audio|music|radio|voice|speak|listen/.test(s))       return 'podcast';
+  if (/educat|learn|course|teach|tutor|school|training/.test(s))    return 'education';
+  if (/ecommerce|e-commerce|shop|sell|store|retail|marketplace/.test(s)) return 'ecommerce';
+  if (/software|saas|app|developer|code|api|platform|tool|plugin/.test(s)) return 'software';
+  if (/health|fitness|wellness|mental|medic|yoga|diet|gym/.test(s)) return 'health';
+  if (/data|analytic|dashboard|metric|report|insight|track/.test(s)) return 'analytics';
+  if (/real.?estate|property|home|hous|rent|mortgage/.test(s))      return 'real-estate';
+  if (/financ|invest|crypto|trading|bank|money|wealth|bookkeep|accounting/.test(s)) return 'finance';
+  if (/content|creator|video|photo|media|blog|newsletter|social/.test(s)) return 'content';
+  if (/job|hire|recruit|career|talent|staffing|employ/.test(s))     return 'jobs';
+  if (/local|restaurant|food|community|event|neighbor|city/.test(s)) return 'local';
+  return 'default';
+}
+
+const CATEGORY_GRADIENT: Record<MarketCategory, string> = {
+  podcast:      'from-violet-600 to-purple-800',
+  education:    'from-amber-500 to-yellow-700',
+  ecommerce:    'from-emerald-500 to-teal-700',
+  software:     'from-sky-500 to-blue-700',
+  health:       'from-rose-500 to-pink-700',
+  analytics:    'from-indigo-500 to-violet-700',
+  'real-estate':'from-orange-500 to-amber-700',
+  finance:      'from-emerald-600 to-green-800',
+  content:      'from-orange-500 to-red-600',
+  jobs:         'from-teal-500 to-cyan-700',
+  local:        'from-yellow-500 to-amber-600',
+  default:      'from-slate-600 to-slate-800',
+};
+
+function CategoryIcon({ category, size }: { category: MarketCategory; size?: number }) {
+  const s = size ?? 11;
+  const base = { width: s, height: s, viewBox: '0 0 24 24', fill: 'none', stroke: 'white', strokeWidth: 2.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  switch (category) {
+    case 'podcast': return (
+      <svg {...base}>
+        <path d="M12 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+        <line x1="12" y1="19" x2="12" y2="22" />
+      </svg>
+    );
+    case 'education': return (
+      <svg {...base}>
+        <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+        <path d="M6 12v5c3 3 9 3 12 0v-5" />
+      </svg>
+    );
+    case 'ecommerce': return (
+      <svg {...base}>
+        <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <path d="M16 10a4 4 0 01-8 0" />
+      </svg>
+    );
+    case 'software': return (
+      <svg {...base}>
+        <polyline points="16 18 22 12 16 6" />
+        <polyline points="8 6 2 12 8 18" />
+      </svg>
+    );
+    case 'health': return (
+      <svg {...base}>
+        <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z" />
+      </svg>
+    );
+    case 'analytics': return (
+      <svg {...base}>
+        <line x1="18" y1="20" x2="18" y2="10" />
+        <line x1="12" y1="20" x2="12" y2="4" />
+        <line x1="6" y1="20" x2="6" y2="14" />
+      </svg>
+    );
+    case 'real-estate': return (
+      <svg {...base}>
+        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
+      </svg>
+    );
+    case 'finance': return (
+      <svg {...base}>
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+        <polyline points="17 6 23 6 23 12" />
+      </svg>
+    );
+    case 'content': return (
+      <svg {...base}>
+        <polygon points="23 7 16 12 23 17 23 7" />
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+      </svg>
+    );
+    case 'jobs': return (
+      <svg {...base}>
+        <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+        <path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" />
+      </svg>
+    );
+    case 'local': return (
+      <svg {...base}>
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
+        <circle cx="12" cy="10" r="3" />
+      </svg>
+    );
+    default: return (
+      <svg {...base}>
+        <circle cx="12" cy="12" r="10" />
+        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+      </svg>
+    );
+  }
+}
+
+function NicheIcon({ marketName, active, compact }: { marketName: string; active?: boolean; compact?: boolean }) {
+  const category = detectCategory(marketName);
+  const size = compact ? 'h-[18px] w-[18px] rounded-[4px]' : 'h-[22px] w-[22px] rounded-[5px]';
   return (
-    <svg
-      width="13" height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
+    <span
+      className={`flex shrink-0 items-center justify-center bg-gradient-to-br ${CATEGORY_GRADIENT[category]} shadow-[0_1px_4px_rgba(0,0,0,0.5)] transition-all ${size} ${
+        active
+          ? 'ring-2 ring-violet-400/55 ring-offset-[1.5px] ring-offset-[#07091a]'
+          : 'opacity-60 group-hover:opacity-85'
+      }`}
     >
-      <circle cx="11" cy="11" r="7" />
-      <line x1="16.5" y1="16.5" x2="22" y2="22" />
-    </svg>
+      <CategoryIcon category={category} size={compact ? 9 : 11} />
+    </span>
   );
 }
 
@@ -145,14 +261,14 @@ function NicheList({
             <Link
               href={nicheHref(market.id)}
               title={market.name}
-              className={`flex gap-2 rounded-lg px-3 py-2.5 pr-8 text-sm font-medium transition ${
+              className={`flex gap-2.5 rounded-lg px-3 py-2.5 pr-8 text-sm font-medium transition ${
                 active
                   ? 'items-start bg-violet-600/[0.13] text-violet-300'
                   : 'items-start text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
               }`}
             >
-              <IconLens className={`mt-[3px] shrink-0 transition-colors ${active ? 'text-violet-400 drop-shadow-[0_0_5px_rgba(167,139,250,0.8)]' : 'text-slate-700 group-hover:text-slate-500'}`} />
-              <span className={`min-w-0 flex-1 leading-snug ${active ? 'line-clamp-2' : 'line-clamp-2'}`}>{market.name}</span>
+              <NicheIcon marketName={market.name} active={active} />
+              <span className="min-w-0 flex-1 leading-snug line-clamp-2">{market.name}</span>
             </Link>
             <button
               onClick={e => { e.preventDefault(); setConfirmId(market.id); }}
@@ -196,7 +312,10 @@ function MobileNicheMenu({
         onClick={() => setOpen(value => !value)}
         className="flex w-full items-center gap-2 rounded-lg border border-slate-800/70 bg-slate-900/55 px-3 py-2.5 text-left text-xs shadow-sm shadow-black/10 transition hover:border-slate-700/60 hover:bg-slate-800/50"
       >
-        <IconLens className={`shrink-0 transition-colors ${active ? 'text-violet-400' : 'text-slate-700'}`} />
+        {active
+          ? <NicheIcon marketName={active.name} active compact />
+          : <span className="h-[18px] w-[18px] shrink-0 rounded-[4px] bg-slate-800" />
+        }
         <span className="min-w-0 flex-1 truncate font-semibold text-slate-200">
           {active ? active.name : 'No markets'}
         </span>
@@ -212,9 +331,9 @@ function MobileNicheMenu({
               key={market.id}
               href={nicheHref(market.id)}
               onClick={() => setOpen(false)}
-              className={`flex items-center gap-2 px-3 py-1.5 text-xs transition hover:bg-white/[0.04] ${market.id === activeId ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`group flex items-center gap-2 px-3 py-1.5 text-xs transition hover:bg-white/[0.04] ${market.id === activeId ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              <IconLens className={`shrink-0 ${market.id === activeId ? 'text-violet-400' : 'text-slate-700'}`} />
+              <NicheIcon marketName={market.name} active={market.id === activeId} compact />
               <span className="min-w-0 flex-1 truncate">{market.name}</span>
             </Link>
           ))}
