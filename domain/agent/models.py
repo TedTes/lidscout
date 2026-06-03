@@ -39,6 +39,23 @@ AgentFeedbackAction = Literal[
 
 AgentFollowUpStatus = Literal["queued", "answered", "dismissed"]
 
+AgentActionType = Literal[
+    "scan_sources",
+    "pause_source",
+    "suggest_source",
+    "answer_follow_up",
+    "send_alert",
+    "wait",
+]
+
+AgentActionStatus = Literal[
+    "proposed",
+    "approved",
+    "dismissed",
+    "completed",
+    "failed",
+]
+
 
 @dataclass(frozen=True)
 class AgentAction:
@@ -46,8 +63,8 @@ class AgentAction:
 
     id: str
     user_niche_id: str
-    action_type: str
-    status: str
+    action_type: AgentActionType
+    status: AgentActionStatus
     reason: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime | None = None
@@ -78,15 +95,32 @@ class AgentAction:
             raise ValueError("user_niche_id is required")
         if not normalized_action_type:
             raise ValueError("action_type is required")
+        if normalized_action_type not in {
+            "scan_sources",
+            "pause_source",
+            "suggest_source",
+            "answer_follow_up",
+            "send_alert",
+            "wait",
+        }:
+            raise ValueError("unsupported action_type")
         if not normalized_status:
             raise ValueError("status is required")
+        if normalized_status not in {
+            "proposed",
+            "approved",
+            "dismissed",
+            "completed",
+            "failed",
+        }:
+            raise ValueError("unsupported status")
 
         created = created_at or datetime.now(tz=UTC)
         return cls(
             id=action_id,
             user_niche_id=normalized_user_niche_id,
-            action_type=normalized_action_type,
-            status=normalized_status,
+            action_type=normalized_action_type,  # type: ignore[arg-type]
+            status=normalized_status,  # type: ignore[arg-type]
             reason=_clean_optional(reason),
             metadata=metadata or {},
             created_at=created,

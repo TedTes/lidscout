@@ -1,6 +1,8 @@
 """Agent domain entities."""
 from domain.agent.models import (
     AgentAction,
+    AgentActionStatus,
+    AgentActionType,
     AgentActivity,
     AgentActivityType,
     AgentAlert,
@@ -15,6 +17,8 @@ from domain.agent.models import (
 
 __all__ = [
     "AgentAction",
+    "AgentActionStatus",
+    "AgentActionType",
     "AgentActivity",
     "AgentActivityType",
     "AgentAlert",
