@@ -5,6 +5,7 @@ from domain.source.models import (
     SourceHealth,
     SourceInput,
     SourceLocator,
+    SourceReplacementSuggestion,
     SourceTemplate,
 )
 
@@ -14,5 +15,6 @@ __all__ = [
     "SourceHealth",
     "SourceInput",
     "SourceLocator",
+    "SourceReplacementSuggestion",
     "SourceTemplate",
 ]

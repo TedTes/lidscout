@@ -9,6 +9,12 @@ from urllib.parse import urlparse
 ValidationStatus = Literal["unknown", "valid", "invalid"]
 TemplateScope = Literal["company", "market"]
 SourceHealthStatus = Literal["unknown", "healthy", "failing"]
+SourceReplacementTrigger = Literal[
+    "blocked_source",
+    "low_yield",
+    "stale_source",
+    "missing_family",
+]
 
 
 @dataclass(frozen=True)
@@ -499,6 +505,43 @@ class SourceCandidate:
             rank_score=rank_score,
             validation_status=validation_status,
             validation_error=_clean_optional(validation_error),
+        )
+
+
+@dataclass(frozen=True)
+class SourceReplacementSuggestion:
+    """A candidate source proposed to fix or improve current coverage."""
+
+    candidate: SourceCandidate
+    trigger: SourceReplacementTrigger
+    reason: str
+    replaces_source_id: str | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        candidate: SourceCandidate,
+        trigger: str,
+        reason: str,
+        replaces_source_id: str | None = None,
+    ) -> "SourceReplacementSuggestion":
+        normalized_trigger = trigger.strip().lower()
+        normalized_reason = reason.strip()
+        if normalized_trigger not in {
+            "blocked_source",
+            "low_yield",
+            "stale_source",
+            "missing_family",
+        }:
+            raise ValueError("unsupported replacement trigger")
+        if not normalized_reason:
+            raise ValueError("reason is required")
+        return cls(
+            candidate=candidate,
+            trigger=normalized_trigger,  # type: ignore[arg-type]
+            reason=normalized_reason,
+            replaces_source_id=_clean_optional(replaces_source_id),
         )
 
 
