@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from urllib.parse import quote_plus
 
 from application.source_quality import source_quality_status
+from application.source_suggestions import SourceReplacementSuggestionService
 from domain.agent import (
     AgentAction,
     AgentActivity,
@@ -57,6 +58,11 @@ class AgentPlannerService:
         source_attention = _source_attention_candidate(planner_input.sources)
         if source_attention is not None:
             source, quality = source_attention
+            replacement_suggestions = SourceReplacementSuggestionService().suggest_for_source(
+                source,
+                niche=planner_input.user_niche,
+                existing_sources=planner_input.sources,
+            )
             return [
                 AgentAction.create(
                     user_niche_id=planner_input.user_niche.id,
@@ -70,6 +76,10 @@ class AgentPlannerService:
                         "quality_reason": quality.reason,
                         "signal_quality_score": quality.score,
                         "last_error": source.last_error,
+                        "replacement_suggestions": [
+                            _serialize_replacement_suggestion(suggestion)
+                            for suggestion in replacement_suggestions
+                        ],
                     },
                 )
             ]
@@ -161,3 +171,23 @@ def _source_attention_candidate(sources: list[NicheSource]):
         if quality.label in {"blocked", "noisy", "stale"}:
             return source, quality
     return None
+
+
+def _serialize_replacement_suggestion(suggestion) -> dict[str, object]:
+    candidate = suggestion.candidate
+    return {
+        "trigger": suggestion.trigger,
+        "reason": suggestion.reason,
+        "replaces_source_id": suggestion.replaces_source_id,
+        "candidate": {
+            "locator": candidate.locator,
+            "source_type": candidate.source_type,
+            "source_family": candidate.source_family,
+            "label": candidate.label,
+            "rationale": candidate.rationale,
+            "rank_score": candidate.rank_score,
+            "template_id": candidate.template_id,
+            "limit": candidate.limit,
+            "options": candidate.options,
+        },
+    }

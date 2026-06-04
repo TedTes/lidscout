@@ -80,6 +80,9 @@ def test_agent_planner_flags_failing_source_for_attention() -> None:
     assert actions[0].action_type == "source_needs_attention"
     assert actions[0].metadata["source_id"] == "source-1"
     assert actions[0].metadata["quality_status"] == "blocked"
+    replacements = actions[0].metadata["replacement_suggestions"]
+    assert replacements[0]["trigger"] == "blocked_source"
+    assert replacements[0]["candidate"]["source_type"] == "hackernews_search"
 
 
 def test_agent_planner_flags_low_quality_source_for_attention() -> None:
@@ -100,6 +103,7 @@ def test_agent_planner_flags_low_quality_source_for_attention() -> None:
     assert actions[0].metadata["source_id"] == "source-1"
     assert actions[0].metadata["quality_status"] == "noisy"
     assert actions[0].metadata["signal_quality_score"] == 0.05
+    assert actions[0].metadata["replacement_suggestions"][0]["trigger"] == "low_yield"
 
 
 def test_agent_planner_flags_stale_source_for_attention() -> None:
