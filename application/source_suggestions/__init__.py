@@ -4,6 +4,7 @@ from application.source_suggestions.default_templates import (
     get_default_source_templates,
 )
 from application.source_suggestions.ranking import rank_source_candidates
+from application.source_suggestions.replacements import SourceReplacementSuggestionService
 from application.source_suggestions.service import (
     SourceSuggestion,
     SourceSuggestionService,
@@ -19,6 +20,7 @@ from application.source_suggestions.validation import (
 
 __all__ = [
     "DEFAULT_SOURCE_TEMPLATES",
+    "SourceReplacementSuggestionService",
     "SourceSuggestion",
     "SourceSuggestionService",
     "get_default_source_templates",
