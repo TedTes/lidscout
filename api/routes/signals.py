@@ -44,6 +44,7 @@ from application.ports import (
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
+from application.source_quality import source_quality_status
 from domain.cluster import SignalCluster
 from domain.agent import (
     AgentAction,
@@ -53,7 +54,13 @@ from domain.agent import (
     AgentFollowUp,
     AgentPreferences,
 )
-from domain.niche import Niche, NicheCompany, NicheSource, UserNiche
+from domain.niche import (
+    Niche,
+    NicheCompany,
+    NicheSource,
+    NicheSourceRunStats,
+    UserNiche,
+)
 from domain.user import User
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
@@ -579,8 +586,15 @@ async def list_market_sources(
     if niche_id is None:
         return {"sources": [], "summary": _source_coverage_summary([])}
     sources = dependencies.niche_source_repository.list_niche_sources(niche_id)
+    stats_by_source = _niche_source_stats_by_source_id(
+        dependencies.niche_source_repository,
+        sources,
+    )
     return {
-        "sources": [_serialize_niche_source(s) for s in sources],
+        "sources": [
+            _serialize_niche_source(s, stats_by_source.get(s.id))
+            for s in sources
+        ],
         "summary": _source_coverage_summary(sources),
     }
 
@@ -1930,8 +1944,22 @@ def _serialize_niche_company(company: NicheCompany) -> dict[str, Any]:
     }
 
 
-def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
+def _niche_source_stats_by_source_id(
+    repository: NicheSourceRepository,
+    sources: list[NicheSource],
+) -> dict[str, NicheSourceRunStats]:
+    if not sources:
+        return {}
+    stats = repository.list_niche_source_run_stats([source.id for source in sources])
+    return {item.niche_source_id: item for item in stats}
+
+
+def _serialize_niche_source(
+    source: NicheSource,
+    stats: NicheSourceRunStats | None = None,
+) -> dict[str, Any]:
     lifecycle = _source_lifecycle(source)
+    quality = source_quality_status(source, stats)
     return {
         "id": source.id,
         "company_id": source.company_id,
@@ -1948,9 +1976,11 @@ def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
             source.last_scanned_at.isoformat() if source.last_scanned_at else None
         ),
         "last_error": source.last_error,
-        "health": None,
+        "health": _serialize_niche_source_health(stats),
         "lifecycle": lifecycle["label"],
         "lifecycle_reason": lifecycle["reason"],
+        "quality_status": quality.label,
+        "quality_reason": quality.reason,
         "is_gate_free": source.is_gate_free,
         "buyer_voice_verified": source.buyer_voice_verified,
         "tier": source.tier,
@@ -1960,6 +1990,51 @@ def _serialize_niche_source(source: NicheSource) -> dict[str, Any]:
         "requires_auth": source.requires_auth,
         "recommended_cadence": source.recommended_cadence,
         "options": source.options,
+    }
+
+
+def _serialize_niche_source_health(
+    stats: NicheSourceRunStats | None,
+) -> dict[str, Any] | None:
+    if stats is None:
+        return None
+    fetch_success_rate = (
+        stats.success_count / stats.total_runs
+        if stats.total_runs > 0
+        else 0.0
+    )
+    relevance_yield_rate = (
+        stats.relevant_posts_count / stats.posts_fetched_count
+        if stats.posts_fetched_count > 0
+        else 0.0
+    )
+    signal_yield_rate = (
+        stats.extracted_signals_count / stats.relevant_posts_count
+        if stats.relevant_posts_count > 0
+        else 0.0
+    )
+    return {
+        "total_runs": stats.total_runs,
+        "success_count": stats.success_count,
+        "failure_count": stats.failure_count,
+        "consecutive_failures": stats.consecutive_failures,
+        "posts_fetched_count": stats.posts_fetched_count,
+        "relevant_posts_count": stats.relevant_posts_count,
+        "extracted_signals_count": stats.extracted_signals_count,
+        "opportunity_count": stats.gap_count,
+        "last_status": stats.last_status,
+        "last_error": stats.last_error,
+        "last_fetched_count": stats.last_fetched_count,
+        "last_relevant_count": stats.last_relevant_count,
+        "last_extracted_count": stats.last_extracted_count,
+        "last_opportunity_count": stats.last_gap_count,
+        "fetch_success_rate": round(fetch_success_rate, 3),
+        "relevance_yield_rate": round(relevance_yield_rate, 3),
+        "signal_yield_rate": round(signal_yield_rate, 3),
+        "last_scanned_at": (
+            stats.last_scanned_at.isoformat() if stats.last_scanned_at else None
+        ),
+        "updated_at": stats.updated_at.isoformat() if stats.updated_at else None,
     }
 
 

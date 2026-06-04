@@ -169,6 +169,8 @@ export type MonitoredSource = {
   health: SourceHealth | null;
   lifecycle?: string;
   lifecycle_reason?: string;
+  quality_status?: 'productive' | 'noisy' | 'blocked' | 'untested' | 'stale';
+  quality_reason?: string;
   is_gate_free?: boolean;
   buyer_voice_verified?: boolean;
   tier?: number | null;
