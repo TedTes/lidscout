@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from urllib.parse import quote_plus
 
+from application.source_quality import source_quality_status
 from domain.agent import (
     AgentAction,
     AgentActivity,
@@ -53,50 +54,22 @@ class AgentPlannerService:
                 )
             ]
 
-        failing_source = next(
-            (
-                source
-                for source in planner_input.sources
-                if source.enabled and source.health_status == "failing"
-            ),
-            None,
-        )
-        if failing_source is not None:
+        source_attention = _source_attention_candidate(planner_input.sources)
+        if source_attention is not None:
+            source, quality = source_attention
             return [
                 AgentAction.create(
                     user_niche_id=planner_input.user_niche.id,
-                    action_type="pause_source",
-                    reason="An enabled source is currently failing.",
+                    action_type="source_needs_attention",
+                    reason=f"Source is {quality.label}: {quality.reason}",
                     metadata={
                         "planner_version": "v1",
-                        "source_id": failing_source.id,
-                        "locator": failing_source.locator,
-                        "last_error": failing_source.last_error,
-                    },
-                )
-            ]
-
-        low_quality_source = next(
-            (
-                source
-                for source in planner_input.sources
-                if source.enabled
-                and source.signal_quality_score is not None
-                and source.signal_quality_score < 0.15
-            ),
-            None,
-        )
-        if low_quality_source is not None:
-            return [
-                AgentAction.create(
-                    user_niche_id=planner_input.user_niche.id,
-                    action_type="pause_source",
-                    reason="An enabled source has repeatedly produced low-quality evidence.",
-                    metadata={
-                        "planner_version": "v1",
-                        "source_id": low_quality_source.id,
-                        "locator": low_quality_source.locator,
-                        "signal_quality_score": low_quality_source.signal_quality_score,
+                        "source_id": source.id,
+                        "locator": source.locator,
+                        "quality_status": quality.label,
+                        "quality_reason": quality.reason,
+                        "signal_quality_score": quality.score,
+                        "last_error": source.last_error,
                     },
                 )
             ]
@@ -180,3 +153,11 @@ def _fallback_source_metadata(user_niche: UserNiche) -> dict[str, object]:
         "access_mode": "api",
         "recommended_cadence": "daily",
     }
+
+
+def _source_attention_candidate(sources: list[NicheSource]):
+    for source in sources:
+        quality = source_quality_status(source)
+        if quality.label in {"blocked", "noisy", "stale"}:
+            return source, quality
+    return None

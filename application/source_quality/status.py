@@ -72,6 +72,13 @@ def source_quality_status(
             score=score,
         )
 
+    if stats is None and score is not None and score < 0.25 and source.last_scanned_at:
+        return SourceQualityStatus(
+            label="noisy",
+            reason="Previous scans produced low-quality evidence.",
+            score=score,
+        )
+
     if stats is None or stats.total_runs == 0:
         return SourceQualityStatus(
             label="untested",

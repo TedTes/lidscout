@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from application.agent import AgentPlannerInput, AgentPlannerService
 from domain.agent import AgentAlert, AgentFollowUp
 from domain.niche import NicheSource, UserNiche
@@ -67,7 +69,7 @@ def test_agent_planner_answers_queued_follow_up_first() -> None:
     assert actions[0].metadata["follow_up_id"] == "follow-up-1"
 
 
-def test_agent_planner_pauses_failing_source() -> None:
+def test_agent_planner_flags_failing_source_for_attention() -> None:
     actions = AgentPlannerService().plan_actions(
         AgentPlannerInput(
             user_niche=_user_niche(),
@@ -75,11 +77,12 @@ def test_agent_planner_pauses_failing_source() -> None:
         )
     )
 
-    assert actions[0].action_type == "pause_source"
+    assert actions[0].action_type == "source_needs_attention"
     assert actions[0].metadata["source_id"] == "source-1"
+    assert actions[0].metadata["quality_status"] == "blocked"
 
 
-def test_agent_planner_pauses_low_quality_source() -> None:
+def test_agent_planner_flags_low_quality_source_for_attention() -> None:
     actions = AgentPlannerService().plan_actions(
         AgentPlannerInput(
             user_niche=_user_niche(),
@@ -87,17 +90,32 @@ def test_agent_planner_pauses_low_quality_source() -> None:
                 _source(
                     locator="https://example.com/noisy",
                     signal_quality_score=0.05,
+                    last_scanned_at=datetime.now(tz=UTC),
                 )
             ],
         )
     )
 
-    assert actions[0].action_type == "pause_source"
-    assert actions[0].reason == (
-        "An enabled source has repeatedly produced low-quality evidence."
-    )
+    assert actions[0].action_type == "source_needs_attention"
     assert actions[0].metadata["source_id"] == "source-1"
+    assert actions[0].metadata["quality_status"] == "noisy"
     assert actions[0].metadata["signal_quality_score"] == 0.05
+
+
+def test_agent_planner_flags_stale_source_for_attention() -> None:
+    actions = AgentPlannerService().plan_actions(
+        AgentPlannerInput(
+            user_niche=_user_niche(),
+            sources=[
+                _source(
+                    last_scanned_at=datetime.now(tz=UTC) - timedelta(days=20),
+                )
+            ],
+        )
+    )
+
+    assert actions[0].action_type == "source_needs_attention"
+    assert actions[0].metadata["quality_status"] == "stale"
 
 
 def test_agent_planner_suggests_source_without_healthy_sources() -> None:

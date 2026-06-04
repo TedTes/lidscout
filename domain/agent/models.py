@@ -46,6 +46,7 @@ AgentFollowUpStatus = Literal["queued", "answered", "dismissed"]
 AgentActionType = Literal[
     "scan_sources",
     "pause_source",
+    "source_needs_attention",
     "suggest_source",
     "answer_follow_up",
     "send_alert",
@@ -102,6 +103,7 @@ class AgentAction:
         if normalized_action_type not in {
             "scan_sources",
             "pause_source",
+            "source_needs_attention",
             "suggest_source",
             "answer_follow_up",
             "send_alert",

@@ -22,6 +22,8 @@ def _target_metadata(action_type: str, metadata: dict[str, Any]) -> dict[str, An
         return {"follow_up_id": metadata.get("follow_up_id")}
     if action_type == "pause_source":
         return {"source_id": metadata.get("source_id")}
+    if action_type == "source_needs_attention":
+        return {"source_id": metadata.get("source_id")}
     if action_type == "send_alert":
         return {"alert_id": metadata.get("alert_id")}
     if action_type == "suggest_source":
