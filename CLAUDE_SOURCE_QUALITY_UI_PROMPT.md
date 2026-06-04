@@ -18,6 +18,11 @@ Each source can now include:
 
 - `quality_status`: `productive | noisy | blocked | untested | stale`
 - `quality_reason`: short explanation
+- `replacement_suggestions`: optional list of alternatives for blocked/noisy/stale sources
+  - `trigger`: `blocked_source | low_yield | stale_source | missing_family`
+  - `reason`: explanation for why the replacement is suggested
+  - `replaces_source_id`: source being replaced
+  - `candidate`: same shape as `SourceSuggestion`
 - `health`: optional stats object
   - `total_runs`
   - `success_count`
@@ -94,11 +99,26 @@ Keep current actions:
 
 Add no new destructive action unless the backend already supports it.
 
-If replacement suggestions exist in current code, make them secondary:
+Replacement suggestions are now available on each source as `replacement_suggestions`.
+Make them secondary:
 
-- Small "Find replacements" or "Suggested alternatives" section below monitored sources
+- Small "Suggested alternatives" expander inside or directly below the affected source row
 - Only show when a source is `blocked`, `noisy`, or `stale`
 - Do not put suggestions above monitored sources
+- Do not show replacement suggestions for productive or untested sources
+- Each alternative should show:
+  - candidate label
+  - source family/type
+  - concise rationale
+  - why it is suggested
+  - URL/domain
+- Avoid making alternatives feel auto-applied. They are recommendations until the user adds one.
+
+Suggested copy examples:
+
+- Blocked source: `This source is blocked. Try a gate-free alternative.`
+- Noisy source: `This source has low yield. Try a higher-signal source.`
+- Stale source: `This source has not produced fresh data recently.`
 
 ## Empty States
 
@@ -117,6 +137,6 @@ If all sources are untested:
 - Each row shows `quality_status` and `quality_reason`.
 - Blocked/noisy/stale sources are easy to spot.
 - Productive sources are visually distinct but not flashy.
-- Suggested sources, if present, are secondary.
+- Replacement suggestions appear only for blocked/noisy/stale sources and remain secondary.
 - No raw `signal` or `cluster` wording is introduced.
 - Existing source add/remove/pause behavior keeps working.
