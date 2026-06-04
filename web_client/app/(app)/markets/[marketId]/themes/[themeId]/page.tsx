@@ -35,7 +35,7 @@ export default function NicheThemeDetailPage({ params }: Props) {
       setSignals(signalsRes.signals);
       setStatus('ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load theme');
+      setError(err instanceof Error ? err.message : 'Failed to load pattern');
       setStatus('error');
     }
   };
@@ -53,25 +53,25 @@ export default function NicheThemeDetailPage({ params }: Props) {
 
   return (
     <DashboardShell
-      title={theme?.theme ?? 'Theme'}
-      subtitle={`${niche?.name ?? 'This niche'} evidence behind this recurring pain pattern.`}
-      actions={<NicheViewSwitcher marketId={marketId} active="themes" onRefresh={load} refreshing={status === 'loading'} />}
+      title={theme?.theme ?? 'Pattern'}
+      subtitle={`${niche?.name ?? 'This niche'} evidence behind this recurring pattern.`}
+      actions={<NicheViewSwitcher marketId={marketId} active="evidence" />}
     >
-      {status === 'loading' && <LoadingPanel label="Loading theme" />}
+      {status === 'loading' && <LoadingPanel label="Loading pattern" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
       {status === 'ready' && !theme && (
-        <EmptyPanel title="Theme not found" detail="This theme may have been removed or regrouped by a newer scan." />
+        <EmptyPanel title="Pattern not found" detail="This pattern may have been removed or regrouped by a newer scan." />
       )}
 
       {status === 'ready' && theme && (
         <div className="space-y-5 animate-fade-in">
           <Link
-            href={`/markets/${encodeURIComponent(marketId)}/themes`}
+            href={`/markets/${encodeURIComponent(marketId)}/evidence?view=patterns`}
             className="inline-flex items-center gap-1.5 text-xs text-slate-600 transition hover:text-slate-400"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-            Themes
+            Evidence
           </Link>
 
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">

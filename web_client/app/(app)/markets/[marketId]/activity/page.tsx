@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
@@ -90,8 +91,8 @@ const RUN_EVENT_META: Record<string, { label: string; dotCls: string; textCls: s
   sources_scanned:   { label: 'Sources scanned',    dotCls: 'bg-sky-400',     textCls: 'text-sky-400' },
   posts_filtered:    { label: 'Posts reviewed',     dotCls: 'bg-slate-500',   textCls: 'text-slate-500' },
   signals_extracted: { label: 'Findings extracted', dotCls: 'bg-amber-400',   textCls: 'text-amber-400' },
-  clusters_formed:   { label: 'Themes formed',      dotCls: 'bg-indigo-400',  textCls: 'text-indigo-400' },
-  gaps_synthesized:  { label: 'Gaps identified',    dotCls: 'bg-emerald-400', textCls: 'text-emerald-400' },
+  clusters_formed:   { label: 'Patterns formed',    dotCls: 'bg-indigo-400',  textCls: 'text-indigo-400' },
+  gaps_synthesized:  { label: 'Opportunities found', dotCls: 'bg-emerald-400', textCls: 'text-emerald-400' },
   run_completed:     { label: 'Completed',           dotCls: 'bg-emerald-400', textCls: 'text-emerald-400' },
   source_failed:     { label: 'Source error',        dotCls: 'bg-rose-400',    textCls: 'text-rose-400' },
 };
@@ -277,7 +278,7 @@ export default function NicheActivityPage({ params }: Props) {
     <DashboardShell
       title="Activity"
       subtitle={`${niche?.name ?? 'This niche'} agent run history and events.`}
-      actions={<NicheViewSwitcher marketId={marketId} active="activity" onRefresh={load} refreshing={status === 'loading'} />}
+      actions={<NicheViewSwitcher marketId={marketId} active="activity" />}
     >
       {status === 'loading' && <LoadingPanel label="Loading activity" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
@@ -295,7 +296,10 @@ export default function NicheActivityPage({ params }: Props) {
             <>
               {runs.length > 0 && (
                 <section className="space-y-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Run history</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Run history</p>
+                    <Link href={`/markets/${encodeURIComponent(marketId)}/reports`} className="text-[11px] text-slate-600 transition hover:text-slate-400">Latest report →</Link>
+                  </div>
                   {runs.map(run => <RunCard key={run.id} run={run} />)}
                 </section>
               )}

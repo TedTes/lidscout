@@ -1,17 +1,14 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-type NicheView = 'gaps' | 'themes' | 'findings' | 'reports' | 'sources' | 'activity';
+type NicheView = 'gaps' | 'evidence' | 'sources' | 'activity';
 
 const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => string }> = [
-  { id: 'gaps',     label: 'Opportunities',  href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
-  { id: 'themes',   label: 'Themes',         href: marketId => `/markets/${encodeURIComponent(marketId)}/themes` },
-  { id: 'findings', label: 'Findings',       href: marketId => `/markets/${encodeURIComponent(marketId)}/findings` },
-  { id: 'sources',  label: 'Sources',        href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
-  { id: 'reports',  label: 'Reports',        href: marketId => `/markets/${encodeURIComponent(marketId)}/reports` },
-  { id: 'activity', label: 'Agent Activity', href: marketId => `/markets/${encodeURIComponent(marketId)}/activity` },
+  { id: 'gaps',     label: 'Opportunities', href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
+  { id: 'evidence', label: 'Evidence',      href: marketId => `/markets/${encodeURIComponent(marketId)}/evidence` },
+  { id: 'sources',  label: 'Sources',       href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
+  { id: 'activity', label: 'Activity',      href: marketId => `/markets/${encodeURIComponent(marketId)}/activity` },
 ];
 
 export function NicheViewSwitcher({
@@ -19,10 +16,7 @@ export function NicheViewSwitcher({
   active,
 }: {
   marketId: string;
-  active: NicheView;
-  onRefresh?: () => void;
-  refreshing?: boolean;
-  trailingAction?: ReactNode;
+  active?: NicheView;
 }) {
   return (
     <div className="flex w-full min-w-0 items-center justify-start gap-2 lg:justify-center">

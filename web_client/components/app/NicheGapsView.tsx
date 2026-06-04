@@ -333,26 +333,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   return (
     <DashboardShell
       title={title}
-      actions={
-        <div className="w-full space-y-2.5">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <h1 className="min-w-0 flex-1 truncate text-xl font-semibold leading-tight tracking-tight text-slate-100 sm:text-2xl">
-              {title || <span className="invisible">.</span>}
-            </h1>
-            {pipelineStatus === 'running' && (
-              <AgentStatusPill pipelineStatus={pipelineStatus} runStartedAt={runStartedEvent?.created_at} />
-            )}
-            <button
-              onClick={handleRunScan}
-              disabled={pipelineStatus === 'running'}
-              className="shrink-0 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15 disabled:opacity-50"
-            >
-              Run Deep Scan
-            </button>
-          </div>
-          <NicheViewSwitcher marketId={marketId} active="gaps" onRefresh={load} refreshing={status === 'loading'} />
-        </div>
-      }
+      actions={<NicheViewSwitcher marketId={marketId} active="gaps" />}
     >
       {status === 'loading' && <LoadingPanel label="Loading opportunities" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
@@ -407,6 +388,7 @@ export default function NicheWorkspacePage({ params }: Props) {
                 progressActivity={progressActivity}
                 liveFeed={liveFeed}
                 runStartedAt={runStartedEvent?.created_at}
+                lastEventAt={lastEventAt}
                 marketId={marketId}
                 onRunScan={handleRunScan}
               />
@@ -517,51 +499,19 @@ function OpportunitiesStatsBar({ count, lastEventAt, isRunning }: { count: numbe
 
 // ── Live agent panel ───────────────────────────────────────────────────────────
 
-function AgentRow({
-  name,
-  event,
-  currentItem,
-  isActive,
-}: {
-  name: string;
-  event: AgentActivity | undefined;
-  currentItem: AgentActivity | null | undefined;
-  isActive: boolean;
-}) {
-  const dotCls = event
-    ? 'bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.4)]'
-    : isActive
-    ? 'animate-pulse bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)]'
-    : 'bg-slate-800';
-
-  const detail = isActive && currentItem
-    ? (currentItem.metadata?.title as string) || 'Processing…'
-    : event?.detail ?? null;
-
-  const time = relativeTime(event?.created_at ?? null);
-
-  return (
-    <div className="py-3">
-      <div className="flex items-center gap-2">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotCls}`} />
-        <span className="text-xs font-semibold text-slate-300">{name}</span>
-        {time && <span className="ml-auto text-[10px] text-slate-600">{time}</span>}
-      </div>
-      {detail && (
-        <p className="ml-3.5 mt-0.5 truncate text-[11px] text-slate-500">· {detail}</p>
-      )}
-      {!detail && !event && !isActive && (
-        <p className="ml-3.5 mt-0.5 text-[11px] text-slate-700">Waiting</p>
-      )}
-    </div>
-  );
-}
+const SCAN_STEPS: Array<{ eventType: string; label: string }> = [
+  { eventType: 'sources_scanned',   label: 'Sources scanned' },
+  { eventType: 'posts_filtered',    label: 'Posts reviewed' },
+  { eventType: 'signals_extracted', label: 'Findings extracted' },
+  { eventType: 'gaps_synthesized',  label: 'Opportunities identified' },
+];
 
 function LiveAgentPanel({
   pipelineStatus,
   progressActivity,
   liveFeed,
   runStartedAt,
+  lastEventAt,
   marketId,
   onRunScan,
 }: {
@@ -569,37 +519,55 @@ function LiveAgentPanel({
   progressActivity: AgentActivity[];
   liveFeed: PipelineLiveFeedResponse;
   runStartedAt: string | null | undefined;
+  lastEventAt: string | null;
   marketId: string;
   onRunScan: () => void;
 }) {
   const isRunning = pipelineStatus === 'running';
 
-  const sourcesEv = progressActivity.find(a => a.event_type === 'sources_scanned');
-  const signalsEv = progressActivity.find(a => a.event_type === 'signals_extracted');
-  const gapsEv = progressActivity.find(a => a.event_type === 'gaps_synthesized');
+  const stepEvents = SCAN_STEPS.map(s => ({
+    ...s,
+    event: progressActivity.find(a => a.event_type === s.eventType),
+  }));
+  const completedCount = stepEvents.filter(s => s.event).length;
+  const progressPct = isRunning ? Math.round((completedCount / SCAN_STEPS.length) * 100) : 0;
 
-  const stepsCompleted = [sourcesEv, signalsEv, gapsEv].filter(Boolean).length;
-  const progressPct = isRunning ? Math.round((stepsCompleted / 3) * 100) : 0;
+  const activeStepIndex = isRunning
+    ? stepEvents.findIndex(s => !s.event)
+    : -1;
+
+  const currentItemLabel = liveFeed.current_item
+    ? (liveFeed.current_item.metadata?.title as string) || liveFeed.current_item.detail || null
+    : null;
+
+  const lastScan = relativeTime(lastEventAt);
 
   return (
     <div className="sticky top-4 overflow-hidden rounded-xl border border-slate-800/70 bg-slate-900/50">
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
         <div className="flex items-center gap-2">
           {isRunning && (
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)]" />
           )}
-          <span className="text-sm font-semibold text-slate-200">Agent Activity</span>
+          <span className="text-sm font-semibold text-slate-200">
+            {isRunning ? 'Scan in progress' : 'Last scan'}
+          </span>
         </div>
-        {isRunning && (
-          <span className="text-xs font-bold tabular-nums text-violet-300">{progressPct}%</span>
-        )}
+        {isRunning
+          ? <span className="text-xs font-bold tabular-nums text-violet-300">{progressPct}%</span>
+          : lastScan && <span className="text-[11px] text-slate-600">{lastScan}</span>
+        }
       </div>
 
+      {/* Progress bar (running only) */}
       {isRunning && (
         <div className="border-b border-white/[0.04] px-4 pb-3 pt-2.5">
           <div className="mb-1.5 flex items-center justify-between text-[11px]">
-            <span className="text-slate-500">Live Agent Activity</span>
-            {runStartedAt && <span className="text-slate-600">{relativeTime(runStartedAt)}</span>}
+            <span className="text-slate-500">
+              {runStartedAt ? `Started ${relativeTime(runStartedAt)}` : 'Running…'}
+            </span>
+            <span className="text-slate-600">{completedCount} of {SCAN_STEPS.length} steps</span>
           </div>
           <div className="h-1 overflow-hidden rounded-full bg-slate-800">
             <div
@@ -610,27 +578,47 @@ function LiveAgentPanel({
         </div>
       )}
 
+      {/* Step list */}
       <div className="divide-y divide-white/[0.04] px-4">
-        <AgentRow
-          name="Research Scout"
-          event={sourcesEv}
-          currentItem={isRunning && !sourcesEv ? liveFeed.current_item : null}
-          isActive={isRunning && !sourcesEv}
-        />
-        <AgentRow
-          name="Signal Analyst"
-          event={signalsEv}
-          currentItem={isRunning && !!sourcesEv && !signalsEv ? liveFeed.current_item : null}
-          isActive={isRunning && !!sourcesEv && !signalsEv}
-        />
-        <AgentRow
-          name="Gap Synthesizer"
-          event={gapsEv}
-          currentItem={null}
-          isActive={isRunning && !!signalsEv && !gapsEv}
-        />
+        {stepEvents.map((step, i) => {
+          const isDone = !!step.event;
+          const isActive = i === activeStepIndex;
+          const isFuture = !isDone && !isActive;
+          return (
+            <div key={step.eventType} className="flex items-center gap-2.5 py-2.5">
+              {isDone ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-emerald-400">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : isActive ? (
+                <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.5)]" />
+              ) : (
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-800" />
+              )}
+              <span className={`min-w-0 flex-1 truncate text-xs ${isDone ? 'text-slate-300' : isActive ? 'text-slate-400' : 'text-slate-700'}`}>
+                {step.label}
+              </span>
+              {isDone && step.event?.created_at && (
+                <span className="shrink-0 text-[10px] text-slate-700">{relativeTime(step.event.created_at)}</span>
+              )}
+              {isFuture && isRunning && (
+                <span className="shrink-0 text-[10px] text-slate-800">–</span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
+      {/* Current item being processed */}
+      {isRunning && currentItemLabel && (
+        <div className="border-t border-white/[0.04] px-4 py-2.5">
+          <p className="truncate text-[11px] text-slate-600">
+            Processing: <span className="text-slate-500">{currentItemLabel}</span>
+          </p>
+        </div>
+      )}
+
+      {/* Footer */}
       <div className="space-y-2 border-t border-white/[0.06] px-4 py-3">
         {isRunning ? (
           <button disabled className="w-full cursor-default rounded-lg border border-slate-700/50 py-2 text-sm font-semibold text-slate-500">
@@ -646,9 +634,9 @@ function LiveAgentPanel({
         )}
         <Link
           href={`/markets/${encodeURIComponent(marketId)}/activity`}
-          className="block text-center text-[11px] text-violet-400 transition hover:text-violet-300"
+          className="block text-center text-[11px] text-slate-600 transition hover:text-slate-400"
         >
-          Configure agents for this niche →
+          View full activity →
         </Link>
       </div>
     </div>

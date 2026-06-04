@@ -5,5 +5,5 @@ export default function LegacyThemesRedirect({
 }: {
   searchParams: { market?: string };
 }) {
-  redirect(searchParams.market ? `/markets/${encodeURIComponent(searchParams.market)}/themes` : '/markets');
+  redirect(searchParams.market ? `/markets/${encodeURIComponent(searchParams.market)}/evidence?view=patterns` : '/markets');
 }
