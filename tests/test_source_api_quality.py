@@ -66,3 +66,46 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     assert item["health"]["fetch_success_rate"] == 1.0
     assert item["health"]["relevance_yield_rate"] == 0.2
     assert item["health"]["signal_yield_rate"] == 0.375
+
+
+def test_market_sources_include_replacement_suggestions_for_blocked_sources() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Build internal tools",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemoryNicheSourceRepository()
+    source = NicheSource.create(
+        id="source-1",
+        niche_id="template-1",
+        locator="https://www.reddit.com/search.json?q=retool&sort=new",
+        source_type="reddit_search",
+        source_family="social",
+        is_gate_free=False,
+        enabled=False,
+        access_mode="api_auth",
+        requires_auth=True,
+    )
+    source_repository.save_niche_sources([source])
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        niche_source_repository=source_repository,
+    )
+
+    response = asyncio.run(
+        list_market_sources("market-1", dependencies, current_user=user)
+    )
+
+    suggestions = response["sources"][0]["replacement_suggestions"]
+    assert response["sources"][0]["quality_status"] == "blocked"
+    assert suggestions[0]["trigger"] == "blocked_source"
+    assert suggestions[0]["replaces_source_id"] == "source-1"
+    assert suggestions[0]["candidate"]["source_type"] == "hackernews_search"
+    assert suggestions[0]["candidate"]["market_name"] == "Build internal tools"

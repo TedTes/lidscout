@@ -45,6 +45,7 @@ from application.ports import (
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_quality import source_quality_status
+from application.source_suggestions import SourceReplacementSuggestionService
 from domain.cluster import SignalCluster
 from domain.agent import (
     AgentAction,
@@ -65,7 +66,7 @@ from domain.user import User
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
-from domain.source import SourceInput
+from domain.source import SourceCandidate, SourceInput, SourceReplacementSuggestion
 from infrastructure.db import (
     InMemoryAgentActionRepository,
     InMemoryAgentActivityRepository,
@@ -590,9 +591,19 @@ async def list_market_sources(
         dependencies.niche_source_repository,
         sources,
     )
+    replacement_service = SourceReplacementSuggestionService()
     return {
         "sources": [
-            _serialize_niche_source(s, stats_by_source.get(s.id))
+            _serialize_niche_source(
+                s,
+                stats_by_source.get(s.id),
+                replacement_suggestions=replacement_service.suggest_for_source(
+                    s,
+                    niche=user_niche,
+                    stats=stats_by_source.get(s.id),
+                    existing_sources=sources,
+                ),
+            )
             for s in sources
         ],
         "summary": _source_coverage_summary(sources),
@@ -1957,6 +1968,8 @@ def _niche_source_stats_by_source_id(
 def _serialize_niche_source(
     source: NicheSource,
     stats: NicheSourceRunStats | None = None,
+    *,
+    replacement_suggestions: list[SourceReplacementSuggestion] | None = None,
 ) -> dict[str, Any]:
     lifecycle = _source_lifecycle(source)
     quality = source_quality_status(source, stats)
@@ -1989,7 +2002,43 @@ def _serialize_niche_source(
         "requires_proxy": source.requires_proxy,
         "requires_auth": source.requires_auth,
         "recommended_cadence": source.recommended_cadence,
+        "replacement_suggestions": [
+            _serialize_source_replacement_suggestion(suggestion)
+            for suggestion in replacement_suggestions or []
+        ],
         "options": source.options,
+    }
+
+
+def _serialize_source_replacement_suggestion(
+    suggestion: SourceReplacementSuggestion,
+) -> dict[str, Any]:
+    return {
+        "candidate": _serialize_source_candidate(suggestion.candidate),
+        "trigger": suggestion.trigger,
+        "reason": suggestion.reason,
+        "replaces_source_id": suggestion.replaces_source_id,
+    }
+
+
+def _serialize_source_candidate(candidate: SourceCandidate) -> dict[str, Any]:
+    return {
+        "locator": candidate.locator,
+        "source_type": candidate.source_type,
+        "label": candidate.label,
+        "rationale": candidate.rationale,
+        "source_family": candidate.source_family,
+        "company_id": candidate.competitor_id,
+        "company_name": candidate.competitor_name,
+        "market_id": candidate.market_id,
+        "market_name": candidate.market_name,
+        "limit": candidate.limit,
+        "options": candidate.options,
+        "template_id": candidate.template_id,
+        "already_monitored": candidate.already_monitored,
+        "rank_score": candidate.rank_score,
+        "validation_status": candidate.validation_status,
+        "validation_error": candidate.validation_error,
     }
 
 

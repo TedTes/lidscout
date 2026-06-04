@@ -171,6 +171,7 @@ export type MonitoredSource = {
   lifecycle_reason?: string;
   quality_status?: 'productive' | 'noisy' | 'blocked' | 'untested' | 'stale';
   quality_reason?: string;
+  replacement_suggestions?: SourceReplacementSuggestion[];
   is_gate_free?: boolean;
   buyer_voice_verified?: boolean;
   tier?: number | null;
@@ -238,6 +239,13 @@ export type SourceSuggestion = {
   rank_score: number;
   validation_status: 'unknown' | 'valid' | 'invalid';
   validation_error: string | null;
+};
+
+export type SourceReplacementSuggestion = {
+  candidate: SourceSuggestion;
+  trigger: 'blocked_source' | 'low_yield' | 'stale_source' | 'missing_family';
+  reason: string;
+  replaces_source_id: string | null;
 };
 
 export type CompaniesResponse = {
