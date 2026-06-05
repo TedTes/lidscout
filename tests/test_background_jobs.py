@@ -132,7 +132,8 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.extracted_count, 1)
         self.assertEqual(result.clustered_count, 1)
-        self.assertTrue(result.email_result.sent)
+        self.assertFalse(result.email_result.sent)
+        self.assertIsNone(result.email_result.error)
 
     def test_pipeline_persists_planned_agent_actions(self):
         dependencies = SignalApiDependencies(

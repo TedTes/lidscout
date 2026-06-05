@@ -24,6 +24,7 @@ class AppConfigTests(unittest.TestCase):
             "RESEND_API_KEY": "resend-key",
             "RESEND_FROM_EMAIL": "LidScout <alerts@example.com>",
             "REPORT_RECIPIENT": "founder@example.com",
+            "PIPELINE_EMAIL_ENABLED": "true",
             "PIPELINE_SCHEDULE": "0 6 * * *",
         }
 
@@ -39,6 +40,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.RESEND_API_KEY, "resend-key")
         self.assertEqual(config.RESEND_FROM_EMAIL, "LidScout <alerts@example.com>")
         self.assertEqual(config.REPORT_RECIPIENT, "founder@example.com")
+        self.assertTrue(config.PIPELINE_EMAIL_ENABLED)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 6 * * *")
 
     def test_uses_defaults_and_normalizes_blank_secrets(self):
@@ -66,6 +68,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertIsNone(config.RESEND_API_KEY)
         self.assertIsNone(config.RESEND_FROM_EMAIL)
         self.assertIsNone(config.REPORT_RECIPIENT)
+        self.assertFalse(config.PIPELINE_EMAIL_ENABLED)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 8 * * *")
 
     def test_uses_email_api_key_as_resend_fallback(self):
@@ -106,6 +109,7 @@ class AppConfigTests(unittest.TestCase):
                         "RESEND_API_KEY=resend-from-env-file",
                         "RESEND_FROM_EMAIL=LidScout <alerts@example.com>",
                         "REPORT_RECIPIENT=founder@example.com",
+                        "PIPELINE_EMAIL_ENABLED=yes",
                         "PIPELINE_SCHEDULE=0 7 * * *",
                     ]
                 ),
@@ -124,6 +128,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.RESEND_API_KEY, "resend-from-env-file")
         self.assertEqual(config.RESEND_FROM_EMAIL, "LidScout <alerts@example.com>")
         self.assertEqual(config.REPORT_RECIPIENT, "founder@example.com")
+        self.assertTrue(config.PIPELINE_EMAIL_ENABLED)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 7 * * *")
 
 

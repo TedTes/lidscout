@@ -78,7 +78,7 @@ class PipelineConfig:
     cluster_repository: ClusterRepository
     llm_client: LLMClient
     embedding_client: EmbeddingClient
-    email_client: EmailClient
+    email_client: EmailClient | None
     recipient: str
     relevance_llm_client: LLMClient | None = None
     opportunity_repository: OpportunityRepository | None = None
@@ -96,6 +96,7 @@ class PipelineConfig:
     user_niche_id: str | None = None
     default_limit: int = 25
     similarity_threshold: float = 0.82
+    send_email: bool = True
 
 
 @dataclass(frozen=True)
@@ -267,7 +268,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         opportunity_synthesis_result.opportunities,
         title=_market_report_title(config),
     )
-    email_result = config.email_client.send_report(report, config.recipient)
+    email_result = _send_pipeline_report(config, report)
 
     result = PipelineRunResult(
         fetched_count=len(posts),
@@ -294,6 +295,27 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     _record_pipeline_activity(config, result)
     _persist_planned_agent_actions(config)
     return result
+
+
+def _send_pipeline_report(
+    config: PipelineConfig,
+    report: MarketSignalReport,
+) -> EmailSendResult:
+    if not config.send_email:
+        return EmailSendResult(
+            recipient=config.recipient,
+            subject=report.title,
+            sent=False,
+            error=None,
+        )
+    if config.email_client is None:
+        return EmailSendResult(
+            recipient=config.recipient,
+            subject=report.title,
+            sent=False,
+            error="email_client is not configured",
+        )
+    return config.email_client.send_report(report, config.recipient)
 
 
 @dataclass(frozen=True)

@@ -39,6 +39,7 @@ class AppConfig:
     RESEND_API_KEY: str | None
     RESEND_FROM_EMAIL: str | None
     REPORT_RECIPIENT: str | None
+    PIPELINE_EMAIL_ENABLED: bool
     PIPELINE_SCHEDULE: str
     JWT_SECRET: str
     JWT_EXPIRY_MINUTES: int
@@ -69,6 +70,18 @@ def _env_or_default(name: str, default: str) -> str:
         return default
     cleaned = value.strip()
     return cleaned or default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    cleaned = value.strip().lower()
+    if cleaned in {"1", "true", "yes", "y", "on"}:
+        return True
+    if cleaned in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
 
 
 @lru_cache
@@ -117,6 +130,7 @@ def get_app_config() -> AppConfig:
         RESEND_API_KEY=_optional_env("RESEND_API_KEY") or _optional_env("EMAIL_API_KEY"),
         RESEND_FROM_EMAIL=_optional_env("RESEND_FROM_EMAIL") or _optional_env("EMAIL_FROM"),
         REPORT_RECIPIENT=_optional_env("REPORT_RECIPIENT"),
+        PIPELINE_EMAIL_ENABLED=_env_bool("PIPELINE_EMAIL_ENABLED", False),
         PIPELINE_SCHEDULE=os.getenv("PIPELINE_SCHEDULE", "0 8 * * *").strip(),
         JWT_SECRET=os.getenv("JWT_SECRET", "change-me-in-production"),
         JWT_EXPIRY_MINUTES=int(os.getenv("JWT_EXPIRY_MINUTES", str(60 * 24 * 30))),

@@ -33,12 +33,16 @@ def run_configured_daily_pipeline(
     """Run the pipeline from persisted, enabled source locators."""
     app_config = get_app_config()
     resolved_recipient = recipient or app_config.REPORT_RECIPIENT
-    if not resolved_recipient:
+    if app_config.PIPELINE_EMAIL_ENABLED and not resolved_recipient:
         raise ValueError("REPORT_RECIPIENT is required for background pipeline runs")
+    resolved_recipient = resolved_recipient or ""
 
     from api.dependencies import build_signal_api_dependencies
     runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
-    _ensure_background_pipeline_dependencies(runtime_dependencies)
+    _ensure_background_pipeline_dependencies(
+        runtime_dependencies,
+        require_email=app_config.PIPELINE_EMAIL_ENABLED,
+    )
 
     return run_daily_pipeline(
         PipelineConfig(
@@ -65,6 +69,7 @@ def run_configured_daily_pipeline(
             embedding_client=runtime_dependencies.embedding_client,
             email_client=runtime_dependencies.email_client,
             recipient=resolved_recipient,
+            send_email=app_config.PIPELINE_EMAIL_ENABLED,
             source_adapters=runtime_dependencies.source_adapters,
             user_niche_id=market_id,
         )
@@ -140,13 +145,15 @@ def main(argv: list[str] | None = None) -> int:
 
 def _ensure_background_pipeline_dependencies(
     dependencies: SignalApiDependencies,
+    *,
+    require_email: bool = True,
 ) -> None:
     missing = []
     if dependencies.llm_client is None:
         missing.append("llm_client")
     if dependencies.embedding_client is None:
         missing.append("embedding_client")
-    if dependencies.email_client is None:
+    if require_email and dependencies.email_client is None:
         missing.append("email_client")
     if not dependencies.source_adapters:
         missing.append("source_adapters")

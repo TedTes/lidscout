@@ -1359,7 +1359,12 @@ async def run_pipeline(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Run the daily pipeline from configured dependencies and requested sources."""
-    _ensure_pipeline_dependencies(dependencies, request)
+    app_config = get_app_config()
+    _ensure_pipeline_dependencies(
+        dependencies,
+        request,
+        require_email=app_config.PIPELINE_EMAIL_ENABLED,
+    )
     result = run_daily_pipeline(
         PipelineConfig(
             post_repository=dependencies.post_repository,
@@ -1381,6 +1386,7 @@ async def run_pipeline(
             embedding_client=dependencies.embedding_client,
             email_client=dependencies.email_client,
             recipient=request.recipient,
+            send_email=app_config.PIPELINE_EMAIL_ENABLED,
             source_adapters=dependencies.source_adapters,
             sources=[
                 SourceInput.create(
@@ -1581,13 +1587,15 @@ def _activity_created_at(activity: AgentActivity | None) -> datetime | None:
 def _ensure_pipeline_dependencies(
     dependencies: SignalApiDependencies,
     request: PipelineRunRequest,
+    *,
+    require_email: bool = True,
 ) -> None:
     missing = []
     if dependencies.llm_client is None:
         missing.append("llm_client")
     if dependencies.embedding_client is None:
         missing.append("embedding_client")
-    if dependencies.email_client is None:
+    if require_email and dependencies.email_client is None:
         missing.append("email_client")
     if not dependencies.source_adapters:
         missing.append("source_adapters")
