@@ -62,6 +62,8 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     item = response["sources"][0]
     assert item["quality_status"] == "productive"
     assert item["quality_reason"] == "Source has produced relevant buyer evidence."
+    assert item["scan_eligible"] is True
+    assert item["scan_ineligible_reason"] is None
     assert item["health"]["total_runs"] == 4
     assert item["health"]["fetch_success_rate"] == 1.0
     assert item["health"]["relevance_yield_rate"] == 0.2
@@ -105,6 +107,8 @@ def test_market_sources_include_replacement_suggestions_for_blocked_sources() ->
 
     suggestions = response["sources"][0]["replacement_suggestions"]
     assert response["sources"][0]["quality_status"] == "blocked"
+    assert response["sources"][0]["scan_eligible"] is False
+    assert response["sources"][0]["scan_ineligible_reason"] == "Source is disabled."
     assert suggestions[0]["trigger"] == "blocked_source"
     assert suggestions[0]["replaces_source_id"] == "source-1"
     assert suggestions[0]["candidate"]["source_type"] == "hackernews_search"

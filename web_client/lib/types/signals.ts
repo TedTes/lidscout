@@ -171,6 +171,8 @@ export type MonitoredSource = {
   lifecycle_reason?: string;
   quality_status?: 'productive' | 'noisy' | 'blocked' | 'untested' | 'stale';
   quality_reason?: string;
+  scan_eligible?: boolean;
+  scan_ineligible_reason?: string | null;
   replacement_suggestions?: SourceReplacementSuggestion[];
   is_gate_free?: boolean;
   buyer_voice_verified?: boolean;

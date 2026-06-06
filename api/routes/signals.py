@@ -44,7 +44,7 @@ from application.ports import (
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
-from application.source_quality import source_quality_status
+from application.source_quality import source_quality_status, source_scan_eligibility
 from application.source_suggestions import SourceReplacementSuggestionService
 from domain.cluster import SignalCluster
 from domain.agent import (
@@ -88,6 +88,7 @@ from infrastructure.db import (
 )
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
+from shared.config import get_app_config
 from shared.logger import get_logger, log_event
 from workers.run_daily_pipeline import (
     PipelineConfig,
@@ -591,12 +592,15 @@ async def list_market_sources(
         dependencies.niche_source_repository,
         sources,
     )
+    app_config = get_app_config()
+    allow_auth_sources = bool(app_config.REDDIT_CLIENT_ID and app_config.REDDIT_CLIENT_SECRET)
     replacement_service = SourceReplacementSuggestionService()
     return {
         "sources": [
             _serialize_niche_source(
                 s,
                 stats_by_source.get(s.id),
+                allow_auth_sources=allow_auth_sources,
                 replacement_suggestions=replacement_service.suggest_for_source(
                     s,
                     niche=user_niche,
@@ -1407,7 +1411,6 @@ async def run_pipeline(
 @router.get("/pipeline/schedule")
 async def get_pipeline_schedule() -> dict[str, Any]:
     """Return the pipeline cron schedule and computed next run time."""
-    from shared.config import get_app_config
     cron = get_app_config().PIPELINE_SCHEDULE
     next_run_at = _next_cron_run(cron)
     return {
@@ -1977,10 +1980,18 @@ def _serialize_niche_source(
     source: NicheSource,
     stats: NicheSourceRunStats | None = None,
     *,
+    allow_proxy_sources: bool = False,
+    allow_auth_sources: bool = False,
     replacement_suggestions: list[SourceReplacementSuggestion] | None = None,
 ) -> dict[str, Any]:
     lifecycle = _source_lifecycle(source)
     quality = source_quality_status(source, stats)
+    scan_eligibility = source_scan_eligibility(
+        source,
+        stats,
+        allow_proxy_sources=allow_proxy_sources,
+        allow_auth_sources=allow_auth_sources,
+    )
     return {
         "id": source.id,
         "company_id": source.company_id,
@@ -2002,6 +2013,10 @@ def _serialize_niche_source(
         "lifecycle_reason": lifecycle["reason"],
         "quality_status": quality.label,
         "quality_reason": quality.reason,
+        "scan_eligible": scan_eligibility.eligible,
+        "scan_ineligible_reason": (
+            None if scan_eligibility.eligible else scan_eligibility.reason
+        ),
         "is_gate_free": source.is_gate_free,
         "buyer_voice_verified": source.buyer_voice_verified,
         "tier": source.tier,
