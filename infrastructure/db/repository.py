@@ -608,6 +608,12 @@ class InMemoryNicheSourceRepository:
             if stats.niche_source_id in allowed
         ]
 
+    def update_niche_source(self, source) -> bool:
+        if source.id not in self._sources:
+            return False
+        self._sources[source.id] = source
+        return True
+
     def delete_niche_source(self, source_id: str) -> bool:
         self._run_stats.pop(source_id, None)
         return self._sources.pop(source_id, None) is not None

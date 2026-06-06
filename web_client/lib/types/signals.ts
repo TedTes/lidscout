@@ -176,6 +176,16 @@ export type MonitoredSource = {
   quality_reason?: string;
   scan_eligible?: boolean;
   scan_ineligible_reason?: string | null;
+  management?: {
+    can_enable: boolean;
+    can_disable: boolean;
+    can_delete: boolean;
+    recommended_action:
+      | 'enable_or_remove'
+      | 'fix_or_replace'
+      | 'keep_monitoring'
+      | 'monitor_next_scan';
+  };
   replacement_suggestions?: SourceReplacementSuggestion[];
   is_gate_free?: boolean;
   buyer_voice_verified?: boolean;

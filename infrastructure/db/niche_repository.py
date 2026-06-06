@@ -238,6 +238,59 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
         self.connection.commit()
         return _rowcount(cursor) > 0
 
+    def update_niche_source(self, source: NicheSource) -> bool:
+        cursor = self.connection.execute(
+            """
+            UPDATE niche_sources
+               SET company_id = %s,
+                   locator = %s,
+                   source_type = %s,
+                   source_family = %s,
+                   is_gate_free = %s,
+                   enabled = %s,
+                   limit_value = %s,
+                   scan_frequency = %s,
+                   buyer_voice_verified = %s,
+                   health_status = %s,
+                   last_scanned_at = %s,
+                   last_error = %s,
+                   options = %s::jsonb,
+                   tier = %s,
+                   signal_quality_score = %s,
+                   access_mode = %s,
+                   requires_proxy = %s,
+                   requires_auth = %s,
+                   recommended_cadence = %s,
+                   updated_at = %s
+             WHERE id = %s
+            """,
+            (
+                source.company_id,
+                source.locator,
+                source.source_type,
+                source.source_family,
+                source.is_gate_free,
+                source.enabled,
+                source.limit,
+                source.scan_frequency,
+                source.buyer_voice_verified,
+                source.health_status,
+                source.last_scanned_at,
+                source.last_error,
+                json.dumps(source.options),
+                source.tier,
+                source.signal_quality_score,
+                source.access_mode,
+                source.requires_proxy,
+                source.requires_auth,
+                source.recommended_cadence,
+                source.updated_at,
+                source.id,
+            ),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
     def upsert_niche_source_run_stats(self, stats: NicheSourceRunStats) -> bool:
         cursor = self.connection.execute(
             """

@@ -339,6 +339,10 @@ class NicheSourceRepository(Protocol):
         """Load sources for a niche, optionally filtered."""
         ...
 
+    def update_niche_source(self, source: NicheSource) -> bool:
+        """Replace mutable fields for one source and return whether it existed."""
+        ...
+
     def update_niche_source_health(
         self,
         source_id: str,

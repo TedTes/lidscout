@@ -7,7 +7,7 @@ from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
-from domain.niche import NicheSourceRunStats
+from domain.niche import NicheSource, NicheSourceRunStats
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -696,6 +696,38 @@ class PostgresRepositoryTests(unittest.TestCase):
 
         self.assertIn("UPDATE niche_sources", connection.calls[0][0])
         self.assertEqual(connection.calls[0][1], (0.74, True, "source-1"))
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_niche_source_repository_updates_source(self):
+        source = NicheSource.create(
+            id="source-1",
+            niche_id="niche-1",
+            locator="https://example.com/forum.json",
+            source_type="discourse_json",
+            source_family="forum",
+            is_gate_free=True,
+            enabled=False,
+            limit=15,
+            scan_frequency="daily",
+            buyer_voice_verified=True,
+            health_status="productive",
+            options={"adapter": "json", "source_family": "forum"},
+            tier=2,
+            signal_quality_score=0.82,
+            access_mode="json",
+            recommended_cadence="daily",
+        )
+        connection = FakeConnection([FakeCursor(rowcount=1)])
+        repository = PostgresNicheSourceRepository(connection=connection)
+
+        self.assertTrue(repository.update_niche_source(source))
+
+        self.assertIn("UPDATE niche_sources", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], None)
+        self.assertEqual(connection.calls[0][1][1], "https://example.com/forum.json")
+        self.assertEqual(connection.calls[0][1][2], "discourse_json")
+        self.assertEqual(json.loads(connection.calls[0][1][12]), source.options)
+        self.assertEqual(connection.calls[0][1][-1], "source-1")
         self.assertEqual(connection.commit_count, 1)
 
     @unittest.skip("PostgresSourceHealthRepository removed — health tracked on NicheSource")

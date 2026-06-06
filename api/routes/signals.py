@@ -1,5 +1,5 @@
 """API endpoints for market signal workflows."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import logging
 from typing import Any
@@ -195,6 +195,16 @@ class NicheSourceRequest(BaseModel):
     source_type: str = Field(default="web", min_length=1)
     enabled: bool = True
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class NicheSourceUpdateRequest(BaseModel):
+    """HTTP request body for updating a monitored source."""
+
+    source_type: str | None = Field(default=None, min_length=1)
+    enabled: bool | None = None
+    limit: int | None = None
+    scan_frequency: str | None = None
+    options: dict[str, Any] | None = None
 
 
 @dataclass
@@ -655,6 +665,79 @@ async def create_market_source(
 
     dependencies.niche_source_repository.save_niche_sources([source])
     return _serialize_niche_source(source)
+
+
+@router.patch("/sources/{source_id}")
+async def update_source(
+    source_id: str,
+    request: NicheSourceUpdateRequest,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Update a monitored source owned by the current user."""
+    source, _user_niche = _get_owned_niche_source(
+        source_id,
+        dependencies,
+        current_user,
+    )
+    fields = _model_fields_set(request)
+    merged_options = dict(source.options)
+    if request.options is not None:
+        merged_options.update(request.options)
+
+    try:
+        updated_source = replace(
+            source,
+            source_type=(
+                request.source_type
+                if "source_type" in fields and request.source_type is not None
+                else source.source_type
+            ),
+            enabled=(
+                request.enabled
+                if "enabled" in fields and request.enabled is not None
+                else source.enabled
+            ),
+            limit=(
+                request.limit
+                if "limit" in fields and request.limit is not None
+                else source.limit
+            ),
+            scan_frequency=(
+                request.scan_frequency
+                if "scan_frequency" in fields
+                else source.scan_frequency
+            ),
+            options=merged_options,
+            source_family=str(
+                merged_options.get("source_family")
+                or source.source_family
+                or request.source_type
+                or "web"
+            ),
+            updated_at=datetime.now(tz=UTC),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not dependencies.niche_source_repository.update_niche_source(updated_source):
+        raise HTTPException(status_code=404, detail="Source not found")
+    return _serialize_niche_source(
+        updated_source,
+        dependencies.niche_source_repository.get_niche_source_run_stats(source_id),
+    )
+
+
+@router.delete("/sources/{source_id}")
+async def delete_source(
+    source_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Delete a monitored source owned by the current user."""
+    _get_owned_niche_source(source_id, dependencies, current_user)
+    deleted = dependencies.niche_source_repository.delete_niche_source(source_id)
+    return {"id": source_id, "deleted": deleted}
 
 
 @router.get("/reports/latest")
@@ -1717,6 +1800,28 @@ def _get_owned_user_niche(
     return user_niche
 
 
+def _get_owned_niche_source(
+    source_id: str,
+    dependencies: SignalApiDependencies,
+    current_user: User | Any,
+) -> tuple[NicheSource, UserNiche]:
+    user_id = _current_user_id(current_user)
+    user_niches = (
+        dependencies.user_niche_repository.list_user_niches(user_id)
+        if user_id is not None
+        else dependencies.user_niche_repository.list_all_user_niches()
+    )
+    for user_niche in user_niches:
+        if user_niche.template_niche_id is None:
+            continue
+        for source in dependencies.niche_source_repository.list_niche_sources(
+            user_niche.template_niche_id,
+        ):
+            if source.id == source_id:
+                return source, user_niche
+    raise HTTPException(status_code=404, detail="Source not found")
+
+
 def _agent_planner_input(
     market_id: str,
     dependencies: SignalApiDependencies,
@@ -2017,6 +2122,7 @@ def _serialize_niche_source(
         "scan_ineligible_reason": (
             None if scan_eligibility.eligible else scan_eligibility.reason
         ),
+        "management": _source_management_hint(source, quality.label, scan_eligibility),
         "is_gate_free": source.is_gate_free,
         "buyer_voice_verified": source.buyer_voice_verified,
         "tier": source.tier,
@@ -2030,6 +2136,27 @@ def _serialize_niche_source(
             for suggestion in replacement_suggestions or []
         ],
         "options": source.options,
+    }
+
+
+def _source_management_hint(
+    source: NicheSource,
+    quality_label: str,
+    scan_eligibility: Any,
+) -> dict[str, Any]:
+    if not source.enabled:
+        recommended_action = "enable_or_remove"
+    elif not scan_eligibility.eligible or quality_label in {"blocked", "noisy"}:
+        recommended_action = "fix_or_replace"
+    elif quality_label == "productive":
+        recommended_action = "keep_monitoring"
+    else:
+        recommended_action = "monitor_next_scan"
+    return {
+        "can_enable": not source.enabled,
+        "can_disable": source.enabled,
+        "can_delete": True,
+        "recommended_action": recommended_action,
     }
 
 
