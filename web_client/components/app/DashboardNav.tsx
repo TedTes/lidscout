@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AddNicheFlow } from '@/components/app/AddNicheFlow';
 import AccountMenu from '@/components/app/AccountMenu';
 import { signalApi } from '@/lib/api';
+import { PRODUCT_NAME, PRODUCT_TAGLINE } from '@/lib/positioning';
 import { Market } from '@/lib/types/signals';
 
 function IconRadar() {
@@ -508,8 +509,8 @@ export default function DashboardNav() {
             <IconRadar />
           </div>
           <div>
-            <p className="text-[13px] font-bold tracking-tight text-slate-100">LidScout</p>
-            <p className="text-[10px] leading-tight text-slate-600">Niche opportunity intelligence</p>
+            <p className="text-[13px] font-bold tracking-tight text-slate-100">{PRODUCT_NAME}</p>
+            <p className="text-[10px] leading-tight text-slate-600">{PRODUCT_TAGLINE}</p>
           </div>
         </Link>
 
@@ -561,7 +562,7 @@ export default function DashboardNav() {
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-violet-600 text-white">
             <IconRadar />
           </div>
-          <span className="hidden text-sm font-bold tracking-tight text-slate-100 min-[390px]:inline">LidScout</span>
+          <span className="hidden text-sm font-bold tracking-tight text-slate-100 min-[390px]:inline">{PRODUCT_NAME}</span>
         </Link>
         <MobileNicheMenu markets={markets} activeId={activeId} onAddNiche={() => setShowAddNiche(true)} />
         <AccountMenu compact />

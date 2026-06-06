@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PRODUCT_DESCRIPTION, PRODUCT_TAGLINE } from '@/lib/positioning';
 import { IconArrow } from './icons';
 import MarketRadarPreview from './animations/MarketRadarPreview';
 
@@ -16,7 +17,7 @@ export default function Hero() {
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/[0.06] px-3 py-1">
               <span className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.9)]" />
               <span className="text-[11px] font-semibold uppercase tracking-wider text-violet-300">
-                AI research agent for your market
+                {PRODUCT_TAGLINE}
               </span>
             </div>
 
@@ -25,8 +26,7 @@ export default function Hero() {
                 Your continuous competitive research agent
               </h1>
               <p className="mb-7 max-w-lg text-base leading-relaxed text-slate-400">
-                LidScout watches public sources across your market, learns what matters to you,
-                and delivers ranked gaps with source evidence — without you having to ask.
+                {PRODUCT_DESCRIPTION}
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <Link

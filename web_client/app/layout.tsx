@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import { PRODUCT_DESCRIPTION, PRODUCT_NAME, PRODUCT_TAGLINE } from '../lib/positioning';
 import '../styles/globals.css';
 
 const inter = Inter({
@@ -9,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'LidScout — Signal Intelligence',
-  description: 'Niche signal detection from online activity',
+  title: `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`,
+  description: PRODUCT_DESCRIPTION,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
