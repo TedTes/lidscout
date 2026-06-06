@@ -172,3 +172,50 @@ def test_does_not_reject_sparse_noisy_history_too_early() -> None:
     )
 
     assert result.eligible is True
+
+
+def test_skips_unverified_low_signal_source() -> None:
+    result = source_scan_eligibility(
+        _source(
+            source_type="changelog",
+            source_family="owned_site",
+            tier=5,
+            signal_quality_score=0.55,
+        )
+    )
+
+    assert result.eligible is False
+    assert "Low-signal" in result.reason
+
+
+def test_allows_low_signal_source_after_buyer_voice_verification() -> None:
+    result = source_scan_eligibility(
+        _source(
+            source_type="changelog",
+            source_family="owned_site",
+            tier=5,
+            signal_quality_score=0.55,
+            buyer_voice_verified=True,
+        )
+    )
+
+    assert result.eligible is True
+
+
+def test_allows_low_signal_source_after_relevant_history() -> None:
+    result = source_scan_eligibility(
+        _source(
+            source_type="changelog",
+            source_family="owned_site",
+            tier=5,
+            signal_quality_score=0.55,
+        ),
+        _stats(
+            total_runs=1,
+            success_count=1,
+            posts_fetched_count=5,
+            relevant_posts_count=1,
+        ),
+    )
+
+    assert result.eligible is True

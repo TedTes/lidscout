@@ -12,6 +12,7 @@ MIN_REVIEWED_POSTS_FOR_NOISY_SOURCE = 10
 MIN_RUNS_FOR_QUALITY_REJECTION = 2
 MIN_OBSERVED_SCAN_QUALITY = 0.25
 MAX_CONSECUTIVE_FAILURES = 3
+LOW_SIGNAL_TIER_THRESHOLD = 5
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,12 @@ def source_scan_eligibility(
                 "Source requires authenticated access.",
             )
 
+    if _is_unverified_low_signal_source(source, stats):
+        return SourceScanEligibility(
+            False,
+            "Low-signal source has not produced buyer evidence.",
+        )
+
     if stats is not None and stats.consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
         return SourceScanEligibility(
             False,
@@ -91,3 +98,16 @@ def _has_enough_history(stats: NicheSourceRunStats) -> bool:
         stats.total_runs >= MIN_RUNS_FOR_QUALITY_REJECTION
         and reviewed_count >= MIN_REVIEWED_POSTS_FOR_NOISY_SOURCE
     )
+
+
+def _is_unverified_low_signal_source(
+    source: NicheSource,
+    stats: NicheSourceRunStats | None,
+) -> bool:
+    if source.buyer_voice_verified:
+        return False
+    if source.tier is None or source.tier < LOW_SIGNAL_TIER_THRESHOLD:
+        return False
+    if stats is not None and stats.relevant_posts_count > 0:
+        return False
+    return True
