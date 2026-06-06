@@ -110,6 +110,9 @@ export type AgentColdStartPlan = {
   active_source_count: number;
   suggested_source_count: number;
   next_actions: string[];
+  source_explanations: string[];
+  expected_result_window: string;
+  no_result_guidance: string[];
 };
 
 export type AgentPreferences = {

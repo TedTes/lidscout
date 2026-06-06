@@ -1,63 +1,92 @@
 import unittest
 
 from application.agent import AgentColdStartService
-from application.source_suggestions import SourceSuggestionService
-from domain.competitor import Competitor
-from domain.market import Market
-from domain.source import MonitoredSource
+from domain.niche import NicheCompany, NicheSource, UserNiche
 
 
 class AgentColdStartServiceTests(unittest.TestCase):
-    @unittest.skip("build_plan() API migrated to UserNiche/NicheSource — needs rewrite")
-    def test_returns_setup_actions_for_empty_niche(self):
-        market = Market.create(id="devtools", name="Developer tools")
-        suggestions = SourceSuggestionService().suggest_for_market(market)
+    def test_returns_setup_guidance_for_empty_niche(self):
+        user_niche = UserNiche.create(
+            id="market-1",
+            user_id="user-1",
+            template_niche_id="niche-1",
+            job="Build internal tools",
+            buyer="operations teams",
+            category="devtools",
+        )
 
         plan = AgentColdStartService().build_plan(
-            market=market,
-            competitors=[],
-            monitored_sources=[],
-            source_suggestions=suggestions,
+            user_niche=user_niche,
+            companies=[],
+            sources=[],
+            source_suggestions=[],
         )
 
         self.assertEqual(plan.status, "setup_needed")
-        self.assertEqual(plan.brief.market_id, "devtools")
-        self.assertEqual(plan.brief.target_user, "product teams and founders evaluating this niche")
-        self.assertIn("refine_research_brief", plan.next_actions)
+        self.assertEqual(plan.brief.market_id, "market-1")
+        self.assertEqual(plan.brief.niche_name, "Build internal tools")
         self.assertIn("add_companies", plan.next_actions)
         self.assertIn("add_sources", plan.next_actions)
-        self.assertGreater(plan.suggested_source_count, 0)
-        self.assertIn("social", plan.brief.source_family_priorities)
+        self.assertEqual(
+            plan.source_explanations,
+            ["No active sources are configured yet."],
+        )
+        self.assertIn("Add at least one active source", plan.expected_result_window)
+        self.assertIn("Add or enable sources", plan.no_result_guidance[0])
 
-    @unittest.skip("build_plan() API migrated to UserNiche/NicheSource — needs rewrite")
     def test_marks_configured_niche_ready_for_first_scan(self):
-        market = Market.create(
-            id="devtools",
-            name="Developer tools",
-            target_user="developer tool PMs",
-            idea_prompt="Find unmet devtool workflow needs.",
+        user_niche = UserNiche.create(
+            id="market-1",
+            user_id="user-1",
+            template_niche_id="niche-1",
+            job="Build internal tools",
+            buyer="operations teams",
+            category="devtools",
         )
-        competitor = Competitor.create(
-            id="supabase",
-            name="Supabase",
-            market_id="devtools",
+        company = NicheCompany.create(
+            id="company-1",
+            niche_id="niche-1",
+            name="Retool",
         )
-        source = MonitoredSource.create(
-            market_id="devtools",
-            locator="https://hn.algolia.com/api/v1/search_by_date?query=Supabase",
-            source_type="hackernews_search",
-        )
+        sources = [
+            NicheSource.create(
+                id="source-1",
+                niche_id="niche-1",
+                locator="https://github.com/appsmithorg/appsmith/issues",
+                source_type="github_issues",
+                source_family="technical_forum",
+                is_gate_free=True,
+                buyer_voice_verified=True,
+            ),
+            NicheSource.create(
+                id="source-2",
+                niche_id="niche-1",
+                locator="https://www.g2.com/products/retool/reviews",
+                source_type="review_search",
+                source_family="reviews",
+                is_gate_free=False,
+                requires_proxy=True,
+            ),
+        ]
 
         plan = AgentColdStartService().build_plan(
-            market=market,
-            competitors=[competitor],
-            monitored_sources=[source],
+            user_niche=user_niche,
+            companies=[company],
+            sources=sources,
             source_suggestions=[],
         )
 
         self.assertEqual(plan.status, "ready_for_scan")
         self.assertEqual(plan.next_actions, ["run_first_scan"])
-        self.assertEqual(plan.active_source_count, 1)
+        self.assertEqual(plan.active_source_count, 2)
+        self.assertTrue(
+            any("Technical forums" in item for item in plan.source_explanations)
+        )
+        self.assertTrue(
+            any("Review sources" in item for item in plan.source_explanations)
+        )
+        self.assertIn("8-15 minutes", plan.expected_result_window)
+        self.assertIn("Check source health", plan.no_result_guidance[0])
 
 
 if __name__ == "__main__":

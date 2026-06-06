@@ -2240,6 +2240,9 @@ def _serialize_agent_cold_start_plan(plan: AgentColdStartPlan) -> dict[str, Any]
         "active_source_count": plan.active_source_count,
         "suggested_source_count": plan.suggested_source_count,
         "next_actions": plan.next_actions,
+        "source_explanations": plan.source_explanations,
+        "expected_result_window": plan.expected_result_window,
+        "no_result_guidance": plan.no_result_guidance,
     }
 
 
