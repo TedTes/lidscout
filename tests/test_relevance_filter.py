@@ -133,6 +133,8 @@ class LLMRelevanceFilterTests(unittest.TestCase):
         self.assertTrue(result.has_pain_or_request)
         self.assertEqual(result.confidence, 0.88)
         self.assertIsNone(result.rejection_category)
+        self.assertIn("learned negative feedback", llm_client.calls[0][0])
+        self.assertIn("agent_extra_instructions", llm_client.calls[0][0])
         self.assertIn("competitor_name: Acme CRM", llm_client.calls[0][1])
 
     def test_rejects_wrong_subject_llm_relevance_result(self):

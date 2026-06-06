@@ -31,6 +31,14 @@ workarounds. If the post is generic news, praise, spam, meta discussion, or lack
 a clear pain, return has_signal=false, is_about_competitor=false,
 competitor_match_reason=null, and signal=null.
 
+If agent_ignored_themes or agent_ignored_categories are present in the post
+context, treat them as learned negative feedback. Do not extract a signal when
+the post mainly matches those ignored patterns unless it contains unusually
+concrete, recent buyer pain with severity or switching intent.
+
+If agent_extra_instructions are present, use them as the user's current research
+brief when deciding whether the post is in scope.
+
 When competitor context is provided, set is_about_competitor to true only if the
 pain is about that competitor, its product, or a direct customer workaround for
 that competitor. Do not mark unrelated products mentioned inside a monitored

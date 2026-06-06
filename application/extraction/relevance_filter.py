@@ -33,6 +33,14 @@ pain signals.
 
 Set is_relevant=true only when both is_about_competitor and has_pain_or_request
 are true.
+
+When agent_ignored_themes or agent_ignored_categories are provided, treat them
+as learned negative feedback from the user. Reject posts that mainly match those
+patterns unless the post contains unusually concrete, recent, buyer-side pain
+with severity or switching intent that should override the prior preference.
+
+When agent_extra_instructions are provided, use them as the user's current
+research brief for deciding whether the post belongs in this niche.
 """.strip()
 
 

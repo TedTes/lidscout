@@ -43,6 +43,8 @@ class ExtractionServiceTests(unittest.TestCase):
         self.assertIs(result.signal.willingness_to_pay, True)
         self.assertEqual(len(llm_client.calls), 1)
         self.assertIn("competitor customer complaint", llm_client.calls[0][0])
+        self.assertIn("learned negative feedback", llm_client.calls[0][0])
+        self.assertIn("current research\nbrief", llm_client.calls[0][0])
         self.assertIn("title: Reporting pain", llm_client.calls[0][1])
         self.assertIsNotNone(llm_client.calls[0][2])
 
