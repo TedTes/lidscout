@@ -36,27 +36,52 @@ function IconCaret() {
 
 // ── Niche category icon ────────────────────────────────────────────────────────
 
-type MarketCategory =
+// Domain-detected categories (name-keyword based)
+type DetectedCategory =
   | 'podcast' | 'education' | 'ecommerce' | 'software' | 'health'
-  | 'analytics' | 'real-estate' | 'finance' | 'content' | 'jobs' | 'local' | 'default';
+  | 'analytics' | 'real-estate' | 'finance' | 'content' | 'jobs' | 'local';
 
-function detectCategory(name: string): MarketCategory {
+// Hash-pool categories (id-based, for custom markets that don't match a domain)
+type FallbackCategory =
+  | 'target' | 'layers' | 'navigation' | 'cpu' | 'star' | 'zap'
+  | 'leaf' | 'flame' | 'globe' | 'gift' | 'activity' | 'diamond';
+
+type MarketCategory = DetectedCategory | FallbackCategory;
+
+// Stable index from any string (market id)
+function hashIndex(str: string, len: number): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return Math.abs(h) % len;
+}
+
+const FALLBACK_POOL: FallbackCategory[] = [
+  'target', 'layers', 'navigation', 'cpu', 'star', 'zap',
+  'leaf', 'flame', 'globe', 'gift', 'activity', 'diamond',
+];
+
+function detectCategory(name: string): DetectedCategory | null {
   const s = name.toLowerCase();
-  if (/podcast|audio|music|radio|voice|speak|listen/.test(s))       return 'podcast';
-  if (/educat|learn|course|teach|tutor|school|training/.test(s))    return 'education';
+  if (/podcast|audio|music|radio|voice|speak|listen/.test(s))            return 'podcast';
+  if (/educat|learn|course|teach|tutor|school|training/.test(s))         return 'education';
   if (/ecommerce|e-commerce|shop|sell|store|retail|marketplace/.test(s)) return 'ecommerce';
   if (/software|saas|app|developer|code|api|platform|tool|plugin/.test(s)) return 'software';
-  if (/health|fitness|wellness|mental|medic|yoga|diet|gym/.test(s)) return 'health';
-  if (/data|analytic|dashboard|metric|report|insight|track/.test(s)) return 'analytics';
-  if (/real.?estate|property|home|hous|rent|mortgage/.test(s))      return 'real-estate';
+  if (/health|fitness|wellness|mental|medic|yoga|diet|gym/.test(s))      return 'health';
+  if (/data|analytic|dashboard|metric|report|insight|track/.test(s))     return 'analytics';
+  if (/real.?estate|property|home|hous|rent|mortgage/.test(s))           return 'real-estate';
   if (/financ|invest|crypto|trading|bank|money|wealth|bookkeep|accounting/.test(s)) return 'finance';
   if (/content|creator|video|photo|media|blog|newsletter|social/.test(s)) return 'content';
-  if (/job|hire|recruit|career|talent|staffing|employ/.test(s))     return 'jobs';
-  if (/local|restaurant|food|community|event|neighbor|city/.test(s)) return 'local';
-  return 'default';
+  if (/job|hire|recruit|career|talent|staffing|employ/.test(s))          return 'jobs';
+  if (/local|restaurant|food|community|event|neighbor|city/.test(s))     return 'local';
+  return null;
+}
+
+function resolveCategory(marketId: string, marketName: string): MarketCategory {
+  return detectCategory(marketName) ?? FALLBACK_POOL[hashIndex(marketId, FALLBACK_POOL.length)];
 }
 
 const CATEGORY_GRADIENT: Record<MarketCategory, string> = {
+  // Domain-detected
   podcast:      'from-violet-600 to-purple-800',
   education:    'from-amber-500 to-yellow-700',
   ecommerce:    'from-emerald-500 to-teal-700',
@@ -68,13 +93,26 @@ const CATEGORY_GRADIENT: Record<MarketCategory, string> = {
   content:      'from-orange-500 to-red-600',
   jobs:         'from-teal-500 to-cyan-700',
   local:        'from-yellow-500 to-amber-600',
-  default:      'from-slate-600 to-slate-800',
+  // Hash-pool fallbacks
+  target:       'from-violet-700 to-purple-900',
+  layers:       'from-blue-600 to-blue-900',
+  navigation:   'from-teal-600 to-teal-900',
+  cpu:          'from-indigo-600 to-slate-800',
+  star:         'from-rose-600 to-rose-900',
+  zap:          'from-yellow-500 to-orange-700',
+  leaf:         'from-green-600 to-green-900',
+  flame:        'from-red-600 to-red-900',
+  globe:        'from-sky-600 to-blue-800',
+  gift:         'from-fuchsia-600 to-pink-800',
+  activity:     'from-cyan-500 to-cyan-800',
+  diamond:      'from-purple-600 to-purple-900',
 };
 
 function CategoryIcon({ category, size }: { category: MarketCategory; size?: number }) {
   const s = size ?? 11;
   const base = { width: s, height: s, viewBox: '0 0 24 24', fill: 'none', stroke: 'white', strokeWidth: 2.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   switch (category) {
+    // ── Domain-detected ────────────────────────────────────────────────────────
     case 'podcast': return (
       <svg {...base}>
         <path d="M12 2a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
@@ -143,17 +181,91 @@ function CategoryIcon({ category, size }: { category: MarketCategory; size?: num
         <circle cx="12" cy="10" r="3" />
       </svg>
     );
-    default: return (
+    // ── Hash-pool fallbacks ────────────────────────────────────────────────────
+    case 'target': return (
       <svg {...base}>
         <circle cx="12" cy="12" r="10" />
-        <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+        <circle cx="12" cy="12" r="4" />
+        <line x1="22" y1="12" x2="18" y2="12" />
+        <line x1="6" y1="12" x2="2" y2="12" />
+        <line x1="12" y1="6" x2="12" y2="2" />
+        <line x1="12" y1="22" x2="12" y2="18" />
+      </svg>
+    );
+    case 'layers': return (
+      <svg {...base}>
+        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+        <polyline points="2 17 12 22 22 17" />
+        <polyline points="2 12 12 17 22 12" />
+      </svg>
+    );
+    case 'navigation': return (
+      <svg {...base}>
+        <polygon points="3 11 22 2 13 21 11 13 3 11" />
+      </svg>
+    );
+    case 'cpu': return (
+      <svg {...base}>
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="9" y="9" width="6" height="6" />
+        <line x1="9" y1="1" x2="9" y2="4" />
+        <line x1="15" y1="1" x2="15" y2="4" />
+        <line x1="9" y1="20" x2="9" y2="23" />
+        <line x1="15" y1="20" x2="15" y2="23" />
+      </svg>
+    );
+    case 'star': return (
+      <svg {...base}>
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      </svg>
+    );
+    case 'zap': return (
+      <svg {...base}>
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+      </svg>
+    );
+    case 'leaf': return (
+      <svg {...base}>
+        <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z" />
+        <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+      </svg>
+    );
+    case 'flame': return (
+      <svg {...base}>
+        <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z" />
+      </svg>
+    );
+    case 'globe': return (
+      <svg {...base}>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+    );
+    case 'gift': return (
+      <svg {...base}>
+        <polyline points="20 12 20 22 4 22 4 12" />
+        <rect x="2" y="7" width="20" height="5" />
+        <line x1="12" y1="22" x2="12" y2="7" />
+        <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+        <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+      </svg>
+    );
+    case 'activity': return (
+      <svg {...base}>
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    );
+    case 'diamond': return (
+      <svg {...base}>
+        <path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z" />
       </svg>
     );
   }
 }
 
-function NicheIcon({ marketName, active, compact }: { marketName: string; active?: boolean; compact?: boolean }) {
-  const category = detectCategory(marketName);
+function NicheIcon({ marketId, marketName, active, compact }: { marketId: string; marketName: string; active?: boolean; compact?: boolean }) {
+  const category = resolveCategory(marketId, marketName);
   const size = compact ? 'h-[18px] w-[18px] rounded-[4px]' : 'h-[22px] w-[22px] rounded-[5px]';
   return (
     <span
@@ -267,7 +379,7 @@ function NicheList({
                   : 'items-start text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
               }`}
             >
-              <NicheIcon marketName={market.name} active={active} />
+              <NicheIcon marketId={market.id} marketName={market.name} active={active} />
               <span className="min-w-0 flex-1 leading-snug line-clamp-2">{market.name}</span>
             </Link>
             <button
@@ -313,7 +425,7 @@ function MobileNicheMenu({
         className="flex w-full items-center gap-2 rounded-lg border border-slate-800/70 bg-slate-900/55 px-3 py-2.5 text-left text-xs shadow-sm shadow-black/10 transition hover:border-slate-700/60 hover:bg-slate-800/50"
       >
         {active
-          ? <NicheIcon marketName={active.name} active compact />
+          ? <NicheIcon marketId={active.id} marketName={active.name} active compact />
           : <span className="h-[18px] w-[18px] shrink-0 rounded-[4px] bg-slate-800" />
         }
         <span className="min-w-0 flex-1 truncate font-semibold text-slate-200">
@@ -333,7 +445,7 @@ function MobileNicheMenu({
               onClick={() => setOpen(false)}
               className={`group flex items-center gap-2 px-3 py-1.5 text-xs transition hover:bg-white/[0.04] ${market.id === activeId ? 'text-violet-300' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              <NicheIcon marketName={market.name} active={market.id === activeId} compact />
+              <NicheIcon marketId={market.id} marketName={market.name} active={market.id === activeId} compact />
               <span className="min-w-0 flex-1 truncate">{market.name}</span>
             </Link>
           ))}
