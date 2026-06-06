@@ -17,7 +17,6 @@ from infrastructure.db import (
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
-    PostgresSourceLocatorRepository,
     PostgresUserNicheRepository,
     connect_postgres,
 )
@@ -66,9 +65,6 @@ def build_signal_api_dependencies(
         niche_company_repository=PostgresNicheCompanyRepository(connection=connection),
         niche_source_repository=PostgresNicheSourceRepository(connection=connection),
         user_niche_repository=PostgresUserNicheRepository(connection=connection),
-        source_locator_repository=PostgresSourceLocatorRepository(
-            connection=connection,
-        ),
         source_adapters=[
             *(_reddit_adapter(app_config) or []),
             JsonUrlAdapter(),

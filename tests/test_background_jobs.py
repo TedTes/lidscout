@@ -5,14 +5,12 @@ from api.routes.signals import SignalApiDependencies
 from domain.agent import AgentAction
 from domain.niche import NicheSource, UserNiche
 from domain.post import RawPost
-from domain.source import MonitoredSource, SourceInput, SourceLocator
+from domain.source import SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
-    InMemoryNicheSourceRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
-    InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -93,60 +91,43 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertIn("pipeline_schedule", result)
         self.assertIn("coordinator_lock_seconds", result)
 
-    @unittest.skip("check_worker_readiness API migrated to user_niche_repository/niche_source_repository — needs rewrite")
-    def test_checks_worker_readiness_from_monitored_sources(self):
-        monitored_source_repository = InMemoryNicheSourceRepository()
-        monitored_source_repository.save_monitored_sources(
-            [
-                MonitoredSource.create(
-                    locator="https://example.com/reviews",
-                    market_id="workspace-tools",
-                )
-            ]
-        )
-        dependencies = SignalApiDependencies(
-            monitored_source_repository=monitored_source_repository,
-            source_adapters=[FakeSourceAdapter()],
-            llm_client=FakeLLMClient(),
-            relevance_llm_client=FakeLLMClient(),
-            embedding_client=FakeEmbeddingClient(),
-            email_client=EmailClient(FakeEmailNotifier()),
-        )
-
-        result = check_worker_readiness(
-            market_id="workspace-tools",
-            dependencies=dependencies,
-        )
-
-        self.assertTrue(result["ready"])
-        self.assertEqual(result["enabled_monitored_source_count"], 1)
-        self.assertEqual(result["enabled_source_locator_count"], 0)
-        self.assertEqual(result["source_adapter_count"], 1)
-
-    def test_runs_configured_daily_pipeline_from_source_locators(self):
-        source_locator_repository = InMemorySourceLocatorRepository()
-        source_locator_repository.save_source_locators(
-            [
-                SourceLocator.create(
-                    id="locator-1",
-                    locator="https://example.com/reviews",
-                )
-            ]
-        )
+    def test_runs_configured_daily_pipeline_from_niche_sources(self):
         dependencies = SignalApiDependencies(
             post_repository=InMemoryPostRepository(),
             signal_repository=InMemorySignalRepository(),
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
-            source_locator_repository=source_locator_repository,
             source_adapters=[FakeSourceAdapter()],
             llm_client=FakeLLMClient(),
             embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(FakeEmailNotifier()),
         )
+        dependencies.user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                template_niche_id="niche-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+            )
+        )
+        dependencies.niche_source_repository.save_niche_sources(
+            [
+                NicheSource.create(
+                    id="source-1",
+                    niche_id="niche-1",
+                    locator="https://example.com/reviews",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
+                )
+            ]
+        )
 
         result = run_configured_daily_pipeline(
             recipient="founder@example.com",
+            market_id="market-1",
             dependencies=dependencies,
         )
 

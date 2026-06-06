@@ -40,7 +40,6 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
-    SourceLocatorRepository,
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -83,7 +82,6 @@ from infrastructure.db import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
-    InMemorySourceLocatorRepository,
     InMemoryUserNicheRepository,
 )
 from infrastructure.email import EmailClient, EmailSendResult
@@ -250,9 +248,6 @@ class SignalApiDependencies:
     )
     user_niche_repository: UserNicheRepository = field(
         default_factory=InMemoryUserNicheRepository
-    )
-    source_locator_repository: SourceLocatorRepository = field(
-        default_factory=InMemorySourceLocatorRepository
     )
     reporting_service: ReportingService = field(default_factory=ReportingService)
     source_adapters: list[SourceAdapter] = field(default_factory=list)
@@ -1467,7 +1462,6 @@ async def run_pipeline(
             agent_alert_repository=dependencies.agent_alert_repository,
             niche_source_repository=dependencies.niche_source_repository,
             user_niche_repository=dependencies.user_niche_repository,
-            source_locator_repository=dependencies.source_locator_repository,
             llm_client=dependencies.llm_client,
             relevance_llm_client=dependencies.relevance_llm_client,
             embedding_client=dependencies.embedding_client,

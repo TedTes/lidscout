@@ -17,7 +17,9 @@ def _app_config(**overrides):
         "RESEND_API_KEY": None,
         "RESEND_FROM_EMAIL": None,
         "REPORT_RECIPIENT": None,
+        "PIPELINE_EMAIL_ENABLED": False,
         "PIPELINE_SCHEDULE": "0 8 * * *",
+        "PIPELINE_COORDINATOR_LOCK_SECONDS": 900,
         "JWT_SECRET": "test-secret",
         "JWT_EXPIRY_MINUTES": 60,
         "GOOGLE_CLIENT_ID": None,
@@ -92,9 +94,6 @@ class ApiDependencyTests(unittest.TestCase):
             user_niche_repository = stack.enter_context(
                 patch("api.dependencies.PostgresUserNicheRepository")
             )
-            source_locator_repository = stack.enter_context(
-                patch("api.dependencies.PostgresSourceLocatorRepository")
-            )
             json_adapter = stack.enter_context(
                 patch("api.dependencies.JsonUrlAdapter")
             )
@@ -134,7 +133,6 @@ class ApiDependencyTests(unittest.TestCase):
         niche_company_repository.assert_called_once_with(connection=connection)
         niche_source_repository.assert_called_once_with(connection=connection)
         user_niche_repository.assert_called_once_with(connection=connection)
-        source_locator_repository.assert_called_once_with(connection=connection)
         self.assertEqual(llm_client.call_count, 2)
         llm_client.assert_any_call(api_key="llm-key", model="response-model")
         llm_client.assert_any_call(api_key="llm-key", model="relevance-model")
@@ -185,10 +183,6 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.niche_company_repository, niche_company_repository.return_value)
         self.assertIs(dependencies.user_niche_repository, user_niche_repository.return_value)
         self.assertIs(dependencies.niche_source_repository, niche_source_repository.return_value)
-        self.assertIs(
-            dependencies.source_locator_repository,
-            source_locator_repository.return_value,
-        )
         self.assertIs(dependencies.llm_client, llm_client.return_value)
         self.assertIs(dependencies.relevance_llm_client, llm_client.return_value)
         self.assertIs(dependencies.embedding_client, embedding_client.return_value)
@@ -233,7 +227,6 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresNicheCompanyRepository",
                 "api.dependencies.PostgresNicheSourceRepository",
                 "api.dependencies.PostgresUserNicheRepository",
-                "api.dependencies.PostgresSourceLocatorRepository",
                 "api.dependencies.JsonUrlAdapter",
                 "api.dependencies.StaticUrlAdapter",
                 "api.dependencies.connect_postgres",

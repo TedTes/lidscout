@@ -41,7 +41,6 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
-    SourceLocatorRepository,
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -93,7 +92,6 @@ class PipelineConfig:
     agent_action_repository: AgentActionRepository | None = None
     niche_source_repository: NicheSourceRepository | None = None
     user_niche_repository: UserNicheRepository | None = None
-    source_locator_repository: SourceLocatorRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     sources: list[SourceInput] = field(default_factory=list)
     user_niche_id: str | None = None
@@ -685,7 +683,6 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     details: list[SourceFetchDetail] = []
     sources = config.sources or _configured_sources(
         config.niche_source_repository,
-        config.source_locator_repository,
         config.user_niche_repository,
         config.agent_preferences_repository,
         config.user_niche_id,
@@ -1039,7 +1036,6 @@ def _build_source_post_list(
 
 def _configured_sources(
     niche_source_repository: NicheSourceRepository | None,
-    source_locator_repository: SourceLocatorRepository | None,
     user_niche_repository: UserNicheRepository | None,
     agent_preferences_repository: AgentPreferencesRepository | None,
     user_niche_id: str | None,
@@ -1088,12 +1084,7 @@ def _configured_sources(
                         allow_auth_sources=allow_auth_sources,
                     )
                 ]
-    if source_locator_repository is None:
-        return []
-    return [
-        locator.to_source_input()
-        for locator in source_locator_repository.list_source_locators(enabled=True)
-    ]
+    return []
 
 
 def _prioritize_niche_sources(

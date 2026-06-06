@@ -30,7 +30,7 @@ def run_configured_daily_pipeline(
     market_id: str | None = None,
     dependencies: object | None = None,
 ) -> PipelineRunResult:
-    """Run the pipeline from persisted, enabled source locators."""
+    """Run the pipeline from persisted, enabled niche sources."""
     app_config = get_app_config()
     resolved_recipient = recipient or app_config.REPORT_RECIPIENT
     if app_config.PIPELINE_EMAIL_ENABLED and not resolved_recipient:
@@ -63,7 +63,6 @@ def run_configured_daily_pipeline(
             agent_action_repository=runtime_dependencies.agent_action_repository,
             niche_source_repository=runtime_dependencies.niche_source_repository,
             user_niche_repository=runtime_dependencies.user_niche_repository,
-            source_locator_repository=runtime_dependencies.source_locator_repository,
             llm_client=runtime_dependencies.llm_client,
             relevance_llm_client=runtime_dependencies.relevance_llm_client,
             embedding_client=runtime_dependencies.embedding_client,

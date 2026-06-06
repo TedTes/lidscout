@@ -7,7 +7,7 @@ from domain.competitor import Competitor
 from domain.market import Market
 from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
 from domain.post import RawPost
-from domain.source import MonitoredSource, SourceInput, SourceLocator
+from domain.source import MonitoredSource, SourceInput
 from application.ingestion import SourceFetchDetail
 from infrastructure.db import (
     InMemoryClusterRepository,
@@ -20,7 +20,6 @@ from infrastructure.db import (
     InMemoryScoreRepository,
     InMemorySignalRepository,
     InMemoryNicheSourceRepository,
-    InMemorySourceLocatorRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -162,18 +161,37 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertIsNone(opportunity_repository.get_opportunity("opportunity-cluster-1"))
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
 
-    def test_runs_pipeline_from_enabled_source_locators(self):
-        source_locator_repository = InMemorySourceLocatorRepository()
-        source_locator_repository.save_source_locators(
+    def test_runs_pipeline_from_enabled_niche_sources(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        niche_source_repository = InMemoryNicheSourceRepository()
+        niche_source_repository.save_niche_sources(
             [
-                SourceLocator.create(
-                    id="locator-1",
+                NicheSource.create(
+                    id="source-1",
+                    niche_id="niche-1",
                     locator="https://example.com/reviews",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
                     limit=1,
                 ),
-                SourceLocator.create(
-                    id="locator-2",
+                NicheSource.create(
+                    id="source-2",
+                    niche_id="niche-1",
                     locator="https://example.com/disabled",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
                     enabled=False,
                 ),
             ]
@@ -195,12 +213,14 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             signal_repository=InMemorySignalRepository(),
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
-            source_locator_repository=source_locator_repository,
+            niche_source_repository=niche_source_repository,
+            user_niche_repository=user_niche_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(FakeEmailNotifier()),
             recipient="founder@example.com",
             source_adapters=[FakeSourceAdapter()],
+            user_niche_id="market-1",
         )
 
         result = run_daily_pipeline(config)
@@ -517,30 +537,19 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 )
             ]
         )
-        source_locator_repository = InMemorySourceLocatorRepository()
-        source_locator_repository.save_source_locators(
-            [
-                SourceLocator.create(
-                    id="locator-1",
-                    locator="https://example.com/reviews",
-                    limit=1,
-                )
-            ]
-        )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
             signal_repository=InMemorySignalRepository(),
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
             agent_preferences_repository=agent_preferences_repository,
-            monitored_source_repository=monitored_source_repository,
-            source_locator_repository=source_locator_repository,
+            niche_source_repository=monitored_source_repository,
             llm_client=SequentialLLMClient([]),
             embedding_client=FakeEmbeddingClient(),
             email_client=EmailClient(FakeEmailNotifier()),
             recipient="founder@example.com",
             source_adapters=[FakeSourceAdapter()],
-            market_id="workspace-tools",
+            user_niche_id="workspace-tools",
         )
 
         result = run_daily_pipeline(config)
@@ -884,7 +893,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         sources = _configured_sources(
             source_repository,
-            None,
             user_niche_repository,
             None,
             "market-1",
@@ -952,7 +960,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         sources = _configured_sources(
             source_repository,
-            None,
             user_niche_repository,
             None,
             "market-1",
@@ -995,7 +1002,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         sources = _configured_sources(
             source_repository,
-            None,
             user_niche_repository,
             None,
             "market-1",
