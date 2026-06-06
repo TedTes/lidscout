@@ -35,6 +35,9 @@ class ClusterQualification:
     company_count: int
     general_finding_count: int
     high_signal_source_count: int = 0
+    buyer_context_signal_count: int = 0
+    strong_pain_signal_count: int = 0
+    average_signal_confidence: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -248,80 +251,80 @@ def qualify_cluster_for_opportunity(
     company_count = len(company_ids)
     general_signals = [signal for signal in signals if not signal.niche_company_id]
     general_source_count = _source_diversity(general_signals)
+    buyer_context_signal_count = _buyer_context_signal_count(signals)
+    strong_pain_signal_count = _strong_pain_signal_count(signals)
+    average_signal_confidence = _average_signal_confidence(signals)
+
+    def qualification(qualified: bool, reason: str | None) -> ClusterQualification:
+        return ClusterQualification(
+            cluster_id=cluster.id,
+            qualified=qualified,
+            reason=reason,
+            finding_count=finding_count,
+            source_count=source_count,
+            company_count=company_count,
+            general_finding_count=len(general_signals),
+            high_signal_source_count=high_signal_source_count,
+            buyer_context_signal_count=buyer_context_signal_count,
+            strong_pain_signal_count=strong_pain_signal_count,
+            average_signal_confidence=average_signal_confidence,
+        )
 
     if finding_count < 2 or source_count < 2:
-        return ClusterQualification(
-            cluster_id=cluster.id,
-            qualified=False,
-            reason="insufficient_evidence",
-            finding_count=finding_count,
-            source_count=source_count,
-            company_count=company_count,
-            general_finding_count=len(general_signals),
-            high_signal_source_count=high_signal_source_count,
-        )
+        return qualification(False, "insufficient_evidence")
 
     if high_signal_source_count == 0 and finding_count < 3:
-        return ClusterQualification(
-            cluster_id=cluster.id,
-            qualified=False,
-            reason="weak_source_mix",
-            finding_count=finding_count,
-            source_count=source_count,
-            company_count=company_count,
-            general_finding_count=len(general_signals),
-            high_signal_source_count=high_signal_source_count,
-        )
+        return qualification(False, "weak_source_mix")
+
+    if average_signal_confidence < 0.55:
+        return qualification(False, "low_extraction_confidence")
+
+    if buyer_context_signal_count == 0:
+        return qualification(False, "thin_buyer_context")
+
+    if strong_pain_signal_count == 0:
+        return qualification(False, "low_pain_intensity")
 
     if company_count <= 1 and _looks_vendor_fix_only(cluster, signals):
-        return ClusterQualification(
-            cluster_id=cluster.id,
-            qualified=False,
-            reason="vendor_fix_only",
-            finding_count=finding_count,
-            source_count=source_count,
-            company_count=company_count,
-            general_finding_count=len(general_signals),
-            high_signal_source_count=high_signal_source_count,
-        )
+        return qualification(False, "vendor_fix_only")
 
     has_cross_tool_pattern = company_count >= 2 or (
         len(general_signals) >= 3 and general_source_count >= 2
     )
     if not has_cross_tool_pattern:
-        return ClusterQualification(
-            cluster_id=cluster.id,
-            qualified=False,
-            reason="no_cross_tool_pattern",
-            finding_count=finding_count,
-            source_count=source_count,
-            company_count=company_count,
-            general_finding_count=len(general_signals),
-            high_signal_source_count=high_signal_source_count,
-        )
+        return qualification(False, "no_cross_tool_pattern")
 
     if _looks_off_niche(cluster, signals, context):
-        return ClusterQualification(
-            cluster_id=cluster.id,
-            qualified=False,
-            reason="off_niche",
-            finding_count=finding_count,
-            source_count=source_count,
-            company_count=company_count,
-            general_finding_count=len(general_signals),
-            high_signal_source_count=high_signal_source_count,
-        )
+        return qualification(False, "off_niche")
 
-    return ClusterQualification(
-        cluster_id=cluster.id,
-        qualified=True,
-        reason=None,
-        finding_count=finding_count,
-        source_count=source_count,
-        company_count=company_count,
-        general_finding_count=len(general_signals),
-        high_signal_source_count=high_signal_source_count,
+    return qualification(True, None)
+
+
+def _buyer_context_signal_count(signals: list[Signal]) -> int:
+    return sum(
+        1
+        for signal in signals
+        if signal.user_type
+        or signal.job_to_be_done
+        or signal.current_workaround
+        or signal.willingness_to_pay is True
     )
+
+
+def _strong_pain_signal_count(signals: list[Signal]) -> int:
+    return sum(
+        1
+        for signal in signals
+        if signal.urgency in {"medium", "high"}
+        or signal.severity in {"medium", "high"}
+        or signal.willingness_to_pay is True
+    )
+
+
+def _average_signal_confidence(signals: list[Signal]) -> float:
+    if not signals:
+        return 0.0
+    return round(sum(signal.confidence for signal in signals) / len(signals), 3)
 
 
 def _most_common(values: list[str], *, fallback: str | None) -> str | None:

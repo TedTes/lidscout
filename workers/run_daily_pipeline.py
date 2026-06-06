@@ -396,6 +396,11 @@ def _record_synthesis_qualification_activity(
                 "company_count": qualification.company_count,
                 "general_finding_count": qualification.general_finding_count,
                 "high_signal_source_count": qualification.high_signal_source_count,
+                "buyer_context_signal_count": (
+                    qualification.buyer_context_signal_count
+                ),
+                "strong_pain_signal_count": qualification.strong_pain_signal_count,
+                "average_signal_confidence": qualification.average_signal_confidence,
             },
         )
 
@@ -407,6 +412,9 @@ def _qualification_reason_detail(reason: str | None) -> str:
         "vendor_fix_only": "Looks like a vendor fix rather than a strategic gap.",
         "off_niche": "Evidence does not match the niche job-to-be-done.",
         "weak_source_mix": "Needs stronger buyer-side sources or more corroborating evidence.",
+        "low_extraction_confidence": "Needs higher-confidence extracted evidence before promotion.",
+        "thin_buyer_context": "Needs clearer buyer, job-to-be-done, workaround, or willingness-to-pay context.",
+        "low_pain_intensity": "Needs stronger urgency, severity, or willingness-to-pay evidence.",
     }.get(reason or "", "Theme did not meet strategic gap qualification criteria.")
 
 

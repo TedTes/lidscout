@@ -2495,6 +2495,10 @@ def _serialize_cluster(
             "source_count": qualification.source_count,
             "company_count": qualification.company_count,
             "general_finding_count": qualification.general_finding_count,
+            "high_signal_source_count": qualification.high_signal_source_count,
+            "buyer_context_signal_count": qualification.buyer_context_signal_count,
+            "strong_pain_signal_count": qualification.strong_pain_signal_count,
+            "average_signal_confidence": qualification.average_signal_confidence,
         }
     return serialized
 

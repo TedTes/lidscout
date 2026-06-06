@@ -121,6 +121,10 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
                 id="signal-1",
                 post_id="reddit:1",
                 pain="Calendar sync fails across timezones.",
+                user_type="operations teams",
+                urgency="high",
+                severity="high",
+                confidence=0.9,
                 niche_company_id="notion",
                 evidence_url="https://reddit.com/r/Notion/comments/1",
             ),
@@ -128,6 +132,10 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
                 id="signal-2",
                 post_id="g2:1",
                 pain="Calendar events disappear for shared workspaces.",
+                user_type="operations teams",
+                urgency="high",
+                severity="high",
+                confidence=0.86,
                 niche_company_id="notion",
                 evidence_url="https://g2.com/products/notion/reviews/1",
             ),
@@ -188,6 +196,10 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
                 id="signal-1",
                 post_id="reddit:1",
                 pain="Default page titles are broken and need a setting to customize titles.",
+                user_type="site operators",
+                urgency="high",
+                severity="high",
+                confidence=0.9,
                 niche_company_id="sitebuilder",
                 evidence_url="https://reddit.com/r/sitebuilder/comments/1",
             ),
@@ -195,6 +207,10 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
                 id="signal-2",
                 post_id="forum:1",
                 pain="Users want the vendor to fix the default title bug.",
+                user_type="site operators",
+                urgency="high",
+                severity="high",
+                confidence=0.86,
                 niche_company_id="sitebuilder",
                 evidence_url="https://forum.example.com/t/1",
             ),
@@ -212,6 +228,111 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
 
         self.assertEqual(result.synthesized_count, 0)
         self.assertEqual(result.rejected_qualifications[0].reason, "vendor_fix_only")
+
+    def test_rejects_low_confidence_clusters(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        signals = [
+            self._signal(
+                "signal-1",
+                company="shipstation",
+                url="https://reddit.com/r/ecommerce/comments/1",
+                confidence=0.42,
+            ),
+            self._signal(
+                "signal-2",
+                company="shipblink",
+                url="https://g2.com/products/shipblink/reviews/1",
+                confidence=0.51,
+            ),
+        ]
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Shipping reliability",
+            summary="Operators report shipping reliability pain.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.6,
+        )
+
+        result = service.synthesize([cluster], signals)
+
+        self.assertEqual(result.synthesized_count, 0)
+        qualification = result.rejected_qualifications[0]
+        self.assertEqual(qualification.reason, "low_extraction_confidence")
+        self.assertLess(qualification.average_signal_confidence, 0.55)
+
+    def test_rejects_clusters_without_buyer_context(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        signals = [
+            Signal.create(
+                id="signal-1",
+                post_id="reddit:1",
+                pain="Shipping sync fails during fulfillment.",
+                urgency="high",
+                severity="high",
+                confidence=0.9,
+                niche_company_id="shipstation",
+                evidence_url="https://reddit.com/r/ecommerce/comments/1",
+            ),
+            Signal.create(
+                id="signal-2",
+                post_id="g2:1",
+                pain="Fulfillment sync breaks during peak order volume.",
+                urgency="high",
+                severity="high",
+                confidence=0.88,
+                niche_company_id="shipblink",
+                evidence_url="https://g2.com/products/shipblink/reviews/1",
+            ),
+        ]
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Shipping reliability",
+            summary="Operators report shipping reliability pain.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.6,
+        )
+
+        result = service.synthesize([cluster], signals)
+
+        self.assertEqual(result.synthesized_count, 0)
+        self.assertEqual(result.rejected_qualifications[0].reason, "thin_buyer_context")
+
+    def test_rejects_low_intensity_clusters(self):
+        repository = InMemoryOpportunityRepository()
+        service = OpportunitySynthesisService(repository, minimum_average_score=0.0)
+        signals = [
+            self._signal(
+                "signal-1",
+                company="shipstation",
+                url="https://reddit.com/r/ecommerce/comments/1",
+                urgency="low",
+                severity="low",
+            ),
+            self._signal(
+                "signal-2",
+                company="shipblink",
+                url="https://g2.com/products/shipblink/reviews/1",
+                urgency="low",
+                severity="low",
+            ),
+        ]
+        cluster = SignalCluster.create(
+            id="cluster-1",
+            theme="Shipping reliability",
+            summary="Operators mention shipping reliability.",
+            signal_ids=["signal-1", "signal-2"],
+            frequency=2,
+            average_score=8.6,
+        )
+
+        result = service.synthesize([cluster], signals)
+
+        self.assertEqual(result.synthesized_count, 0)
+        self.assertEqual(result.rejected_qualifications[0].reason, "low_pain_intensity")
 
     def test_uses_llm_when_client_provided(self):
         repository = InMemoryOpportunityRepository()
@@ -527,6 +648,9 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
         url: str,
         pain: str = "Calendar sync fails.",
         category: str = "Calendar reliability",
+        confidence: float = 0.9,
+        urgency: str = "medium",
+        severity: str = "medium",
     ) -> Signal:
         return Signal.create(
             id=signal_id,
@@ -534,7 +658,9 @@ class OpportunitySynthesisServiceTests(unittest.TestCase):
             pain=pain,
             user_type="operations teams",
             category=category,
-            confidence=0.9,
+            urgency=urgency,
+            severity=severity,
+            confidence=confidence,
             niche_company_id=company,
             evidence_url=url,
         )
