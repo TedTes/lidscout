@@ -18,8 +18,6 @@ NicheSourceAccessMode = Literal[
     "proxy_required",
     "manual",
 ]
-UnmetNeedType = Literal["time", "money", "effort", "capability", "fit"]
-GapSignalStrength = Literal["weak", "moderate", "strong"]
 
 
 @dataclass(frozen=True)
@@ -389,74 +387,6 @@ def _clean_count_map(value: dict[str, int] | None) -> dict[str, int]:
             raise ValueError("count map values must be non-negative")
         cleaned[normalized_key] = normalized_count
     return cleaned
-
-
-@dataclass(frozen=True)
-class Gap:
-    """A synthesised product gap — the strategic output of monitoring a niche.
-
-    signal_strength is computed from breadth + depth + recency + source
-    diversity. It is never assigned directly by an LLM.
-    """
-
-    id: str
-    niche_id: str
-    title: str
-    pain_summary: str
-    unmet_need_type: UnmetNeedType
-    affected_buyer: str
-    suggested_wedge: str
-    signal_strength: GapSignalStrength
-    breadth: int = 1
-    depth: int = 1
-    evidence_finding_ids: list[str] = field(default_factory=list)
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        id: str | None = None,
-        niche_id: str,
-        title: str,
-        pain_summary: str,
-        unmet_need_type: UnmetNeedType,
-        affected_buyer: str,
-        suggested_wedge: str,
-        signal_strength: GapSignalStrength,
-        breadth: int = 1,
-        depth: int = 1,
-        evidence_finding_ids: list[str] | None = None,
-        created_at: datetime | None = None,
-        updated_at: datetime | None = None,
-    ) -> "Gap":
-        if not niche_id.strip():
-            raise ValueError("niche_id is required")
-        if not title.strip():
-            raise ValueError("title is required")
-        if not pain_summary.strip():
-            raise ValueError("pain_summary is required")
-        if breadth < 1:
-            raise ValueError("breadth must be >= 1")
-        if depth < 1:
-            raise ValueError("depth must be >= 1")
-        now = datetime.now(tz=UTC)
-        return cls(
-            id=(id or str(uuid.uuid4())).strip(),
-            niche_id=niche_id.strip(),
-            title=title.strip(),
-            pain_summary=pain_summary.strip(),
-            unmet_need_type=unmet_need_type,
-            affected_buyer=affected_buyer.strip(),
-            suggested_wedge=suggested_wedge.strip(),
-            signal_strength=signal_strength,
-            breadth=breadth,
-            depth=depth,
-            evidence_finding_ids=evidence_finding_ids or [],
-            created_at=created_at or now,
-            updated_at=updated_at or now,
-        )
 
 
 @dataclass(frozen=True)

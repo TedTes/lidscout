@@ -6,14 +6,12 @@ from datetime import datetime
 from typing import Any
 
 from application.ports import (
-    GapRepository,
     NicheCompanyRepository,
     NicheRepository,
     NicheSourceRepository,
     UserNicheRepository,
 )
 from domain.niche import (
-    Gap,
     Niche,
     NicheCompany,
     NicheSource,
@@ -409,67 +407,6 @@ class PostgresNicheSourceRepository(_PostgresRepository, NicheSourceRepository):
         return _rowcount(cursor) > 0
 
 
-class PostgresGapRepository(_PostgresRepository, GapRepository):
-    """Postgres-backed gap repository."""
-
-    def save_gaps(self, gaps: list[Gap]) -> int:
-        inserted = 0
-        for gap in gaps:
-            cursor = self.connection.execute(
-                """
-                INSERT INTO gaps (
-                    id, niche_id, title, pain_summary, unmet_need_type,
-                    affected_buyer, suggested_wedge, breadth, depth,
-                    signal_strength, evidence_finding_ids, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-                ON CONFLICT (id) DO NOTHING
-                """,
-                (
-                    gap.id, gap.niche_id, gap.title, gap.pain_summary,
-                    gap.unmet_need_type, gap.affected_buyer, gap.suggested_wedge,
-                    gap.breadth, gap.depth, gap.signal_strength,
-                    json.dumps(gap.evidence_finding_ids),
-                    gap.created_at, gap.updated_at,
-                ),
-            )
-            inserted += _rowcount(cursor)
-        self.connection.commit()
-        return inserted
-
-    def get_gap(self, gap_id: str) -> Gap | None:
-        row = self.connection.execute(
-            "SELECT * FROM gaps WHERE id = %s", (gap_id,)
-        ).fetchone()
-        return _gap_from_row(row) if row else None
-
-    def list_gaps(
-        self,
-        niche_id: str,
-        *,
-        unmet_need_type: str | None = None,
-        signal_strength: str | None = None,
-    ) -> list[Gap]:
-        clauses, params = ["niche_id = %s"], [niche_id]
-        if unmet_need_type:
-            clauses.append("unmet_need_type = %s")
-            params.append(unmet_need_type)
-        if signal_strength:
-            clauses.append("signal_strength = %s")
-            params.append(signal_strength)
-        rows = self.connection.execute(
-            f"SELECT * FROM gaps WHERE {' AND '.join(clauses)} ORDER BY created_at DESC",
-            params,
-        ).fetchall()
-        return [_gap_from_row(r) for r in rows]
-
-    def delete_gap(self, gap_id: str) -> bool:
-        cursor = self.connection.execute(
-            "DELETE FROM gaps WHERE id = %s", (gap_id,)
-        )
-        self.connection.commit()
-        return _rowcount(cursor) > 0
-
-
 class PostgresUserNicheRepository(_PostgresRepository, UserNicheRepository):
     """Postgres-backed user niche repository."""
 
@@ -635,28 +572,6 @@ def _niche_source_run_stats_from_row(row: dict[str, Any]) -> NicheSourceRunStats
             for key, value in _json_obj(row.get("last_rejection_breakdown")).items()
         },
         last_scanned_at=row.get("last_scanned_at"),
-        updated_at=row.get("updated_at"),
-    )
-
-
-def _gap_from_row(row: dict[str, Any]) -> Gap:
-    evidence = row.get("evidence_finding_ids") or []
-    if isinstance(evidence, str):
-        import json as _json
-        evidence = _json.loads(evidence)
-    return Gap(
-        id=str(row["id"]),
-        niche_id=str(row["niche_id"]),
-        title=row["title"],
-        pain_summary=row["pain_summary"],
-        unmet_need_type=row["unmet_need_type"],
-        affected_buyer=row["affected_buyer"],
-        suggested_wedge=row["suggested_wedge"],
-        breadth=int(row["breadth"]),
-        depth=int(row["depth"]),
-        signal_strength=row["signal_strength"],
-        evidence_finding_ids=list(evidence),
-        created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )
 

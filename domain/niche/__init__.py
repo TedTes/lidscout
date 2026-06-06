@@ -1,6 +1,5 @@
 """Niche domain entities."""
 from domain.niche.models import (
-    Gap,
     Niche,
     NicheCompany,
     NicheSource,
@@ -9,7 +8,6 @@ from domain.niche.models import (
 )
 
 __all__ = [
-    "Gap",
     "Niche",
     "NicheCompany",
     "NicheSource",

@@ -2,7 +2,6 @@
 from typing import Protocol
 
 from domain.niche import (
-    Gap,
     Niche,
     NicheCompany,
     NicheSource,
@@ -386,32 +385,6 @@ class NicheSourceRepository(Protocol):
 
     def delete_niche_source(self, source_id: str) -> bool:
         """Delete one source and return whether it existed."""
-        ...
-
-
-class GapRepository(Protocol):
-    """Persistence boundary for synthesised product gaps."""
-
-    def save_gaps(self, gaps: list[Gap]) -> int:
-        """Persist gaps and return the number saved."""
-        ...
-
-    def get_gap(self, gap_id: str) -> Gap | None:
-        """Load one gap by id."""
-        ...
-
-    def list_gaps(
-        self,
-        niche_id: str,
-        *,
-        unmet_need_type: str | None = None,
-        signal_strength: str | None = None,
-    ) -> list[Gap]:
-        """Load gaps for a niche, optionally filtered."""
-        ...
-
-    def delete_gap(self, gap_id: str) -> bool:
-        """Delete one gap and return whether it existed."""
         ...
 
 

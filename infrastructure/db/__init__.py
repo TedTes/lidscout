@@ -1,6 +1,5 @@
 """Database infrastructure."""
 from infrastructure.db.niche_repository import (
-    PostgresGapRepository,
     PostgresNicheCompanyRepository,
     PostgresNicheRepository,
     PostgresNicheSourceRepository,
@@ -77,7 +76,6 @@ __all__ = [
     "PostgresAgentFeedbackRepository",
     "PostgresAgentFollowUpRepository",
     "PostgresAgentPreferencesRepository",
-    "PostgresGapRepository",
     "PostgresNicheCompanyRepository",
     "PostgresNicheRepository",
     "PostgresNicheSourceRepository",
