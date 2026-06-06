@@ -2278,27 +2278,30 @@ def _apply_feedback_to_agent_preferences(
     opportunity: Opportunity,
     action: str,
 ) -> None:
-    if action not in {"save", "more_like_this", "less_like_this"}:
+    if action not in {"save", "dismiss", "more_like_this", "less_like_this"}:
         return
     cluster = dependencies.cluster_repository.get_cluster(opportunity.cluster_id)
     theme = cluster.theme if cluster is not None else None
     category = opportunity.unmet_need_type
-    if theme is None and category is None:
+    source_families = _source_families_for_opportunity(dependencies, opportunity)
+    if theme is None and category is None and not source_families:
         return
 
     preferences = (
         dependencies.agent_preferences_repository.get_agent_preferences(market_id)
         or AgentPreferences.create(user_niche_id=market_id)
     )
+    preferred_source_families = set(preferences.preferred_source_families)
     ignored_themes = set(preferences.ignored_themes)
     ignored_categories = set(preferences.ignored_categories)
 
-    if action == "less_like_this":
+    if action in {"dismiss", "less_like_this"}:
         if theme:
             ignored_themes.add(theme)
         if category:
             ignored_categories.add(category)
     else:
+        preferred_source_families.update(source_families)
         if theme:
             ignored_themes.discard(theme)
         if category:
@@ -2306,7 +2309,7 @@ def _apply_feedback_to_agent_preferences(
 
     updated_preferences = AgentPreferences.create(
         user_niche_id=market_id,
-        preferred_source_families=preferences.preferred_source_families,
+        preferred_source_families=sorted(preferred_source_families),
         ignored_themes=sorted(ignored_themes),
         ignored_categories=sorted(ignored_categories),
         muted_source_ids=preferences.muted_source_ids,
@@ -2316,6 +2319,63 @@ def _apply_feedback_to_agent_preferences(
     dependencies.agent_preferences_repository.save_agent_preferences(
         updated_preferences,
     )
+
+
+def _source_families_for_opportunity(
+    dependencies: SignalApiDependencies,
+    opportunity: Opportunity,
+) -> set[str]:
+    signal_index = {
+        signal.id: signal
+        for signal in dependencies.signal_repository.list_signals()
+        if signal.id in opportunity.evidence_signal_ids
+    }
+    return {
+        family
+        for signal_id in opportunity.evidence_signal_ids
+        if (family := _source_family_for_signal(signal_index.get(signal_id)))
+    }
+
+
+def _source_family_for_signal(signal: Signal | None) -> str | None:
+    if signal is None:
+        return None
+    source_text = _source_text_for_signal(signal)
+    if not source_text:
+        return None
+    if any(
+        token in source_text
+        for token in {
+            "github",
+            "stackoverflow",
+            "stackexchange",
+            "news.ycombinator.com",
+            "hn.algolia.com",
+            "discourse",
+            "forum",
+        }
+    ):
+        return "technical_forum"
+    if "reddit" in source_text:
+        return "social"
+    if any(
+        token in source_text
+        for token in {"g2.com", "capterra", "trustradius", "trustpilot"}
+    ):
+        return "reviews"
+    if "producthunt" in source_text:
+        return "launch"
+    return None
+
+
+def _source_text_for_signal(signal: Signal) -> str:
+    if signal.evidence_url:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(signal.evidence_url)
+        if parsed.netloc:
+            return parsed.netloc.lower()
+    return signal.post_id.split(":", 1)[0].lower() if ":" in signal.post_id else ""
 
 
 def _find_market_follow_up(

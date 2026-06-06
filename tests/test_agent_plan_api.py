@@ -20,6 +20,7 @@ from domain.agent import AgentAction, AgentFollowUp
 from domain.cluster import SignalCluster
 from domain.niche import NicheSource, UserNiche
 from domain.opportunity import Opportunity
+from domain.signal import Signal
 from domain.user import User
 
 
@@ -246,6 +247,55 @@ def test_less_like_this_feedback_updates_agent_preferences() -> None:
     assert preferences.ignored_categories == ["time"]
 
 
+def test_dismiss_feedback_updates_agent_preferences() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    _seed_opportunity_context(dependencies)
+
+    asyncio.run(
+        create_opportunity_feedback(
+            "opportunity-1",
+            AgentFeedbackRequest(
+                market_id="market-1",
+                action="dismiss",
+            ),
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        "market-1",
+    )
+    assert preferences is not None
+    assert preferences.ignored_themes == ["reporting"]
+    assert preferences.ignored_categories == ["time"]
+
+
+def test_positive_feedback_learns_source_family_preferences() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    _seed_opportunity_context(dependencies)
+
+    asyncio.run(
+        create_opportunity_feedback(
+            "opportunity-1",
+            AgentFeedbackRequest(
+                market_id="market-1",
+                action="save",
+            ),
+            dependencies,
+            User(id="user-1", email="user@example.com"),
+        )
+    )
+
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        "market-1",
+    )
+    assert preferences is not None
+    assert preferences.preferred_source_families == ["technical_forum"]
+
+
 def test_more_like_this_feedback_removes_ignored_preferences() -> None:
     dependencies = SignalApiDependencies()
     _seed_market_with_follow_up(dependencies)
@@ -361,6 +411,17 @@ def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:
 
 
 def _seed_opportunity_context(dependencies: SignalApiDependencies) -> None:
+    dependencies.signal_repository.save_signals(
+        [
+            Signal.create(
+                id="signal-1",
+                post_id="github:issue-1",
+                pain="Reports are slow.",
+                user_type="finance teams",
+                evidence_url="https://github.com/example/reports/issues/1",
+            )
+        ]
+    )
     dependencies.cluster_repository.save_clusters(
         [
             SignalCluster.create(
