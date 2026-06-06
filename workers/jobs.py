@@ -70,6 +70,9 @@ def run_configured_daily_pipeline(
             email_client=runtime_dependencies.email_client,
             recipient=resolved_recipient,
             send_email=app_config.PIPELINE_EMAIL_ENABLED,
+            allow_auth_sources=bool(
+                app_config.REDDIT_CLIENT_ID and app_config.REDDIT_CLIENT_SECRET
+            ),
             source_adapters=runtime_dependencies.source_adapters,
             user_niche_id=market_id,
         )

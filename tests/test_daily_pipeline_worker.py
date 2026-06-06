@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from typing import Any
 
 from domain.agent import AgentPreferences
@@ -894,8 +895,116 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             [
                 "https://example.com/high",
                 "https://example.com/low",
-                "https://example.com/failing",
             ],
+        )
+
+    def test_configured_sources_skip_gated_sources_without_runtime_access(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        source_repository = InMemoryNicheSourceRepository()
+        reddit_source = replace(
+            NicheSource.create(
+                id="source-reddit",
+                niche_id="niche-1",
+                locator="https://www.reddit.com/r/devtools/new.json?limit=25",
+                source_type="reddit_subreddit",
+                source_family="social",
+                is_gate_free=False,
+                requires_auth=True,
+            ),
+            enabled=True,
+        )
+        proxy_source = replace(
+            NicheSource.create(
+                id="source-g2",
+                niche_id="niche-1",
+                locator="https://www.g2.com/products/example/reviews",
+                source_type="g2_reviews",
+                source_family="reviews",
+                is_gate_free=False,
+                requires_proxy=True,
+            ),
+            enabled=True,
+        )
+        source_repository.save_niche_sources(
+            [
+                reddit_source,
+                proxy_source,
+                NicheSource.create(
+                    id="source-hn",
+                    niche_id="niche-1",
+                    locator="https://hn.algolia.com/api/v1/search_by_date?query=test&tags=comment",
+                    source_type="hackernews_search",
+                    source_family="technical_forum",
+                    is_gate_free=True,
+                ),
+            ]
+        )
+
+        sources = _configured_sources(
+            source_repository,
+            None,
+            user_niche_repository,
+            None,
+            "market-1",
+        )
+
+        self.assertEqual(
+            [source.locator for source in sources],
+            ["https://hn.algolia.com/api/v1/search_by_date?query=test&tags=comment"],
+        )
+
+    def test_configured_sources_allow_auth_sources_when_runtime_access_exists(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        source_repository = InMemoryNicheSourceRepository()
+        source_repository.save_niche_sources(
+            [
+                replace(
+                    NicheSource.create(
+                        id="source-reddit",
+                        niche_id="niche-1",
+                        locator="https://www.reddit.com/r/devtools/new.json?limit=25",
+                        source_type="reddit_subreddit",
+                        source_family="social",
+                        is_gate_free=False,
+                        requires_auth=True,
+                    ),
+                    enabled=True,
+                )
+            ]
+        )
+
+        sources = _configured_sources(
+            source_repository,
+            None,
+            user_niche_repository,
+            None,
+            "market-1",
+            allow_auth_sources=True,
+        )
+
+        self.assertEqual(
+            [source.locator for source in sources],
+            ["https://www.reddit.com/r/devtools/new.json?limit=25"],
         )
 
 

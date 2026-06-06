@@ -46,7 +46,10 @@ from application.ports import (
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.scoring import ScoringResult, ScoringService
-from application.source_quality import source_observed_quality_score
+from application.source_quality import (
+    source_observed_quality_score,
+    source_scan_eligibility,
+)
 from domain.cluster import SignalCluster
 from domain.agent import AgentAction, AgentActivity
 from domain.opportunity import Opportunity
@@ -97,6 +100,8 @@ class PipelineConfig:
     default_limit: int = 25
     similarity_threshold: float = 0.82
     send_email: bool = True
+    allow_proxy_sources: bool = False
+    allow_auth_sources: bool = False
 
 
 @dataclass(frozen=True)
@@ -676,6 +681,8 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
         config.user_niche_repository,
         config.agent_preferences_repository,
         config.user_niche_id,
+        allow_proxy_sources=config.allow_proxy_sources,
+        allow_auth_sources=config.allow_auth_sources,
     )
 
     if sources:
@@ -1028,6 +1035,9 @@ def _configured_sources(
     user_niche_repository: UserNicheRepository | None,
     agent_preferences_repository: AgentPreferencesRepository | None,
     user_niche_id: str | None,
+    *,
+    allow_proxy_sources: bool = False,
+    allow_auth_sources: bool = False,
 ) -> list[SourceInput]:
     if niche_source_repository is not None and user_niche_id is not None:
         niche_id = None
@@ -1066,6 +1076,8 @@ def _configured_sources(
                     for s in _prioritize_niche_sources(
                         filtered,
                         niche_source_repository,
+                        allow_proxy_sources=allow_proxy_sources,
+                        allow_auth_sources=allow_auth_sources,
                     )
                 ]
     if source_locator_repository is None:
@@ -1079,6 +1091,9 @@ def _configured_sources(
 def _prioritize_niche_sources(
     sources: list[NicheSource],
     niche_source_repository: NicheSourceRepository,
+    *,
+    allow_proxy_sources: bool = False,
+    allow_auth_sources: bool = False,
 ) -> list[NicheSource]:
     if not sources:
         return []
@@ -1088,8 +1103,18 @@ def _prioritize_niche_sources(
             [source.id for source in sources]
         )
     }
+    eligible_sources = [
+        source
+        for source in sources
+        if source_scan_eligibility(
+            source,
+            stats_by_source.get(source.id),
+            allow_proxy_sources=allow_proxy_sources,
+            allow_auth_sources=allow_auth_sources,
+        ).eligible
+    ]
     return sorted(
-        sources,
+        eligible_sources,
         key=lambda source: (
             -_niche_source_priority_score(source, stats_by_source.get(source.id)),
             source.id,
