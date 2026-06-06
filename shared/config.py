@@ -41,6 +41,7 @@ class AppConfig:
     REPORT_RECIPIENT: str | None
     PIPELINE_EMAIL_ENABLED: bool
     PIPELINE_SCHEDULE: str
+    PIPELINE_COORDINATOR_LOCK_SECONDS: int
     JWT_SECRET: str
     JWT_EXPIRY_MINUTES: int
     GOOGLE_CLIENT_ID: str | None
@@ -132,6 +133,9 @@ def get_app_config() -> AppConfig:
         REPORT_RECIPIENT=_optional_env("REPORT_RECIPIENT"),
         PIPELINE_EMAIL_ENABLED=_env_bool("PIPELINE_EMAIL_ENABLED", False),
         PIPELINE_SCHEDULE=os.getenv("PIPELINE_SCHEDULE", "0 8 * * *").strip(),
+        PIPELINE_COORDINATOR_LOCK_SECONDS=int(
+            os.getenv("PIPELINE_COORDINATOR_LOCK_SECONDS", "3600")
+        ),
         JWT_SECRET=os.getenv("JWT_SECRET", "change-me-in-production"),
         JWT_EXPIRY_MINUTES=int(os.getenv("JWT_EXPIRY_MINUTES", str(60 * 24 * 30))),
         GOOGLE_CLIENT_ID=_optional_env("GOOGLE_CLIENT_ID"),

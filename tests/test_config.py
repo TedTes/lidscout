@@ -26,6 +26,7 @@ class AppConfigTests(unittest.TestCase):
             "REPORT_RECIPIENT": "founder@example.com",
             "PIPELINE_EMAIL_ENABLED": "true",
             "PIPELINE_SCHEDULE": "0 6 * * *",
+            "PIPELINE_COORDINATOR_LOCK_SECONDS": "7200",
         }
 
         with patch.dict(os.environ, env, clear=False):
@@ -42,6 +43,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(config.REPORT_RECIPIENT, "founder@example.com")
         self.assertTrue(config.PIPELINE_EMAIL_ENABLED)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 6 * * *")
+        self.assertEqual(config.PIPELINE_COORDINATOR_LOCK_SECONDS, 7200)
 
     def test_uses_defaults_and_normalizes_blank_secrets(self):
         get_app_config.cache_clear()
@@ -70,6 +72,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertIsNone(config.REPORT_RECIPIENT)
         self.assertFalse(config.PIPELINE_EMAIL_ENABLED)
         self.assertEqual(config.PIPELINE_SCHEDULE, "0 8 * * *")
+        self.assertEqual(config.PIPELINE_COORDINATOR_LOCK_SECONDS, 3600)
 
     def test_uses_email_api_key_as_resend_fallback(self):
         get_app_config.cache_clear()

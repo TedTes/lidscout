@@ -166,6 +166,50 @@ class RunDailyPipelineAllTests(unittest.TestCase):
         self.assertEqual(result["total_markets"], 0)
 
 
+class CoordinatorLockTests(unittest.TestCase):
+    """Deployment guardrails for Beat fan-out."""
+
+    def tearDown(self):
+        from shared.config import get_app_config
+
+        get_app_config.cache_clear()
+
+    def test_acquire_coordinator_lock_sets_redis_lock_with_ttl(self):
+        from shared.config import get_app_config
+        from workers.tasks import _COORDINATOR_LOCK_KEY, _acquire_coordinator_lock
+
+        redis_client = MagicMock()
+        redis_client.set.return_value = True
+        with (
+            patch("workers.tasks.get_redis_client", return_value=redis_client),
+            patch.dict(
+                os.environ,
+                {"PIPELINE_COORDINATOR_LOCK_SECONDS": "120"},
+                clear=False,
+            ),
+        ):
+            get_app_config.cache_clear()
+            acquired = _acquire_coordinator_lock()
+
+        self.assertTrue(acquired)
+        redis_client.set.assert_called_once_with(
+            _COORDINATOR_LOCK_KEY,
+            "1",
+            nx=True,
+            ex=120,
+        )
+
+    def test_acquire_coordinator_lock_returns_false_when_lock_exists(self):
+        from workers.tasks import _acquire_coordinator_lock
+
+        redis_client = MagicMock()
+        redis_client.set.return_value = None
+        with patch("workers.tasks.get_redis_client", return_value=redis_client):
+            acquired = _acquire_coordinator_lock()
+
+        self.assertFalse(acquired)
+
+
 class BeatScheduleTests(unittest.TestCase):
     """T3.1 — Beat schedule parses PIPELINE_SCHEDULE cron string correctly."""
 

@@ -5,7 +5,11 @@ import logging
 
 from celery import shared_task
 
+from infrastructure.redis import get_redis_client
+from shared.config import get_app_config
+
 logger = logging.getLogger(__name__)
+_COORDINATOR_LOCK_KEY = "lidscout:pipeline:coordinator:lock"
 
 
 @shared_task(
@@ -52,6 +56,11 @@ def run_daily_pipeline_all() -> dict:
         _sys.path.insert(0, _root)
     from api.dependencies import build_signal_api_dependencies
 
+    lock_state = _acquire_coordinator_lock()
+    if lock_state is False:
+        logger.warning("daily coordinator skipped because another coordinator holds the lock")
+        return {"enqueued": 0, "total_user_niches": 0, "skipped": "lock_held"}
+
     deps = build_signal_api_dependencies()
     all_niches = deps.user_niche_repository.list_all_user_niches()
     active = [
@@ -69,3 +78,23 @@ def run_daily_pipeline_all() -> dict:
 
     logger.info("daily coordinator enqueued %d/%d user_niches", len(active), len(all_niches))
     return {"enqueued": len(active), "total_user_niches": len(all_niches)}
+
+
+def _acquire_coordinator_lock() -> bool | None:
+    """Acquire a short-lived Redis lock that prevents duplicate Beat fan-out."""
+    client = get_redis_client()
+    if client is None:
+        logger.warning("daily coordinator lock unavailable because REDIS_URL is not set")
+        return None
+    ttl_seconds = get_app_config().PIPELINE_COORDINATOR_LOCK_SECONDS
+    try:
+        acquired = client.set(
+            _COORDINATOR_LOCK_KEY,
+            "1",
+            nx=True,
+            ex=max(ttl_seconds, 60),
+        )
+    except Exception as exc:
+        logger.warning("daily coordinator lock unavailable error=%s", exc)
+        return None
+    return True if acquired else False
