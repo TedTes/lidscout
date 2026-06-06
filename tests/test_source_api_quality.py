@@ -4,6 +4,7 @@ from api.routes.signals import (
     NicheSourceUpdateRequest,
     SignalApiDependencies,
     delete_source,
+    get_pipeline_diagnostics,
     list_market_sources,
     update_source,
 )
@@ -76,6 +77,29 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     assert item["health"]["signal_yield_rate"] == 0.375
     assert item["management"]["recommended_action"] == "keep_monitoring"
     assert item["management"]["can_disable"] is True
+
+
+def test_pipeline_diagnostics_returns_sanitized_runtime_warnings() -> None:
+    user = User(id="user-1", email="user@example.com")
+    dependencies = SignalApiDependencies(
+        source_adapters=[],
+        llm_client=None,
+        embedding_client=None,
+    )
+
+    response = asyncio.run(
+        get_pipeline_diagnostics(dependencies=dependencies, current_user=user)
+    )
+
+    assert response["ready"] is False
+    assert response["has_llm_client"] is False
+    assert response["has_embedding_client"] is False
+    assert response["source_adapter_count"] == 0
+    assert "pipeline_schedule" in response
+    assert "next_run_at" in response
+    messages = [item["message"] for item in response["diagnostics"]]
+    assert any("LLM client is not configured" in message for message in messages)
+    assert any("No source adapters are configured" in message for message in messages)
 
 
 def test_market_sources_include_replacement_suggestions_for_blocked_sources() -> None:

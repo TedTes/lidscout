@@ -1502,6 +1502,31 @@ async def get_pipeline_schedule() -> dict[str, Any]:
     }
 
 
+@router.get("/pipeline/diagnostics")
+async def get_pipeline_diagnostics(
+    market_id: str | None = None,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User | Any = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return sanitized runtime diagnostics for the scheduled agent worker."""
+    if market_id is not None:
+        _get_owned_user_niche(market_id, dependencies, current_user)
+
+    from workers.jobs import check_worker_readiness
+
+    readiness = check_worker_readiness(
+        user_niche_id=market_id,
+        dependencies=dependencies,
+    )
+    cron = str(readiness["pipeline_schedule"])
+    next_run_at = _next_cron_run(cron)
+    return {
+        **readiness,
+        "next_run_at": next_run_at.isoformat() if next_run_at else None,
+        "diagnostics": _pipeline_diagnostic_messages(readiness),
+    }
+
+
 @router.get("/pipeline/runs")
 async def list_pipeline_runs(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
@@ -1691,6 +1716,67 @@ def _ensure_pipeline_dependencies(
             status_code=503,
             detail=f"Pipeline dependencies are not configured: {', '.join(missing)}",
         )
+
+
+def _pipeline_diagnostic_messages(readiness: dict[str, object]) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    if not readiness.get("redis_configured"):
+        messages.append(
+            {
+                "level": "warning",
+                "message": "REDIS_URL is not configured; Celery Beat and workers cannot run.",
+            }
+        )
+    if int(readiness.get("enabled_niche_source_count") or 0) < 1:
+        messages.append(
+            {
+                "level": "warning",
+                "message": "No enabled niche sources are available for scheduled scans.",
+            }
+        )
+    if int(readiness.get("source_adapter_count") or 0) < 1:
+        messages.append(
+            {
+                "level": "error",
+                "message": "No source adapters are configured.",
+            }
+        )
+    if not readiness.get("has_llm_client"):
+        messages.append(
+            {
+                "level": "error",
+                "message": "LLM client is not configured; filtering and synthesis will fail.",
+            }
+        )
+    if not readiness.get("has_embedding_client"):
+        messages.append(
+            {
+                "level": "error",
+                "message": "Embedding client is not configured; clustering will fail.",
+            }
+        )
+    if readiness.get("email_enabled") and not readiness.get("has_email_client"):
+        messages.append(
+            {
+                "level": "error",
+                "message": "Pipeline email is enabled but no email client is configured.",
+            }
+        )
+    if readiness.get("email_enabled") and not readiness.get("report_recipient_configured"):
+        messages.append(
+            {
+                "level": "error",
+                "message": "Pipeline email is enabled but REPORT_RECIPIENT is missing.",
+            }
+        )
+    if not messages:
+        messages.append(
+            {
+                "level": "ok",
+                "message": "Scheduled pipeline diagnostics look ready.",
+            }
+        )
+    return messages
 
 
 def _current_user_id(current_user: User | Any) -> str | None:

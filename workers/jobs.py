@@ -87,7 +87,6 @@ def check_worker_readiness(
     from api.dependencies import build_signal_api_dependencies
     app_config = get_app_config()
     runtime_dependencies = dependencies or build_signal_api_dependencies(app_config)
-    _ensure_background_pipeline_dependencies(runtime_dependencies)
 
     niche_source_count = 0
     if user_niche_id is not None:
@@ -112,8 +111,27 @@ def check_worker_readiness(
             if un.template_niche_id
         )
 
+    has_email_client = runtime_dependencies.email_client is not None
+    missing_dependencies = []
+    if runtime_dependencies.llm_client is None:
+        missing_dependencies.append("llm_client")
+    if runtime_dependencies.embedding_client is None:
+        missing_dependencies.append("embedding_client")
+    if not runtime_dependencies.source_adapters:
+        missing_dependencies.append("source_adapters")
+    if app_config.PIPELINE_EMAIL_ENABLED and not has_email_client:
+        missing_dependencies.append("email_client")
+    if app_config.PIPELINE_EMAIL_ENABLED and not app_config.REPORT_RECIPIENT:
+        missing_dependencies.append("report_recipient")
+
+    ready = (
+        niche_source_count > 0
+        and not missing_dependencies
+        and bool(app_config.REDIS_URL)
+    )
+
     return {
-        "ready": niche_source_count > 0,
+        "ready": ready,
         "user_niche_id": user_niche_id,
         "enabled_niche_source_count": niche_source_count,
         "source_adapter_count": len(runtime_dependencies.source_adapters),
@@ -122,7 +140,13 @@ def check_worker_readiness(
             runtime_dependencies.relevance_llm_client is not None
         ),
         "has_embedding_client": runtime_dependencies.embedding_client is not None,
-        "has_email_client": runtime_dependencies.email_client is not None,
+        "has_email_client": has_email_client,
+        "email_enabled": app_config.PIPELINE_EMAIL_ENABLED,
+        "report_recipient_configured": bool(app_config.REPORT_RECIPIENT),
+        "redis_configured": bool(app_config.REDIS_URL),
+        "pipeline_schedule": app_config.PIPELINE_SCHEDULE,
+        "coordinator_lock_seconds": app_config.PIPELINE_COORDINATOR_LOCK_SECONDS,
+        "missing_dependencies": missing_dependencies,
     }
 
 

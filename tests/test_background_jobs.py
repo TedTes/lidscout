@@ -72,6 +72,27 @@ class FakeEmailNotifier(EmailNotifier):
 
 
 class BackgroundJobTests(unittest.TestCase):
+    def test_worker_readiness_reports_missing_runtime_config(self):
+        dependencies = SignalApiDependencies(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            source_adapters=[],
+            llm_client=None,
+            embedding_client=None,
+        )
+
+        result = check_worker_readiness(dependencies=dependencies)
+
+        self.assertFalse(result["ready"])
+        self.assertEqual(result["enabled_niche_source_count"], 0)
+        self.assertIn("llm_client", result["missing_dependencies"])
+        self.assertIn("embedding_client", result["missing_dependencies"])
+        self.assertIn("source_adapters", result["missing_dependencies"])
+        self.assertIn("pipeline_schedule", result)
+        self.assertIn("coordinator_lock_seconds", result)
+
     @unittest.skip("check_worker_readiness API migrated to user_niche_repository/niche_source_repository — needs rewrite")
     def test_checks_worker_readiness_from_monitored_sources(self):
         monitored_source_repository = InMemoryNicheSourceRepository()
