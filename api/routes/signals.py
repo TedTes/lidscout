@@ -2073,6 +2073,92 @@ def _signal_source_key(signal: Signal) -> str | None:
     return None
 
 
+def _source_label_for_signal(signal: Signal) -> str | None:
+    source_key = _signal_source_key(signal)
+    if source_key is None:
+        return None
+    labels = {
+        "hn.algolia.com": "Hacker News",
+        "news.ycombinator.com": "Hacker News",
+        "api.github.com": "GitHub Issues",
+        "github.com": "GitHub",
+        "api.stackexchange.com": "Stack Overflow",
+        "stackoverflow.com": "Stack Overflow",
+        "reddit.com": "Reddit",
+        "www.reddit.com": "Reddit",
+        "g2.com": "G2",
+        "www.g2.com": "G2",
+        "capterra.com": "Capterra",
+        "www.capterra.com": "Capterra",
+    }
+    return labels.get(source_key) or source_key
+
+
+def _source_type_for_signal(signal: Signal) -> str | None:
+    source_text = _source_text_for_signal(signal)
+    if not source_text:
+        return None
+    if "github" in source_text:
+        return "github_issues"
+    if "stackoverflow" in source_text or "stackexchange" in source_text:
+        return "stackoverflow"
+    if "hn.algolia.com" in source_text or "news.ycombinator.com" in source_text:
+        return "hackernews"
+    if "reddit" in source_text:
+        return "reddit"
+    if "g2.com" in source_text:
+        return "g2_reviews"
+    if "capterra" in source_text:
+        return "capterra_reviews"
+    return None
+
+
+def _source_family_breakdown(signals: list[Signal]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for signal in signals:
+        family = _source_family_for_signal(signal) or "unknown"
+        counts[family] = counts.get(family, 0) + 1
+    return [
+        {"source_family": family, "count": count}
+        for family, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def _serialize_evidence_item(
+    signal: Signal,
+    dependencies: SignalApiDependencies | None = None,
+    *,
+    market_id: str | None = None,
+) -> dict[str, Any]:
+    company_name = None
+    if dependencies is not None and signal.niche_company_id is not None:
+        names = _company_names_for_ids(
+            dependencies,
+            [signal.niche_company_id],
+            market_id,
+            [signal],
+        )
+        company_name = names[0] if names else None
+    return {
+        "id": signal.id,
+        "signal_id": signal.id,
+        "post_id": signal.post_id,
+        "quote": signal.evidence_text or signal.pain,
+        "pain": signal.pain,
+        "url": signal.evidence_url,
+        "source_label": _source_label_for_signal(signal),
+        "source_family": _source_family_for_signal(signal),
+        "source_type": _source_type_for_signal(signal),
+        "company_id": signal.niche_company_id,
+        "company_name": company_name,
+        "category": signal.category,
+        "urgency": signal.urgency,
+        "severity": signal.severity,
+        "confidence": signal.confidence,
+        "detected_at": signal.detected_at.isoformat() if signal.detected_at else None,
+    }
+
+
 def _market_report_title(
     dependencies: SignalApiDependencies,
     market_id: str | None,
@@ -2135,6 +2221,9 @@ def _serialize_signal(
         "market_name": None,
         "evidence_url": signal.evidence_url,
         "evidence_text": signal.evidence_text,
+        "source_label": _source_label_for_signal(signal),
+        "source_family": _source_family_for_signal(signal),
+        "source_type": _source_type_for_signal(signal),
         "detected_at": signal.detected_at.isoformat() if signal.detected_at else None,
     }
 
@@ -2751,6 +2840,7 @@ def _serialize_cluster(
             for signal_id in cluster.signal_ids
             if signal_id in signal_index
         ]
+        serialized["source_family_breakdown"] = _source_family_breakdown(cluster_signals)
         qualification = qualify_cluster_for_opportunity(
             cluster,
             cluster_signals,
@@ -2794,6 +2884,14 @@ def _serialize_opportunity(
         "unmet_need_type": opportunity.unmet_need_type,
     }
     if dependencies is not None:
+        signal_index = _signals_by_id or {
+            signal.id: signal for signal in dependencies.signal_repository.list_signals()
+        }
+        opportunity_signals = [
+            signal_index[signal_id]
+            for signal_id in opportunity.evidence_signal_ids
+            if signal_id in signal_index
+        ]
         serialized.update(
             _company_breadth_for_signal_ids(
                 dependencies,
@@ -2802,6 +2900,11 @@ def _serialize_opportunity(
                 _signals_by_id=_signals_by_id,
             )
         )
+        serialized["source_family_breakdown"] = _source_family_breakdown(opportunity_signals)
+        serialized["evidence_items"] = [
+            _serialize_evidence_item(signal, dependencies, market_id=market_id)
+            for signal in opportunity_signals
+        ]
     serialized["evidence_strength"] = _opportunity_evidence_strength(serialized)
     return serialized
 
