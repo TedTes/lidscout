@@ -1,3 +1,27 @@
+export type SourceFamilyBreakdownItem = {
+  source_family: string;
+  count: number;
+};
+
+export type EvidenceItem = {
+  id: string;
+  signal_id: string | null;
+  post_id: string | null;
+  quote: string | null;
+  pain: string | null;
+  url: string | null;
+  source_label: string | null;
+  source_family: string | null;
+  source_type: string | null;
+  company_id: string | null;
+  company_name: string | null;
+  category: string | null;
+  urgency: 'low' | 'medium' | 'high' | null;
+  severity: 'low' | 'medium' | 'high' | null;
+  confidence: number | null;
+  detected_at: string | null;
+};
+
 export type Signal = {
   id: string;
   post_id: string;
@@ -17,6 +41,9 @@ export type Signal = {
   evidence_url: string | null;
   evidence_text: string | null;
   detected_at: string | null;
+  source_label: string | null;
+  source_family: string | null;
+  source_type: string | null;
 };
 
 export type SignalCluster = {
@@ -39,6 +66,7 @@ export type SignalCluster = {
     company_count: number;
     general_finding_count: number;
   };
+  source_family_breakdown?: SourceFamilyBreakdownItem[];
 };
 
 export type Opportunity = {
@@ -59,6 +87,8 @@ export type Opportunity = {
   evidence_source_count: number;
   evidence_strength: 'early' | 'moderate' | 'strong' | 'emerging' | 'validated';
   unmet_need_type?: 'time' | 'money' | 'effort' | 'capability' | 'fit' | null;
+  evidence_items?: EvidenceItem[];
+  source_family_breakdown?: SourceFamilyBreakdownItem[];
 };
 
 export type NicheCompany = {

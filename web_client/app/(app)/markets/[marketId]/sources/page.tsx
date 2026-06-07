@@ -139,12 +139,12 @@ export default function NicheSourcesPage({ params }: Props) {
 
   return (
     <DashboardShell
-      title="Sources"
-      subtitle={`Sources monitored for ${niche?.name ?? 'this niche'}.`}
+      title="Research coverage"
+      subtitle={`Operational source coverage for ${niche?.name ?? 'this niche'}.`}
       actions={
         <NicheViewSwitcher
           marketId={marketId}
-          active="sources"
+          active="activity"
         />
       }
     >
@@ -195,7 +195,7 @@ export default function NicheSourcesPage({ params }: Props) {
                   )}
                 </div>
               </div>
-              <p className="mt-0.5 text-xs text-slate-600">What this niche is currently watching.</p>
+              <p className="mt-0.5 text-xs text-slate-600">Diagnostic view of what the research agent is watching.</p>
             </div>
 
             {sources.length === 0 ? (

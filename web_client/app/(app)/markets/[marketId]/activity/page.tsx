@@ -287,6 +287,16 @@ export default function NicheActivityPage({ params }: Props) {
         <div className="space-y-4 animate-fade-in">
           <AgentInbox marketId={marketId} />
 
+          <div className="flex items-center justify-between">
+            <div />
+            <Link
+              href={`/markets/${encodeURIComponent(marketId)}/sources`}
+              className="text-[11px] text-slate-600 transition hover:text-slate-400"
+            >
+              Research coverage →
+            </Link>
+          </div>
+
           {!hasContent ? (
             <EmptyPanel
               title="No activity yet"

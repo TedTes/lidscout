@@ -9,6 +9,16 @@ import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, UrgencyBadge } 
 import { signalApi } from '@/lib/api';
 import { Market, Signal, SignalCluster } from '@/lib/types/signals';
 
+const FAMILY_LABELS: Record<string, string> = {
+  technical_forum:  'Technical forums',
+  technical_forums: 'Technical forums',
+  social:           'Social',
+  reviews:          'Reviews',
+  owned_site:       'Owned',
+  other:            'Other',
+};
+function familyLabel(f: string) { return FAMILY_LABELS[f] ?? f.replace(/_/g, ' '); }
+
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
 type EvidenceView = 'patterns' | 'findings';
@@ -134,7 +144,17 @@ export default function EvidencePage({ params }: Props) {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {pattern.source_family_breakdown?.length ? (
+                      pattern.source_family_breakdown.map(b => (
+                        <span key={b.source_family} className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          {familyLabel(b.source_family)} {b.count}
+                        </span>
+                      ))
+                    ) : null}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-slate-600">
                       Across{' '}
                       <span className="font-medium text-slate-400">{pattern.company_count}</span>
@@ -200,6 +220,16 @@ export default function EvidencePage({ params }: Props) {
                           <polyline points="9 18 15 12 9 6" />
                         </svg>
                       </button>
+                    )}
+                    {finding.source_label && (
+                      <span className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                        {finding.source_label}
+                      </span>
+                    )}
+                    {finding.source_family && !finding.source_label && (
+                      <span className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-500">
+                        {familyLabel(finding.source_family)}
+                      </span>
                     )}
                     {finding.company_name && <Chip label={finding.company_name} />}
                     {finding.category && <Chip label={finding.category} />}

@@ -10,11 +10,11 @@ import { signalApi } from '@/lib/api';
 import {
   AgentActivity,
   AgentColdStartPlan,
+  EvidenceItem,
   PipelineLiveFeedResponse,
   AgentFeedbackAction,
   NicheCompany,
   Market,
-  MonitoredSource,
   Opportunity,
   SignalCluster,
 } from '@/lib/types/signals';
@@ -104,7 +104,6 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [clusters, setClusters] = useState<SignalCluster[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
   const [, setCompetitors] = useState<NicheCompany[]>([]);
-  const [, setSources] = useState<MonitoredSource[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
@@ -118,27 +117,24 @@ export default function NicheWorkspacePage({ params }: Props) {
     setNiche(null);
     setColdStart(null);
     setCompetitors([]);
-    setSources([]);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     setPipelineStatus(null);
     setProgressActivity([]);
     try {
-      const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes] = await Promise.all([
+      const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getClusters({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
         signalApi.getMarketCompanies(marketId).catch(() => null),
-        signalApi.getMarketSources(marketId).catch(() => null),
       ]);
       setNiche(market);
       setOpportunities(oppsRes.opportunities);
       setClusters(clustersRes.clusters);
       setColdStart(coldStartRes);
       setCompetitors(competitorsRes?.companies ?? []);
-      setSources(sourcesRes?.sources ?? []);
 
       if (feedbackRes?.feedback) {
         const sorted = [...feedbackRes.feedback].sort((a, b) =>
@@ -359,10 +355,26 @@ export default function NicheWorkspacePage({ params }: Props) {
                 {feedbackError && <p className="text-xs text-rose-400">{feedbackError}</p>}
 
                 {visibleOpportunities.length === 0 ? (
-                  <EmptyPanel
-                    title="No candidates surfaced yet"
-                    detail="Opportunity candidates appear after active sources are scanned."
-                  />
+                  <div className="space-y-3">
+                    <EmptyPanel
+                      title="No candidates surfaced yet"
+                      detail="The agent hasn't found enough evidence yet."
+                    />
+                    <div className="flex justify-center gap-2">
+                      <button
+                        onClick={handleRunScan}
+                        className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-4 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15"
+                      >
+                        Run scan
+                      </button>
+                      <Link
+                        href={`/markets/${encodeURIComponent(marketId)}/activity`}
+                        className="rounded-lg border border-slate-700/60 px-4 py-2 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+                      >
+                        Review scan activity →
+                      </Link>
+                    </div>
+                  </div>
                 ) : (
                   visibleOpportunities.map((opportunity, index) => (
                     <GapCard
@@ -411,8 +423,8 @@ function currentRunEvents(activity: AgentActivity[]): AgentActivity[] {
 const SETUP_ACTION_LABELS: Record<string, string> = {
   refine_research_brief: 'Refine the research brief',
   add_companies: 'Add companies to this niche',
-  add_sources: 'Add monitored sources',
-  review_suggested_sources: 'Review suggested sources',
+  add_sources: 'Improve research coverage',
+  review_suggested_sources: 'Review research coverage',
   run_first_scan: 'Ready for first scan',
 };
 
@@ -441,11 +453,11 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
         </ul>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15">
-          Add sources
+        <Link href={`/markets/${encodeURIComponent(marketId)}/activity`} className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15">
+          Review activity
         </Link>
         <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200">
-          Add companies
+          Research coverage
         </Link>
       </div>
     </div>
@@ -475,10 +487,10 @@ function OpportunitiesStatsBar({ count, lastEventAt, isRunning }: { count: numbe
 // ── Centered scan progress (empty page + running) ─────────────────────────────
 
 const SCAN_STEPS: Array<{ eventType: string; label: string }> = [
-  { eventType: 'sources_scanned',   label: 'Sources scanned' },
-  { eventType: 'posts_filtered',    label: 'Posts reviewed' },
-  { eventType: 'signals_extracted', label: 'Findings extracted' },
-  { eventType: 'gaps_synthesized',  label: 'Opportunities identified' },
+  { eventType: 'sources_scanned',   label: 'Scanning sources' },
+  { eventType: 'posts_filtered',    label: 'Reviewing posts' },
+  { eventType: 'signals_extracted', label: 'Extracting evidence' },
+  { eventType: 'gaps_synthesized',  label: 'Identifying opportunities' },
 ];
 
 function CenteredScanProgress({
@@ -706,6 +718,54 @@ function LiveAgentPanel({
   );
 }
 
+// ── Evidence helpers ──────────────────────────────────────────────────────────
+
+const FAMILY_LABELS: Record<string, string> = {
+  technical_forum:  'Technical forums',
+  technical_forums: 'Technical forums',
+  social:           'Social',
+  reviews:          'Reviews',
+  owned_site:       'Owned',
+  other:            'Other',
+};
+
+function familyLabel(family: string): string {
+  return FAMILY_LABELS[family] ?? family.replace(/_/g, ' ');
+}
+
+function EvidenceItemRow({ item }: { item: EvidenceItem }) {
+  const meta = [
+    item.source_label,
+    item.source_family && !item.source_label ? familyLabel(item.source_family) : null,
+    item.company_name,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <div className="rounded-lg bg-slate-950/40 p-3">
+      {(item.quote || item.pain) && (
+        <p className="text-xs leading-relaxed text-slate-400 line-clamp-3">
+          &ldquo;{item.quote || item.pain}&rdquo;
+        </p>
+      )}
+      <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
+        {meta && <span className="font-medium text-slate-500">{meta}</span>}
+        {item.detected_at && <span className="shrink-0">{relativeTime(item.detected_at)}</span>}
+        {item.url && (
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto shrink-0 font-medium text-violet-400/70 transition hover:text-violet-400"
+            onClick={e => e.stopPropagation()}
+          >
+            Open ↗
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Gap card ───────────────────────────────────────────────────────────────────
 
 function GapCard({
@@ -730,11 +790,11 @@ function GapCard({
   onTrainingFeedback: (action: TrainingFeedbackAction) => void;
 }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [askSent, setAskSent] = useState(false);
 
   const saved = itemAction === 'save';
   const dismissed = itemAction === 'dismiss';
-  const sourceCount = opportunity.evidence_source_count ?? 0;
   const confidence = opportunity.confidence ? Math.round(opportunity.confidence * 100) : null;
   const needLabel = unmetNeedLabel(opportunity.unmet_need_type);
 
@@ -744,9 +804,16 @@ function GapCard({
     opportunity.suggested_wedge,
   ].filter(Boolean) as string[];
 
-  const evidenceHref = theme
-    ? `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(theme.id)}`
-    : `/markets/${encodeURIComponent(marketId)}/findings`;
+  const evidenceHref = `/markets/${encodeURIComponent(marketId)}/evidence?view=findings`;
+
+  // Source attribution: prefer specific labels from evidence_items, fall back to family breakdown
+  const sourceAttribution: string[] = opportunity.evidence_items?.length
+    ? [...new Set(opportunity.evidence_items.map(e => e.source_label).filter(Boolean))] as string[]
+    : opportunity.source_family_breakdown?.length
+    ? opportunity.source_family_breakdown.map(b => familyLabel(b.source_family))
+    : [];
+
+  const hasEvidenceItems = (opportunity.evidence_items?.length ?? 0) > 0;
 
   async function handleAskDeeper() {
     if (askSent) return;
@@ -815,14 +882,21 @@ function GapCard({
         </div>
       )}
 
-      {/* ── Footer: evidence + actions ── */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/[0.04] px-4 py-2.5">
-        <Link
-          href={evidenceHref}
-          className="rounded-md border border-blue-500/20 bg-blue-500/[0.07] px-2.5 py-1 text-[11px] font-semibold text-blue-300 transition hover:bg-blue-500/10"
+      {/* ── Footer: evidence toggle + source chips + actions ── */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-white/[0.04] px-4 py-2.5">
+        <button
+          onClick={() => setEvidenceOpen(v => !v)}
+          className="inline-flex items-center gap-1 rounded-md border border-blue-500/20 bg-blue-500/[0.07] px-2.5 py-1 text-[11px] font-semibold text-blue-300 transition hover:bg-blue-500/10"
         >
-          View {plural(opportunity.evidence_count, 'quote')} · {plural(sourceCount, 'source')}
-        </Link>
+          View {plural(opportunity.evidence_count, 'quote')}
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-150 ${evidenceOpen ? '-rotate-180' : ''}`}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+
+        {sourceAttribution.slice(0, 3).map(label => (
+          <span key={label} className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>
+        ))}
 
         <div className="ml-auto flex items-center gap-1.5">
           <FeedbackButton
@@ -865,6 +939,34 @@ function GapCard({
           />
         </div>
       </div>
+
+      {/* ── Evidence drawer ── */}
+      {evidenceOpen && (
+        <div className="border-t border-white/[0.04] px-4 py-3">
+          {hasEvidenceItems ? (
+            <div className="space-y-2">
+              {opportunity.evidence_items!.slice(0, 6).map(item => (
+                <EvidenceItemRow key={item.id} item={item} />
+              ))}
+              {opportunity.evidence_items!.length > 6 && (
+                <Link
+                  href={evidenceHref}
+                  className="block pt-1 text-center text-[11px] text-slate-600 transition hover:text-slate-400"
+                >
+                  +{opportunity.evidence_items!.length - 6} more in Evidence tab →
+                </Link>
+              )}
+            </div>
+          ) : (
+            <Link
+              href={evidenceHref}
+              className="block text-center text-[11px] text-slate-600 transition hover:text-slate-400"
+            >
+              View all evidence in Evidence tab →
+            </Link>
+          )}
+        </div>
+      )}
     </article>
   );
 }
