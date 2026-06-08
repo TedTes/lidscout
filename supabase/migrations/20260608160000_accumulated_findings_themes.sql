@@ -24,7 +24,7 @@ create table if not exists findings (
     extracted_at               timestamptz not null default now(),
     pipeline_run_id            text,
     structured_embedding_text  text not null,
-    embedding                  vector(1536),
+    embedding                  extensions.vector(1536),
     metadata                   jsonb not null default '{}'::jsonb,
     constraint findings_pain_not_empty check (btrim(pain) <> ''),
     constraint findings_evidence_text_not_empty check (btrim(evidence_text) <> ''),
@@ -48,7 +48,7 @@ create index if not exists findings_detected_at_idx
     on findings (detected_at desc);
 
 create index if not exists findings_embedding_hnsw_idx
-    on findings using hnsw (embedding vector_cosine_ops)
+    on findings using hnsw (embedding extensions.vector_cosine_ops)
     where embedding is not null;
 
 create table if not exists themes (
@@ -66,7 +66,7 @@ create table if not exists themes (
     latest_finding_at          timestamptz,
     last_qualified_at          timestamptz,
     last_synthesized_at        timestamptz,
-    centroid_embedding         vector(1536),
+    centroid_embedding         extensions.vector(1536),
     created_at                 timestamptz not null default now(),
     updated_at                 timestamptz not null default now(),
     metadata                   jsonb not null default '{}'::jsonb,
@@ -92,7 +92,7 @@ create index if not exists themes_latest_finding_at_idx
     on themes (latest_finding_at desc);
 
 create index if not exists themes_centroid_embedding_hnsw_idx
-    on themes using hnsw (centroid_embedding vector_cosine_ops)
+    on themes using hnsw (centroid_embedding extensions.vector_cosine_ops)
     where centroid_embedding is not null;
 
 create table if not exists theme_findings (

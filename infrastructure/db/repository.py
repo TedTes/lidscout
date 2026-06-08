@@ -1868,7 +1868,7 @@ class PostgresFindingRepository(_PostgresRepository, FindingRepository):
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s::vector,
+                    %s, %s, %s::extensions.vector,
                     %s::jsonb
                 )
                 ON CONFLICT (user_niche_id, post_id) DO UPDATE SET
@@ -1950,7 +1950,7 @@ class PostgresThemeRepository(_PostgresRepository, ThemeRepository):
                     %s::uuid, %s::uuid, %s::uuid, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s,
-                    %s, %s, %s::vector,
+                    %s, %s, %s::extensions.vector,
                     %s, %s, %s::jsonb
                 )
                 ON CONFLICT (id) DO UPDATE SET
