@@ -2274,7 +2274,14 @@ def _connect_postgres(database_url: str) -> Any:
     except ImportError as exc:
         raise RuntimeError("psycopg[binary] is required for Supabase Postgres") from exc
 
-    return psycopg.connect(database_url, row_factory=dict_row, autocommit=True)
+    return psycopg.connect(
+        database_url,
+        row_factory=dict_row,
+        autocommit=True,
+        # Supabase transaction pooling does not support session-pinned prepared
+        # statements reliably. Keep psycopg from auto-preparing statements.
+        prepare_threshold=None,
+    )
 
 
 def _rowcount(cursor: Any) -> int:
