@@ -51,6 +51,7 @@ from application.source_quality import (
     source_observed_quality_score,
     source_scan_eligibility,
 )
+from application.theme_memory import ThemeAssignmentService
 from domain.cluster import SignalCluster
 from domain.agent import AgentAction, AgentActivity
 from domain.finding import Finding
@@ -228,7 +229,8 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         signals,
         config.embedding_client,
     )
-    _persist_accumulated_findings(config, signals, embeddings, posts)
+    accumulated_findings = _persist_accumulated_findings(config, signals, embeddings, posts)
+    _assign_accumulated_findings_to_themes(config, accumulated_findings)
     clusters = ClusteringService(config.similarity_threshold).cluster(
         clustered_signals,
         embeddings,
@@ -1285,9 +1287,9 @@ def _persist_accumulated_findings(
     signals: list[Signal],
     embeddings: dict[str, list[float]],
     posts: list[RawPost],
-) -> int:
+) -> list[Finding]:
     if config.finding_repository is None or config.user_niche_id is None:
-        return 0
+        return []
     post_index = {post.id: post for post in posts}
     findings: list[Finding] = []
     for signal in signals:
@@ -1303,7 +1305,33 @@ def _persist_accumulated_findings(
                 metadata=_finding_metadata(post),
             )
         )
-    return config.finding_repository.save_findings(findings)
+    config.finding_repository.save_findings(findings)
+    return findings
+
+
+def _assign_accumulated_findings_to_themes(
+    config: PipelineConfig,
+    findings: list[Finding],
+) -> int:
+    if (
+        config.theme_repository is None
+        or config.user_niche_id is None
+        or not findings
+    ):
+        return 0
+    themes = config.theme_repository.list_themes(user_niche_id=config.user_niche_id)
+    assignment_service = ThemeAssignmentService(llm_client=config.llm_client)
+    assignments = []
+    new_themes = []
+    for finding in findings:
+        result = assignment_service.assign(finding, themes)
+        assignments.append(result.assignment)
+        if result.created_theme:
+            new_themes.append(result.theme)
+            themes.append(result.theme)
+    if new_themes:
+        config.theme_repository.save_themes(new_themes)
+    return config.theme_repository.save_theme_findings(assignments)
 
 
 def _signal_text(signal: Signal) -> str:

@@ -9,6 +9,7 @@ from domain.market import Market
 from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
 from domain.post import RawPost
 from domain.source import MonitoredSource, SourceInput
+from domain.theme import Theme, ThemeFinding
 from application.ingestion import SourceFetchDetail
 from infrastructure.db import (
     InMemoryClusterRepository,
@@ -111,6 +112,36 @@ class FakeFindingRepository:
             for finding in self.findings
             if finding.user_niche_id == user_niche_id
         ]
+
+
+class FakeThemeRepository:
+    def __init__(self):
+        self.themes: list[Theme] = []
+        self.assignments: list[ThemeFinding] = []
+
+    def save_themes(self, themes: list[Theme]) -> int:
+        self.themes.extend(themes)
+        return len(themes)
+
+    def save_theme_findings(self, assignments: list[ThemeFinding]) -> int:
+        self.assignments.extend(assignments)
+        return len(assignments)
+
+    def list_themes(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+    ) -> list[Theme]:
+        themes = self.themes
+        if user_niche_id is not None:
+            themes = [theme for theme in themes if theme.user_niche_id == user_niche_id]
+        if status is not None:
+            themes = [theme for theme in themes if theme.status == status]
+        return themes
+
+    def list_changed_themes(self, *, user_niche_id: str, since: object) -> list[Theme]:
+        return [theme for theme in self.themes if theme.user_niche_id == user_niche_id]
 
 
 class DailyPipelineWorkerTests(unittest.TestCase):
@@ -246,6 +277,64 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(finding.source_url, "https://example.com/reviews")
         self.assertEqual(finding.embedding, [1.0, 0.0])
         self.assertEqual(finding.metadata["source_family"], "reviews")
+
+    def test_assigns_accumulated_findings_to_seed_themes(self):
+        finding_repository = FakeFindingRepository()
+        theme_repository = FakeThemeRepository()
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            finding_repository=finding_repository,
+            theme_repository=theme_repository,
+            llm_client=SequentialLLMClient(
+                [
+                    """
+                    {
+                      "has_signal": true,
+                      "is_about_competitor": true,
+                      "competitor_match_reason": null,
+                      "signal": {
+                        "pain": "Export workflows are painful",
+                        "user_type": "finance team",
+                        "job_to_be_done": "export reports",
+                        "current_workaround": "manual CSV cleanup",
+                        "urgency": 3,
+                        "severity": 3,
+                        "willingness_to_pay": 5,
+                        "category": "reporting",
+                        "confidence": 0.8
+                      }
+                    }
+                    """
+                ]
+            ),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=None,
+            recipient="",
+            send_email=False,
+            source_adapters=[FakeSourceAdapter()],
+            user_niche_id="market-1",
+            sources=[
+                SourceInput.create(
+                    locator="https://example.com/reviews",
+                    limit=1,
+                    options={"niche_source_id": "source-1"},
+                )
+            ],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.extracted_count, 1)
+        self.assertEqual(len(theme_repository.themes), 1)
+        self.assertEqual(theme_repository.themes[0].title, "reporting")
+        self.assertEqual(len(theme_repository.assignments), 1)
+        self.assertEqual(
+            theme_repository.assignments[0].assignment_method,
+            "seed_new_theme",
+        )
 
     def test_runs_pipeline_from_enabled_niche_sources(self):
         user_niche_repository = InMemoryUserNicheRepository()
