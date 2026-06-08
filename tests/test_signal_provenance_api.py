@@ -1,7 +1,12 @@
 import asyncio
 from datetime import UTC, datetime
 
-from api.routes.signals import SignalApiDependencies, list_clusters, list_opportunities
+from api.routes.signals import (
+    SignalApiDependencies,
+    list_clusters,
+    list_opportunities,
+    list_themes,
+)
 from domain.cluster import SignalCluster
 from domain.finding import Finding
 from domain.niche import NicheCompany, UserNiche
@@ -256,6 +261,64 @@ def test_clusters_include_source_family_breakdown() -> None:
         {"source_family": "social", "count": 1},
         {"source_family": "technical_forum", "count": 1},
     ]
+
+
+def test_themes_include_durable_evidence_and_source_breakdown() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_scope(dependencies)
+    theme_repository = FakeThemeRepository()
+    theme = Theme.create(
+        id="c9158d97-9449-4bf2-9ef5-17bb825d522f",
+        user_niche_id="market-1",
+        title="Schema change reliability",
+        summary="Analytics engineers need safer schema changes.",
+        status="qualified",
+        finding_count=1,
+        source_count=1,
+        company_count=1,
+        average_confidence=0.83,
+    )
+    finding = Finding.create(
+        id="349d4322-1614-48c1-a7d3-b50b3821a27c",
+        user_niche_id="market-1",
+        niche_id="niche-1",
+        source_id="source-1",
+        company_id="company-1",
+        post_id="github:item-1",
+        pain="Incremental models break on schema changes",
+        evidence_text="The incremental model breaks whenever the schema changes.",
+        structured_embedding_text="Incremental models break on schema changes",
+        urgency="high",
+        severity="high",
+        confidence=0.91,
+        evidence_url="https://github.com/example/tool/issues/123",
+        affected_user="analytics engineers",
+        category="data reliability",
+        detected_at=datetime(2026, 6, 7, 1, 0, tzinfo=UTC),
+        metadata={
+            "source_family": "technical_forum",
+            "source_type": "github_issues",
+        },
+    )
+    theme_repository.save_themes([theme])
+    theme_repository.findings_by_theme_id[theme.id] = [finding]
+    dependencies.theme_repository = theme_repository
+
+    response = asyncio.run(list_themes(dependencies, market_id="market-1"))
+
+    serialized = response["themes"][0]
+    assert serialized["id"] == theme.id
+    assert serialized["theme"] == "Schema change reliability"
+    assert serialized["status"] == "qualified"
+    assert serialized["qualification_status"] == "qualified"
+    assert serialized["finding_ids"] == [finding.id]
+    assert serialized["frequency"] == 1
+    assert serialized["average_score"] == 8.3
+    assert serialized["company_names"] == ["Example Tool"]
+    assert serialized["source_family_breakdown"] == [
+        {"source_family": "technical_forum", "count": 1}
+    ]
+    assert serialized["evidence_items"][0]["source_label"] == "GitHub"
 
 
 def _seed_market_scope(dependencies: SignalApiDependencies) -> None:

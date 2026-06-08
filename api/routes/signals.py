@@ -69,6 +69,7 @@ from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
 from domain.source import SourceCandidate, SourceInput, SourceReplacementSuggestion
+from domain.theme import Theme
 from infrastructure.db import (
     InMemoryAgentActionRepository,
     InMemoryAgentActivityRepository,
@@ -335,6 +336,37 @@ async def list_clusters(
         "clusters": [
             _serialize_cluster(c, dependencies, market_id=market_id, _signals_by_id=signals_by_id)
             for c in clusters
+        ]
+    }
+
+
+@router.get("/themes")
+async def list_themes(
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    company_id: str | None = None,
+    market_id: str | None = None,
+    status: str | None = None,
+) -> dict[str, Any]:
+    """Return durable accumulated themes, optionally filtered by scope."""
+    if dependencies.theme_repository is None:
+        return {"themes": []}
+    themes = dependencies.theme_repository.list_themes(
+        user_niche_id=market_id,
+        status=status,
+    )
+    if company_id is not None:
+        themes = [
+            theme
+            for theme in themes
+            if any(
+                finding.company_id == company_id
+                for finding in dependencies.theme_repository.list_findings_for_theme(theme.id)
+            )
+        ]
+    return {
+        "themes": [
+            _serialize_theme(theme, dependencies, market_id=market_id)
+            for theme in themes
         ]
     }
 
@@ -3017,6 +3049,80 @@ def _serialize_cluster(
             "average_signal_confidence": qualification.average_signal_confidence,
         }
     return serialized
+
+
+def _serialize_theme(
+    theme: Theme,
+    dependencies: SignalApiDependencies,
+    *,
+    market_id: str | None = None,
+) -> dict[str, Any]:
+    findings = (
+        dependencies.theme_repository.list_findings_for_theme(theme.id)
+        if dependencies.theme_repository is not None
+        else []
+    )
+    company_ids = sorted(
+        {
+            finding.company_id
+            for finding in findings
+            if finding.company_id is not None
+        }
+    )
+    top_examples = [
+        finding.evidence_text
+        for finding in findings[:3]
+        if finding.evidence_text
+    ]
+    source_keys = {
+        _finding_source_key(finding) or finding.source_id or finding.post_id
+        for finding in findings
+    }
+    source_keys.discard(None)
+    return {
+        "id": theme.id,
+        "theme": theme.title,
+        "summary": theme.summary,
+        "status": theme.status,
+        "qualification_status": (
+            "qualified" if theme.status == "qualified" else "not_promoted"
+        ),
+        "qualification_rejection_reason": theme.qualification_reason,
+        "signal_ids": [finding.id for finding in findings],
+        "finding_ids": [finding.id for finding in findings],
+        "frequency": theme.finding_count or len(findings),
+        "average_score": round(theme.average_confidence * 10, 1),
+        "top_examples": top_examples,
+        "company_ids": company_ids,
+        "company_names": _company_names_for_ids(
+            dependencies,
+            company_ids,
+            market_id,
+            [],
+        ),
+        "company_count": theme.company_count or len(company_ids),
+        "market_company_count": (
+            _market_company_count(dependencies, market_id)
+            if market_id is not None
+            else None
+        ),
+        "evidence_source_count": theme.source_count or len(source_keys),
+        "source_family_breakdown": _source_family_breakdown_for_findings(findings),
+        "evidence_items": [
+            _serialize_finding_evidence_item(
+                finding,
+                dependencies,
+                market_id=market_id,
+            )
+            for finding in findings
+        ],
+        "latest_finding_at": (
+            theme.latest_finding_at.isoformat() if theme.latest_finding_at else None
+        ),
+        "last_qualified_at": (
+            theme.last_qualified_at.isoformat() if theme.last_qualified_at else None
+        ),
+    }
 
 
 def _serialize_opportunity(
