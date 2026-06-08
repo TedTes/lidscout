@@ -48,6 +48,7 @@ from application.reporting import MarketSignalReport, ReportingService
 from application.source_quality import source_quality_status, source_scan_eligibility
 from application.source_suggestions import SourceReplacementSuggestionService
 from domain.cluster import SignalCluster
+from domain.finding import Finding
 from domain.agent import (
     AgentAction,
     AgentActivity,
@@ -355,9 +356,18 @@ async def list_opportunities(
             if (company_id is None or s.niche_company_id == company_id)
             and (niche_id is None or s.niche_id == niche_id)
         }
+        scoped_theme_ids = _scoped_theme_ids(
+            dependencies,
+            company_id=company_id,
+            market_id=market_id,
+        )
         opportunities = [
             o for o in opportunities
             if any(sid in scoped_signal_ids for sid in o.evidence_signal_ids)
+            or (
+                o.source_theme_id is not None
+                and o.source_theme_id in scoped_theme_ids
+            )
         ]
     opportunities = merge_near_duplicate_opportunities(opportunities)
     if market_id is not None:
@@ -2033,6 +2043,25 @@ def _single_niche_id(signals: list[Signal]) -> str | None:
     return next(iter(niche_ids))
 
 
+def _scoped_theme_ids(
+    dependencies: SignalApiDependencies,
+    *,
+    company_id: str | None = None,
+    market_id: str | None = None,
+) -> set[str]:
+    if dependencies.theme_repository is None:
+        return set()
+    themes = dependencies.theme_repository.list_themes(user_niche_id=market_id)
+    if company_id is None:
+        return {theme.id for theme in themes}
+    matching_theme_ids = set()
+    for theme in themes:
+        findings = dependencies.theme_repository.list_findings_for_theme(theme.id)
+        if any(finding.company_id == company_id for finding in findings):
+            matching_theme_ids.add(theme.id)
+    return matching_theme_ids
+
+
 def _market_company_count(
     dependencies: SignalApiDependencies,
     user_niche_id: str,
@@ -2079,6 +2108,10 @@ def _signal_source_key(signal: Signal) -> str | None:
 
 def _source_label_for_signal(signal: Signal) -> str | None:
     source_key = _signal_source_key(signal)
+    return _source_label_for_source_key(source_key)
+
+
+def _source_label_for_source_key(source_key: str | None) -> str | None:
     if source_key is None:
         return None
     labels = {
@@ -2096,6 +2129,79 @@ def _source_label_for_signal(signal: Signal) -> str | None:
         "www.capterra.com": "Capterra",
     }
     return labels.get(source_key) or source_key
+
+
+def _finding_source_key(finding: Finding) -> str | None:
+    url = finding.evidence_url or finding.source_url
+    if url:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        if parsed.netloc:
+            return parsed.netloc.lower()
+    if ":" in finding.post_id:
+        return finding.post_id.split(":", 1)[0].lower()
+    return None
+
+
+def _source_type_for_finding(finding: Finding) -> str | None:
+    source_type = finding.metadata.get("source_type")
+    if isinstance(source_type, str) and source_type.strip():
+        return source_type.strip()
+    source_key = _finding_source_key(finding)
+    if not source_key:
+        return None
+    if "github" in source_key:
+        return "github_issues"
+    if "stackoverflow" in source_key or "stackexchange" in source_key:
+        return "stackoverflow"
+    if "hn.algolia.com" in source_key or "news.ycombinator.com" in source_key:
+        return "hackernews"
+    if "reddit" in source_key:
+        return "reddit"
+    if "g2.com" in source_key:
+        return "g2_reviews"
+    if "capterra" in source_key:
+        return "capterra_reviews"
+    return None
+
+
+def _source_family_for_finding(finding: Finding) -> str | None:
+    source_family = finding.metadata.get("source_family")
+    if isinstance(source_family, str) and source_family.strip():
+        return source_family.strip()
+    source_type = _source_type_for_finding(finding) or ""
+    source_text = " ".join(
+        part
+        for part in (
+            _finding_source_key(finding),
+            source_type,
+        )
+        if part
+    ).lower()
+    if any(
+        token in source_text
+        for token in {
+            "github",
+            "stackoverflow",
+            "stackexchange",
+            "news.ycombinator.com",
+            "hn.algolia.com",
+            "discourse",
+            "forum",
+        }
+    ):
+        return "technical_forum"
+    if "reddit" in source_text:
+        return "social"
+    if any(
+        token in source_text
+        for token in {"g2.com", "capterra", "trustradius", "trustpilot"}
+    ):
+        return "reviews"
+    if "producthunt" in source_text:
+        return "launch"
+    return None
 
 
 def _source_type_for_signal(signal: Signal) -> str | None:
@@ -2121,6 +2227,17 @@ def _source_family_breakdown(signals: list[Signal]) -> list[dict[str, Any]]:
     counts: dict[str, int] = {}
     for signal in signals:
         family = _source_family_for_signal(signal) or "unknown"
+        counts[family] = counts.get(family, 0) + 1
+    return [
+        {"source_family": family, "count": count}
+        for family, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def _source_family_breakdown_for_findings(findings: list[Finding]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for finding in findings:
+        family = _source_family_for_finding(finding) or "unknown"
         counts[family] = counts.get(family, 0) + 1
     return [
         {"source_family": family, "count": count}
@@ -2160,6 +2277,41 @@ def _serialize_evidence_item(
         "severity": signal.severity,
         "confidence": signal.confidence,
         "detected_at": signal.detected_at.isoformat() if signal.detected_at else None,
+    }
+
+
+def _serialize_finding_evidence_item(
+    finding: Finding,
+    dependencies: SignalApiDependencies | None = None,
+    *,
+    market_id: str | None = None,
+) -> dict[str, Any]:
+    company_name = None
+    if dependencies is not None and finding.company_id is not None:
+        names = _company_names_for_ids(
+            dependencies,
+            [finding.company_id],
+            market_id,
+            [],
+        )
+        company_name = names[0] if names else None
+    return {
+        "id": finding.id,
+        "signal_id": None,
+        "post_id": finding.post_id,
+        "quote": finding.evidence_text,
+        "pain": finding.pain,
+        "url": finding.evidence_url or finding.source_url,
+        "source_label": _source_label_for_source_key(_finding_source_key(finding)),
+        "source_family": _source_family_for_finding(finding),
+        "source_type": _source_type_for_finding(finding),
+        "company_id": finding.company_id,
+        "company_name": company_name,
+        "category": finding.category,
+        "urgency": finding.urgency,
+        "severity": finding.severity,
+        "confidence": finding.confidence,
+        "detected_at": finding.detected_at.isoformat() if finding.detected_at else None,
     }
 
 
@@ -2877,6 +3029,7 @@ def _serialize_opportunity(
     serialized = {
         "id": opportunity.id,
         "cluster_id": opportunity.cluster_id,
+        "source_theme_id": opportunity.source_theme_id,
         "title": opportunity.title,
         "target_user": opportunity.target_user,
         "pain_summary": opportunity.pain_summary,
@@ -2909,6 +3062,46 @@ def _serialize_opportunity(
             _serialize_evidence_item(signal, dependencies, market_id=market_id)
             for signal in opportunity_signals
         ]
+        if opportunity.source_theme_id and dependencies.theme_repository is not None:
+            theme_findings = dependencies.theme_repository.list_findings_for_theme(
+                opportunity.source_theme_id,
+            )
+            if theme_findings:
+                serialized["evidence_items"] = [
+                    _serialize_finding_evidence_item(
+                        finding,
+                        dependencies,
+                        market_id=market_id,
+                    )
+                    for finding in theme_findings
+                ]
+                serialized["source_family_breakdown"] = _source_family_breakdown_for_findings(
+                    theme_findings,
+                )
+                serialized["evidence_source_count"] = len(
+                    {
+                        _finding_source_key(finding) or finding.source_id or finding.post_id
+                        for finding in theme_findings
+                    }
+                )
+                serialized["company_ids"] = sorted(
+                    {
+                        finding.company_id
+                        for finding in theme_findings
+                        if finding.company_id is not None
+                    }
+                )
+                serialized["company_names"] = _company_names_for_ids(
+                    dependencies,
+                    serialized["company_ids"],
+                    market_id,
+                    [],
+                )
+                serialized["company_count"] = len(serialized["company_ids"])
+                serialized["market_company_count"] = _market_company_count(
+                    dependencies,
+                    market_id,
+                )
     serialized["evidence_strength"] = _opportunity_evidence_strength(serialized)
     return serialized
 
