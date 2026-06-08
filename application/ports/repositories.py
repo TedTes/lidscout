@@ -162,6 +162,10 @@ class ThemeRepository(Protocol):
         """Load themes changed since a run timestamp."""
         ...
 
+    def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
+        """Load findings assigned to one theme."""
+        ...
+
     def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
         """Recompute theme counts and centroid embeddings from assigned findings."""
         ...

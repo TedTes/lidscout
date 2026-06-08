@@ -429,6 +429,47 @@ class PostgresRepositoryTests(unittest.TestCase):
         )
         self.assertEqual(connection.commit_count, 1)
 
+    def test_theme_repository_lists_findings_for_theme(self):
+        extracted_at = datetime(2026, 6, 8, 12, 0, tzinfo=UTC)
+        row = {
+            "id": "349d4322-1614-48c1-a7d3-b50b3821a27c",
+            "user_niche_id": "8de09fb9-75d0-40d5-b3ea-703ffea6a853",
+            "niche_id": None,
+            "source_id": "a815ccce-9fec-4528-8d9f-946c2d42ac29",
+            "company_id": None,
+            "post_id": "hn:123",
+            "post_title": "Schema change issue",
+            "source_url": "https://hn.algolia.com/api/v1/search",
+            "evidence_url": "https://news.ycombinator.com/item?id=123",
+            "evidence_text": "Incremental models break on schema changes.",
+            "pain": "dbt incremental models break on schema changes",
+            "affected_user": "analytics engineers",
+            "job_to_be_done": "keep warehouse transforms reliable",
+            "current_workaround": None,
+            "category": "data reliability",
+            "urgency": "high",
+            "severity": "medium",
+            "willingness_to_pay": False,
+            "confidence": 0.82,
+            "detected_at": extracted_at,
+            "extracted_at": extracted_at,
+            "pipeline_run_id": "run-1",
+            "structured_embedding_text": "dbt incremental models break",
+            "embedding": "[0.1,0.2]",
+            "metadata": {"source_family": "forums"},
+        }
+        connection = FakeConnection([FakeCursor(rows=[row])])
+        repository = PostgresThemeRepository(connection=connection)
+
+        findings = repository.list_findings_for_theme(
+            "c9158d97-9449-4bf2-9ef5-17bb825d522f"
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].pain, "dbt incremental models break on schema changes")
+        self.assertIn("JOIN theme_findings tf", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1], ("c9158d97-9449-4bf2-9ef5-17bb825d522f",))
+
     def test_pipeline_run_metrics_repository_saves_and_loads_metrics(self):
         metrics = PipelineRunMetrics.create(
             id="run-1",

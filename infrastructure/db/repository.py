@@ -2030,6 +2030,19 @@ class PostgresThemeRepository(_PostgresRepository, ThemeRepository):
         ).fetchall()
         return [_theme_from_row(row) for row in rows]
 
+    def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
+        rows = self.connection.execute(
+            """
+            SELECT f.*
+            FROM findings f
+            JOIN theme_findings tf ON tf.finding_id = f.id
+            WHERE tf.theme_id = %s
+            ORDER BY tf.assigned_at, f.extracted_at, f.id
+            """,
+            (theme_id,),
+        ).fetchall()
+        return [_finding_from_row(row) for row in rows]
+
     def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
         normalized_ids = [theme_id.strip() for theme_id in theme_ids if theme_id.strip()]
         if not normalized_ids:
