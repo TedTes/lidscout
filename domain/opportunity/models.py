@@ -7,7 +7,7 @@ class Opportunity:
     """Actionable product opportunity synthesized from a signal cluster."""
 
     id: str
-    cluster_id: str
+    cluster_id: str | None
     title: str
     target_user: str
     pain_summary: str
@@ -17,13 +17,14 @@ class Opportunity:
     confidence: float
     evidence_signal_ids: list[str]
     unmet_need_type: str | None = None
+    source_theme_id: str | None = None
 
     @classmethod
     def create(
         cls,
         *,
         id: str,
-        cluster_id: str,
+        cluster_id: str | None,
         title: str,
         target_user: str,
         pain_summary: str,
@@ -33,10 +34,12 @@ class Opportunity:
         confidence: float,
         evidence_signal_ids: list[str],
         unmet_need_type: str | None = None,
+        source_theme_id: str | None = None,
     ) -> "Opportunity":
         """Create a validated synthesized opportunity entity."""
         opportunity_id = id.strip()
-        normalized_cluster_id = cluster_id.strip()
+        normalized_cluster_id = cls._clean_optional(cluster_id)
+        normalized_source_theme_id = cls._clean_optional(source_theme_id)
         normalized_title = title.strip()
         normalized_target_user = target_user.strip()
         normalized_pain_summary = pain_summary.strip()
@@ -51,8 +54,8 @@ class Opportunity:
 
         if not opportunity_id:
             raise ValueError("id is required")
-        if not normalized_cluster_id:
-            raise ValueError("cluster_id is required")
+        if not normalized_cluster_id and not normalized_source_theme_id:
+            raise ValueError("cluster_id or source_theme_id is required")
         if not normalized_title:
             raise ValueError("title is required")
         if not normalized_target_user:
@@ -82,6 +85,7 @@ class Opportunity:
             confidence=round(confidence, 2),
             evidence_signal_ids=normalized_signal_ids,
             unmet_need_type=normalized_unmet_need_type,
+            source_theme_id=normalized_source_theme_id,
         )
 
     @staticmethod
@@ -92,3 +96,10 @@ class Opportunity:
         if cleaned not in {"time", "money", "effort", "capability", "fit"}:
             raise ValueError("unmet_need_type must be time, money, effort, capability, or fit")
         return cleaned
+
+    @staticmethod
+    def _clean_optional(value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None

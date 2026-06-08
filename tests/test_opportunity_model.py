@@ -38,6 +38,39 @@ class OpportunityModelTests(unittest.TestCase):
         self.assertEqual(opportunity.confidence, 0.88)
         self.assertEqual(opportunity.evidence_signal_ids, ["signal-1", "signal-2"])
 
+    def test_creates_theme_backed_opportunity_without_cluster(self):
+        opportunity = Opportunity.create(
+            id="opportunity-1",
+            cluster_id=None,
+            source_theme_id="theme-1",
+            title="Reliable calendar fallback",
+            target_user="Notion users",
+            pain_summary="Calendar access breaks.",
+            why_it_matters="Planning workflows stop.",
+            suggested_wedge="Build a backup view.",
+            evidence_count=2,
+            confidence=0.8,
+            evidence_signal_ids=["finding-1", "finding-2"],
+        )
+
+        self.assertIsNone(opportunity.cluster_id)
+        self.assertEqual(opportunity.source_theme_id, "theme-1")
+
+    def test_rejects_missing_cluster_and_theme(self):
+        with self.assertRaises(ValueError):
+            Opportunity.create(
+                id="opportunity-1",
+                cluster_id=None,
+                title="Reliable calendar fallback",
+                target_user="Notion users",
+                pain_summary="Calendar access breaks.",
+                why_it_matters="Planning workflows stop.",
+                suggested_wedge="Build a backup view.",
+                evidence_count=2,
+                confidence=0.8,
+                evidence_signal_ids=["finding-1", "finding-2"],
+            )
+
     def test_rejects_missing_title(self):
         with self.assertRaises(ValueError):
             Opportunity.create(

@@ -921,7 +921,7 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
             """
             CREATE TABLE IF NOT EXISTS opportunities (
                 id TEXT PRIMARY KEY,
-                cluster_id TEXT NOT NULL,
+                cluster_id TEXT,
                 title TEXT NOT NULL,
                 target_user TEXT NOT NULL,
                 pain_summary TEXT NOT NULL,
@@ -930,7 +930,8 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                 evidence_count INTEGER NOT NULL,
                 confidence REAL NOT NULL,
                 evidence_signal_ids TEXT NOT NULL,
-                unmet_need_type TEXT
+                unmet_need_type TEXT,
+                source_theme_id TEXT
             )
             """
         )
@@ -938,6 +939,12 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
             self.connection,
             "opportunities",
             "unmet_need_type",
+            "TEXT",
+        )
+        _ensure_sqlite_column(
+            self.connection,
+            "opportunities",
+            "source_theme_id",
             "TEXT",
         )
         self.connection.commit()
@@ -954,8 +961,9 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                 INSERT INTO opportunities (
                     id, cluster_id, title, target_user, pain_summary,
                     why_it_matters, suggested_wedge, evidence_count,
-                    confidence, evidence_signal_ids, unmet_need_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, evidence_signal_ids, unmet_need_type,
+                    source_theme_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     cluster_id = excluded.cluster_id,
                     title = excluded.title,
@@ -966,7 +974,8 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                     evidence_count = excluded.evidence_count,
                     confidence = excluded.confidence,
                     evidence_signal_ids = excluded.evidence_signal_ids,
-                    unmet_need_type = excluded.unmet_need_type
+                    unmet_need_type = excluded.unmet_need_type,
+                    source_theme_id = excluded.source_theme_id
                 """,
                 (
                     opportunity.id,
@@ -980,6 +989,7 @@ class SQLiteOpportunityRepository(_SQLiteRepository, OpportunityRepository):
                     opportunity.confidence,
                     _to_json(opportunity.evidence_signal_ids),
                     opportunity.unmet_need_type,
+                    opportunity.source_theme_id,
                 ),
             )
             saved_count += cursor.rowcount
@@ -1781,8 +1791,9 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                 INSERT INTO opportunities (
                     id, cluster_id, title, target_user, pain_summary,
                     why_it_matters, suggested_wedge, evidence_count,
-                    confidence, evidence_signal_ids, unmet_need_type
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                    confidence, evidence_signal_ids, unmet_need_type,
+                    source_theme_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::uuid)
                 ON CONFLICT (id) DO UPDATE SET
                     cluster_id = EXCLUDED.cluster_id,
                     title = EXCLUDED.title,
@@ -1794,6 +1805,7 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                     confidence = EXCLUDED.confidence,
                     evidence_signal_ids = EXCLUDED.evidence_signal_ids,
                     unmet_need_type = EXCLUDED.unmet_need_type,
+                    source_theme_id = EXCLUDED.source_theme_id,
                     updated_at = now()
                 """,
                 (
@@ -1808,6 +1820,7 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
                     opportunity.confidence,
                     _to_json(opportunity.evidence_signal_ids),
                     opportunity.unmet_need_type,
+                    opportunity.source_theme_id,
                 ),
             )
             saved_count += _rowcount(cursor)
@@ -2680,6 +2693,7 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
         confidence=_float(row["confidence"]),
         evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
         unmet_need_type=_row_get(row, "unmet_need_type"),
+        source_theme_id=_row_get(row, "source_theme_id"),
     )
 
 
