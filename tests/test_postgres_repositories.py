@@ -6,6 +6,7 @@ from unittest.mock import patch
 from domain.agent import AgentActivity, AgentFeedback, AgentPreferences
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
+from domain.finding import Finding
 from domain.market import Market
 from domain.niche import NicheSource, NicheSourceRunStats
 from domain.opportunity import Opportunity
@@ -14,11 +15,13 @@ from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import SourceLocator
+from domain.theme import Theme, ThemeFinding
 from infrastructure.db import (
     PostgresAgentActivityRepository,
     PostgresAgentFeedbackRepository,
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
+    PostgresFindingRepository,
     PostgresNicheCompanyRepository,
     PostgresNicheSourceRepository,
     PostgresOpportunityRepository,
@@ -27,6 +30,7 @@ from infrastructure.db import (
     PostgresScoreRepository,
     PostgresSignalRepository,
     PostgresSourceLocatorRepository,
+    PostgresThemeRepository,
     connect_postgres,
 )
 
@@ -260,6 +264,143 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertIn("ON CONFLICT (id) DO UPDATE", connection.calls[0][0])
         self.assertEqual(json.loads(connection.calls[0][1][-2]), ["signal-1", "signal-2"])
         self.assertEqual(connection.commit_count, 1)
+
+    def test_finding_repository_saves_and_lists_findings(self):
+        extracted_at = datetime(2026, 6, 8, 12, 0, tzinfo=UTC)
+        finding = Finding.create(
+            id="349d4322-1614-48c1-a7d3-b50b3821a27c",
+            user_niche_id="8de09fb9-75d0-40d5-b3ea-703ffea6a853",
+            niche_id="7d9fda17-aa22-4d3a-b463-3dd0b2cfd6a4",
+            source_id="a815ccce-9fec-4528-8d9f-946c2d42ac29",
+            company_id="564f3f05-bcc7-472f-bfeb-44e34aa9657e",
+            post_id="hn:123",
+            post_title="Incremental schema changes",
+            source_url="https://hn.algolia.com/api/v1/search",
+            evidence_url="https://news.ycombinator.com/item?id=123",
+            evidence_text="Incremental models break on schema changes.",
+            pain="dbt incremental models break on schema changes",
+            affected_user="analytics engineers",
+            job_to_be_done="keep warehouse transforms reliable",
+            current_workaround="manual rebuilds",
+            category="data reliability",
+            urgency="high",
+            severity="medium",
+            willingness_to_pay=True,
+            confidence=0.82,
+            detected_at=extracted_at,
+            extracted_at=extracted_at,
+            pipeline_run_id="run-1",
+            structured_embedding_text="dbt incremental models break",
+            embedding=[0.1, 0.2],
+            metadata={"source_family": "forums"},
+        )
+        row = {
+            "id": finding.id,
+            "user_niche_id": finding.user_niche_id,
+            "niche_id": finding.niche_id,
+            "source_id": finding.source_id,
+            "company_id": finding.company_id,
+            "post_id": finding.post_id,
+            "post_title": finding.post_title,
+            "source_url": finding.source_url,
+            "evidence_url": finding.evidence_url,
+            "evidence_text": finding.evidence_text,
+            "pain": finding.pain,
+            "affected_user": finding.affected_user,
+            "job_to_be_done": finding.job_to_be_done,
+            "current_workaround": finding.current_workaround,
+            "category": finding.category,
+            "urgency": finding.urgency,
+            "severity": finding.severity,
+            "willingness_to_pay": finding.willingness_to_pay,
+            "confidence": finding.confidence,
+            "detected_at": finding.detected_at,
+            "extracted_at": finding.extracted_at,
+            "pipeline_run_id": finding.pipeline_run_id,
+            "structured_embedding_text": finding.structured_embedding_text,
+            "embedding": "[0.1,0.2]",
+            "metadata": finding.metadata,
+        }
+        connection = FakeConnection([FakeCursor(rowcount=1), FakeCursor(rows=[row])])
+        repository = PostgresFindingRepository(connection=connection)
+
+        self.assertEqual(repository.save_findings([finding]), 1)
+        self.assertEqual(
+            repository.list_findings(user_niche_id=finding.user_niche_id, unassigned_only=True),
+            [finding],
+        )
+        self.assertIn("ON CONFLICT (user_niche_id, post_id) DO UPDATE", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][-2], "[0.1,0.2]")
+        self.assertIn("NOT EXISTS", connection.calls[1][0])
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_theme_repository_saves_themes_and_assignments(self):
+        updated_at = datetime(2026, 6, 8, 12, 30, tzinfo=UTC)
+        theme = Theme.create(
+            id="c9158d97-9449-4bf2-9ef5-17bb825d522f",
+            user_niche_id="8de09fb9-75d0-40d5-b3ea-703ffea6a853",
+            niche_id="7d9fda17-aa22-4d3a-b463-3dd0b2cfd6a4",
+            title="Schema change reliability",
+            summary="Analytics engineers need safer schema changes.",
+            finding_count=2,
+            source_count=2,
+            company_count=1,
+            average_confidence=0.76,
+            latest_finding_at=updated_at,
+            centroid_embedding=[0.4, 0.5],
+            created_at=updated_at,
+            updated_at=updated_at,
+            metadata={"families": ["forums"]},
+        )
+        assignment = ThemeFinding.create(
+            theme_id=theme.id,
+            finding_id="349d4322-1614-48c1-a7d3-b50b3821a27c",
+            assignment_method="auto_borderline_llm",
+            similarity_score=0.77,
+            llm_decision={"same_unmet_need": True},
+        )
+        row = {
+            "id": theme.id,
+            "user_niche_id": theme.user_niche_id,
+            "niche_id": theme.niche_id,
+            "title": theme.title,
+            "summary": theme.summary,
+            "status": theme.status,
+            "qualification_reason": theme.qualification_reason,
+            "finding_count": theme.finding_count,
+            "source_count": theme.source_count,
+            "company_count": theme.company_count,
+            "average_confidence": theme.average_confidence,
+            "latest_finding_at": theme.latest_finding_at,
+            "last_qualified_at": theme.last_qualified_at,
+            "last_synthesized_at": theme.last_synthesized_at,
+            "centroid_embedding": "[0.4,0.5]",
+            "created_at": theme.created_at,
+            "updated_at": theme.updated_at,
+            "metadata": theme.metadata,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(rowcount=1),
+                FakeCursor(rows=[row]),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresThemeRepository(connection=connection)
+
+        self.assertEqual(repository.save_themes([theme]), 1)
+        self.assertEqual(repository.save_theme_findings([assignment]), 1)
+        self.assertEqual(repository.list_themes(user_niche_id=theme.user_niche_id), [theme])
+        self.assertEqual(
+            repository.list_changed_themes(user_niche_id=theme.user_niche_id, since=updated_at),
+            [theme],
+        )
+        self.assertIn("ON CONFLICT (id) DO UPDATE", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][14], "[0.4,0.5]")
+        self.assertIn("ON CONFLICT (theme_id, finding_id) DO UPDATE", connection.calls[1][0])
+        self.assertEqual(json.loads(connection.calls[1][1][-2]), {"same_unmet_need": True})
+        self.assertEqual(connection.commit_count, 2)
 
     def test_pipeline_run_metrics_repository_saves_and_loads_metrics(self):
         metrics = PipelineRunMetrics.create(

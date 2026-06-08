@@ -16,12 +16,14 @@ from application.ports import (
     AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
+    FindingRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
     SourceLocatorRepository,
+    ThemeRepository,
 )
 from domain.agent import (
     AgentAction,
@@ -32,12 +34,14 @@ from domain.agent import (
     AgentPreferences,
 )
 from domain.cluster import SignalCluster
+from domain.finding import Finding
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import SourceLocator
+from domain.theme import Theme, ThemeFinding
 
 
 @dataclass
@@ -1824,6 +1828,209 @@ class PostgresOpportunityRepository(_PostgresRepository, OpportunityRepository):
         return [_opportunity_from_row(row) for row in rows]
 
 
+class PostgresFindingRepository(_PostgresRepository, FindingRepository):
+    """Postgres-backed accumulated finding repository."""
+
+    def save_findings(self, findings: list[Finding]) -> int:
+        saved_count = 0
+        seen_keys: set[tuple[str, str]] = set()
+        for finding in findings:
+            dedupe_key = (finding.user_niche_id, finding.post_id)
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            cursor = self.connection.execute(
+                """
+                INSERT INTO findings (
+                    id, user_niche_id, niche_id, source_id, company_id,
+                    post_id, post_title, source_url, evidence_url,
+                    evidence_text, pain, affected_user, job_to_be_done,
+                    current_workaround, category, urgency, severity,
+                    willingness_to_pay, confidence, detected_at, extracted_at,
+                    pipeline_run_id, structured_embedding_text, embedding,
+                    metadata
+                ) VALUES (
+                    %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s::vector,
+                    %s::jsonb
+                )
+                ON CONFLICT (user_niche_id, post_id) DO UPDATE SET
+                    niche_id = EXCLUDED.niche_id,
+                    source_id = EXCLUDED.source_id,
+                    company_id = EXCLUDED.company_id,
+                    post_title = EXCLUDED.post_title,
+                    source_url = EXCLUDED.source_url,
+                    evidence_url = EXCLUDED.evidence_url,
+                    evidence_text = EXCLUDED.evidence_text,
+                    pain = EXCLUDED.pain,
+                    affected_user = EXCLUDED.affected_user,
+                    job_to_be_done = EXCLUDED.job_to_be_done,
+                    current_workaround = EXCLUDED.current_workaround,
+                    category = EXCLUDED.category,
+                    urgency = EXCLUDED.urgency,
+                    severity = EXCLUDED.severity,
+                    willingness_to_pay = EXCLUDED.willingness_to_pay,
+                    confidence = EXCLUDED.confidence,
+                    detected_at = EXCLUDED.detected_at,
+                    extracted_at = EXCLUDED.extracted_at,
+                    pipeline_run_id = EXCLUDED.pipeline_run_id,
+                    structured_embedding_text = EXCLUDED.structured_embedding_text,
+                    embedding = EXCLUDED.embedding,
+                    metadata = EXCLUDED.metadata
+                """,
+                _finding_values(finding),
+            )
+            saved_count += _rowcount(cursor)
+        self.connection.commit()
+        return saved_count
+
+    def list_findings(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        unassigned_only: bool = False,
+    ) -> list[Finding]:
+        query = "SELECT f.* FROM findings f"
+        clauses: list[str] = []
+        params: list[str] = []
+        if user_niche_id is not None:
+            clauses.append("f.user_niche_id = %s")
+            params.append(user_niche_id)
+        if unassigned_only:
+            clauses.append(
+                """
+                NOT EXISTS (
+                    SELECT 1 FROM theme_findings tf WHERE tf.finding_id = f.id
+                )
+                """
+            )
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY f.extracted_at, f.id"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_finding_from_row(row) for row in rows]
+
+
+class PostgresThemeRepository(_PostgresRepository, ThemeRepository):
+    """Postgres-backed accumulated theme repository."""
+
+    def save_themes(self, themes: list[Theme]) -> int:
+        saved_count = 0
+        seen_ids: set[str] = set()
+        for theme in themes:
+            if theme.id in seen_ids:
+                continue
+            seen_ids.add(theme.id)
+            cursor = self.connection.execute(
+                """
+                INSERT INTO themes (
+                    id, user_niche_id, niche_id, title, summary, status,
+                    qualification_reason, finding_count, source_count,
+                    company_count, average_confidence, latest_finding_at,
+                    last_qualified_at, last_synthesized_at, centroid_embedding,
+                    created_at, updated_at, metadata
+                ) VALUES (
+                    %s::uuid, %s::uuid, %s::uuid, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s::vector,
+                    %s, %s, %s::jsonb
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    niche_id = EXCLUDED.niche_id,
+                    title = EXCLUDED.title,
+                    summary = EXCLUDED.summary,
+                    status = EXCLUDED.status,
+                    qualification_reason = EXCLUDED.qualification_reason,
+                    finding_count = EXCLUDED.finding_count,
+                    source_count = EXCLUDED.source_count,
+                    company_count = EXCLUDED.company_count,
+                    average_confidence = EXCLUDED.average_confidence,
+                    latest_finding_at = EXCLUDED.latest_finding_at,
+                    last_qualified_at = EXCLUDED.last_qualified_at,
+                    last_synthesized_at = EXCLUDED.last_synthesized_at,
+                    centroid_embedding = EXCLUDED.centroid_embedding,
+                    updated_at = EXCLUDED.updated_at,
+                    metadata = EXCLUDED.metadata
+                """,
+                _theme_values(theme),
+            )
+            saved_count += _rowcount(cursor)
+        self.connection.commit()
+        return saved_count
+
+    def save_theme_findings(self, assignments: list[ThemeFinding]) -> int:
+        saved_count = 0
+        seen_keys: set[tuple[str, str]] = set()
+        for assignment in assignments:
+            key = (assignment.theme_id, assignment.finding_id)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            cursor = self.connection.execute(
+                """
+                INSERT INTO theme_findings (
+                    theme_id, finding_id, assigned_at, assignment_method,
+                    similarity_score, llm_decision, metadata
+                ) VALUES (
+                    %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb
+                )
+                ON CONFLICT (theme_id, finding_id) DO UPDATE SET
+                    assignment_method = EXCLUDED.assignment_method,
+                    similarity_score = EXCLUDED.similarity_score,
+                    llm_decision = EXCLUDED.llm_decision,
+                    metadata = EXCLUDED.metadata
+                """,
+                _theme_finding_values(assignment),
+            )
+            saved_count += _rowcount(cursor)
+        self.connection.commit()
+        return saved_count
+
+    def list_themes(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+    ) -> list[Theme]:
+        query = "SELECT * FROM themes"
+        clauses: list[str] = []
+        params: list[str] = []
+        if user_niche_id is not None:
+            clauses.append("user_niche_id = %s")
+            params.append(user_niche_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY latest_finding_at DESC NULLS LAST, created_at DESC, id"
+        rows = self.connection.execute(query, tuple(params)).fetchall()
+        return [_theme_from_row(row) for row in rows]
+
+    def list_changed_themes(
+        self,
+        *,
+        user_niche_id: str,
+        since: datetime,
+    ) -> list[Theme]:
+        rows = self.connection.execute(
+            """
+            SELECT *
+            FROM themes
+            WHERE user_niche_id = %s
+              AND updated_at >= %s
+            ORDER BY updated_at DESC, id
+            """,
+            (user_niche_id, since),
+        ).fetchall()
+        return [_theme_from_row(row) for row in rows]
+
+
 class PostgresAgentPreferencesRepository(
     _PostgresRepository,
     AgentPreferencesRepository,
@@ -2299,6 +2506,29 @@ def _from_json(value: Any) -> Any:
     return json.loads(value)
 
 
+def _to_pgvector(value: list[float] | None) -> str | None:
+    if value is None:
+        return None
+    return "[" + ",".join(str(float(item)) for item in value) + "]"
+
+
+def _vector_from_row(value: Any) -> list[float] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return [float(item) for item in value]
+    if isinstance(value, tuple):
+        return [float(item) for item in value]
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned.startswith("[") and cleaned.endswith("]"):
+            cleaned = cleaned[1:-1]
+        if not cleaned:
+            return []
+        return [float(item.strip()) for item in cleaned.split(",")]
+    return [float(item) for item in value]
+
+
 def _datetime_to_text(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
@@ -2400,6 +2630,124 @@ def _opportunity_from_row(row: sqlite3.Row) -> Opportunity:
         confidence=_float(row["confidence"]),
         evidence_signal_ids=_from_json(row["evidence_signal_ids"]),
         unmet_need_type=_row_get(row, "unmet_need_type"),
+    )
+
+
+def _finding_values(finding: Finding) -> tuple:
+    return (
+        finding.id,
+        finding.user_niche_id,
+        finding.niche_id,
+        finding.source_id,
+        finding.company_id,
+        finding.post_id,
+        finding.post_title,
+        finding.source_url,
+        finding.evidence_url,
+        finding.evidence_text,
+        finding.pain,
+        finding.affected_user,
+        finding.job_to_be_done,
+        finding.current_workaround,
+        finding.category,
+        finding.urgency,
+        finding.severity,
+        finding.willingness_to_pay,
+        finding.confidence,
+        finding.detected_at,
+        finding.extracted_at,
+        finding.pipeline_run_id,
+        finding.structured_embedding_text,
+        _to_pgvector(finding.embedding),
+        _to_json(finding.metadata),
+    )
+
+
+def _finding_from_row(row: sqlite3.Row) -> Finding:
+    return Finding.create(
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
+        niche_id=str(row["niche_id"]) if row["niche_id"] else None,
+        source_id=str(row["source_id"]) if row["source_id"] else None,
+        company_id=str(row["company_id"]) if row["company_id"] else None,
+        post_id=row["post_id"],
+        post_title=row["post_title"],
+        source_url=row["source_url"],
+        evidence_url=row["evidence_url"],
+        evidence_text=row["evidence_text"],
+        pain=row["pain"],
+        affected_user=row["affected_user"],
+        job_to_be_done=row["job_to_be_done"],
+        current_workaround=row["current_workaround"],
+        category=row["category"],
+        urgency=row["urgency"],
+        severity=row["severity"],
+        willingness_to_pay=_bool_from_int(row["willingness_to_pay"]),
+        confidence=_float(row["confidence"]),
+        detected_at=_datetime_from_text(row["detected_at"]),
+        extracted_at=_datetime_from_text(row["extracted_at"]),
+        pipeline_run_id=row["pipeline_run_id"],
+        structured_embedding_text=row["structured_embedding_text"],
+        embedding=_vector_from_row(row["embedding"]),
+        metadata=_from_json(row["metadata"]),
+    )
+
+
+def _theme_values(theme: Theme) -> tuple:
+    return (
+        theme.id,
+        theme.user_niche_id,
+        theme.niche_id,
+        theme.title,
+        theme.summary,
+        theme.status,
+        theme.qualification_reason,
+        theme.finding_count,
+        theme.source_count,
+        theme.company_count,
+        theme.average_confidence,
+        theme.latest_finding_at,
+        theme.last_qualified_at,
+        theme.last_synthesized_at,
+        _to_pgvector(theme.centroid_embedding),
+        theme.created_at,
+        theme.updated_at,
+        _to_json(theme.metadata),
+    )
+
+
+def _theme_from_row(row: sqlite3.Row) -> Theme:
+    return Theme.create(
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
+        niche_id=str(row["niche_id"]) if row["niche_id"] else None,
+        title=row["title"],
+        summary=row["summary"],
+        status=row["status"],
+        qualification_reason=row["qualification_reason"],
+        finding_count=row["finding_count"],
+        source_count=row["source_count"],
+        company_count=row["company_count"],
+        average_confidence=_float(row["average_confidence"]),
+        latest_finding_at=_datetime_from_text(row["latest_finding_at"]),
+        last_qualified_at=_datetime_from_text(row["last_qualified_at"]),
+        last_synthesized_at=_datetime_from_text(row["last_synthesized_at"]),
+        centroid_embedding=_vector_from_row(row["centroid_embedding"]),
+        created_at=_datetime_from_text(row["created_at"]),
+        updated_at=_datetime_from_text(row["updated_at"]),
+        metadata=_from_json(row["metadata"]),
+    )
+
+
+def _theme_finding_values(assignment: ThemeFinding) -> tuple:
+    return (
+        assignment.theme_id,
+        assignment.finding_id,
+        assignment.assigned_at,
+        assignment.assignment_method,
+        assignment.similarity_score,
+        _to_json(assignment.llm_decision),
+        _to_json(assignment.metadata),
     )
 
 
