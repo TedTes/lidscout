@@ -6,7 +6,7 @@ import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { Market, Signal, SignalCluster } from '@/lib/types/signals';
+import { AccumulatedTheme, EvidenceItem, Market } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string; themeId: string } };
 type Status = 'loading' | 'ready' | 'error';
@@ -15,8 +15,7 @@ export default function NicheThemeDetailPage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
   const themeId = decodeURIComponent(params.themeId);
   const [niche, setNiche] = useState<Market | null>(null);
-  const [theme, setTheme] = useState<SignalCluster | null>(null);
-  const [signals, setSignals] = useState<Signal[]>([]);
+  const [theme, setTheme] = useState<AccumulatedTheme | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
 
@@ -24,15 +23,13 @@ export default function NicheThemeDetailPage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [marketsRes, clustersRes, signalsRes] = await Promise.all([
+      const [marketsRes, themesRes] = await Promise.all([
         signalApi.getMarkets(),
-        signalApi.getClusters({ market_id: marketId }),
-        signalApi.getSignals({ market_id: marketId }),
+        signalApi.getThemes({ market_id: marketId }),
       ]);
-      const selectedTheme = clustersRes.clusters.find(cluster => cluster.id === themeId) ?? null;
+      const selectedTheme = themesRes.themes.find(item => item.id === themeId) ?? null;
       setNiche(marketsRes.markets.find(market => market.id === marketId) ?? null);
       setTheme(selectedTheme);
-      setSignals(signalsRes.signals);
       setStatus('ready');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pattern');
@@ -45,11 +42,7 @@ export default function NicheThemeDetailPage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId, themeId]);
 
-  const relatedSignals = useMemo(() => {
-    if (!theme) return [];
-    const ids = new Set(theme.signal_ids);
-    return signals.filter(signal => ids.has(signal.id));
-  }, [signals, theme]);
+  const evidenceItems = useMemo(() => theme?.evidence_items ?? [], [theme]);
 
   return (
     <DashboardShell
@@ -105,35 +98,14 @@ export default function NicheThemeDetailPage({ params }: Props) {
             <div className="border-b border-slate-800/70 px-5 py-4">
               <h2 className="text-sm font-semibold text-slate-300">Related findings</h2>
             </div>
-            {relatedSignals.length === 0 ? (
+            {evidenceItems.length === 0 ? (
               <div className="p-5">
                 <EmptyPanel title="No related findings available" />
               </div>
             ) : (
               <div className="divide-y divide-slate-800/60">
-                {relatedSignals.map(signal => (
-                  <article key={signal.id} className="p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="font-medium leading-snug text-slate-100">{signal.pain}</h3>
-                        <p className="mt-1 text-sm text-slate-500">{signal.job_to_be_done}</p>
-                      </div>
-                      <UrgencyBadge urgency={signal.urgency} />
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {signal.company_name && <Chip label={signal.company_name} />}
-                      {signal.category && <Chip label={signal.category} />}
-                      {signal.user_type && <Chip label={signal.user_type} />}
-                    </div>
-                    {signal.evidence_text && (
-                      <p className="mt-3 rounded-lg bg-slate-950/35 px-3 py-2 text-xs leading-relaxed text-slate-500">{signal.evidence_text}</p>
-                    )}
-                    {signal.evidence_url && (
-                      <a href={signal.evidence_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-xs font-medium text-violet-400 transition hover:text-violet-300">
-                        Open evidence source
-                      </a>
-                    )}
-                  </article>
+                {evidenceItems.map(item => (
+                  <EvidenceFinding key={item.id} item={item} />
                 ))}
               </div>
             )}
@@ -141,5 +113,36 @@ export default function NicheThemeDetailPage({ params }: Props) {
         </div>
       )}
     </DashboardShell>
+  );
+}
+
+function EvidenceFinding({ item }: { item: EvidenceItem }) {
+  return (
+    <article className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-medium leading-snug text-slate-100">{item.pain}</h3>
+          {item.source_label && (
+            <p className="mt-1 text-sm text-slate-500">{item.source_label}</p>
+          )}
+        </div>
+        {item.urgency && <UrgencyBadge urgency={item.urgency} />}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {item.company_name && <Chip label={item.company_name} />}
+        {item.category && <Chip label={item.category} />}
+        {item.source_family && <Chip label={item.source_family.replace(/_/g, ' ')} />}
+      </div>
+      {item.quote && (
+        <p className="mt-3 rounded-lg bg-slate-950/35 px-3 py-2 text-xs leading-relaxed text-slate-500">
+          &ldquo;{item.quote}&rdquo;
+        </p>
+      )}
+      {item.url && (
+        <a href={item.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-xs font-medium text-violet-400 transition hover:text-violet-300">
+          Open evidence source
+        </a>
+      )}
+    </article>
   );
 }

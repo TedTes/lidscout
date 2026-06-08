@@ -7,7 +7,7 @@ import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { Market, Signal, SignalCluster } from '@/lib/types/signals';
+import { AccumulatedTheme, EvidenceItem, Market, Signal } from '@/lib/types/signals';
 
 const FAMILY_LABELS: Record<string, string> = {
   technical_forum:  'Technical forums',
@@ -32,7 +32,7 @@ export default function EvidencePage({ params }: Props) {
     searchParams.get('view') === 'findings' ? 'findings' : 'patterns';
 
   const [niche, setNiche] = useState<Market | null>(null);
-  const [patterns, setPatterns] = useState<SignalCluster[]>([]);
+  const [patterns, setPatterns] = useState<AccumulatedTheme[]>([]);
   const [findings, setFindings] = useState<Signal[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +41,13 @@ export default function EvidencePage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [market, clustersRes, signalsRes] = await Promise.all([
+      const [market, themesRes, signalsRes] = await Promise.all([
         signalApi.getMarket(marketId),
-        signalApi.getClusters({ market_id: marketId }),
+        signalApi.getThemes({ market_id: marketId }),
         signalApi.getSignals({ market_id: marketId }),
       ]);
       setNiche(market);
-      setPatterns(clustersRes.clusters);
+      setPatterns(themesRes.themes);
       setFindings(signalsRes.signals);
       setStatus('ready');
     } catch (err) {
@@ -62,8 +62,8 @@ export default function EvidencePage({ params }: Props) {
   }, [marketId]);
 
   const patternByFindingId = useMemo(() => {
-    const map = new Map<string, SignalCluster>();
-    patterns.forEach(p => p.signal_ids.forEach(id => map.set(id, p)));
+    const map = new Map<string, AccumulatedTheme>();
+    patterns.forEach(p => (p.finding_ids ?? p.signal_ids).forEach(id => map.set(id, p)));
     return map;
   }, [patterns]);
 
@@ -117,7 +117,7 @@ export default function EvidencePage({ params }: Props) {
           {patterns.length === 0 ? (
             <EmptyPanel
               title="No patterns yet"
-              detail="Patterns emerge after findings are grouped across multiple scans."
+              detail="Evidence patterns appear after the agent reviews enough relevant posts across scans."
             />
           ) : (
             patterns
@@ -137,6 +137,11 @@ export default function EvidencePage({ params }: Props) {
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
+                      {pattern.status === 'qualified' && (
+                        <span className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-xs font-medium text-emerald-300">
+                          Opportunity-ready
+                        </span>
+                      )}
                       <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs text-slate-500">
                         {pattern.frequency} {pattern.frequency === 1 ? 'finding' : 'findings'}
                       </span>
@@ -168,13 +173,17 @@ export default function EvidencePage({ params }: Props) {
                     ))}
                   </div>
 
-                  {pattern.top_examples.length > 0 && (
+                  {((pattern.evidence_items?.length ?? 0) > 0 || pattern.top_examples.length > 0) && (
                     <div className="mt-4 space-y-2 border-t border-slate-800/50 pt-4">
-                      {pattern.top_examples.slice(0, 2).map((example, i) => (
-                        <p key={i} className="rounded-lg bg-slate-950/35 px-3 py-2 text-xs leading-relaxed text-slate-500">
-                          "{example}"
-                        </p>
-                      ))}
+                      {(pattern.evidence_items?.length ?? 0) > 0
+                        ? pattern.evidence_items!.slice(0, 2).map(item => (
+                            <EvidenceQuote key={item.id} item={item} />
+                          ))
+                        : pattern.top_examples.slice(0, 2).map((example, i) => (
+                            <p key={i} className="rounded-lg bg-slate-950/35 px-3 py-2 text-xs leading-relaxed text-slate-500">
+                              &ldquo;{example}&rdquo;
+                            </p>
+                          ))}
                     </div>
                   )}
                 </Link>
@@ -260,5 +269,23 @@ export default function EvidencePage({ params }: Props) {
         </div>
       )}
     </DashboardShell>
+  );
+}
+
+function EvidenceQuote({ item }: { item: EvidenceItem }) {
+  const source = item.source_label || item.source_family || 'Source';
+  return (
+    <div className="rounded-lg bg-slate-950/35 px-3 py-2">
+      <p className="text-xs leading-relaxed text-slate-500">
+        &ldquo;{item.quote || item.pain}&rdquo;
+      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-slate-600">
+        <span>{source}</span>
+        {item.company_name && <span>{item.company_name}</span>}
+        {item.url && (
+          <span className="text-violet-400">Open source →</span>
+        )}
+      </div>
+    </div>
   );
 }

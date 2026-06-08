@@ -35,6 +35,7 @@ import {
   OpportunitiesResponse,
   SignalsResponse,
   SourceSuggestionsResponse,
+  ThemesResponse,
 } from '@/lib/types/signals';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -600,6 +601,22 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load clusters');
+      }
+      throw error;
+    }
+  }
+
+  async getThemes(params?: {
+    company_id?: string;
+    market_id?: string;
+    status?: string;
+  }): Promise<ThemesResponse> {
+    try {
+      const response = await api.get<ThemesResponse>('/themes', { params });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to load themes');
       }
       throw error;
     }

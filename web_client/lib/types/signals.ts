@@ -69,9 +69,19 @@ export type SignalCluster = {
   source_family_breakdown?: SourceFamilyBreakdownItem[];
 };
 
+export type AccumulatedTheme = SignalCluster & {
+  status: 'emerging' | 'qualified' | 'rejected' | 'archived';
+  finding_ids: string[];
+  evidence_source_count: number;
+  evidence_items?: EvidenceItem[];
+  latest_finding_at: string | null;
+  last_qualified_at: string | null;
+};
+
 export type Opportunity = {
   id: string;
-  cluster_id: string;
+  cluster_id: string | null;
+  source_theme_id?: string | null;
   title: string;
   target_user: string;
   pain_summary: string;
@@ -332,6 +342,10 @@ export type SignalsResponse = {
 
 export type ClustersResponse = {
   clusters: SignalCluster[];
+};
+
+export type ThemesResponse = {
+  themes: AccumulatedTheme[];
 };
 
 export type OpportunitiesResponse = {

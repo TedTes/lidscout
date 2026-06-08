@@ -13,10 +13,10 @@ import {
   EvidenceItem,
   PipelineLiveFeedResponse,
   AgentFeedbackAction,
+  AccumulatedTheme,
   NicheCompany,
   Market,
   Opportunity,
-  SignalCluster,
 } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
@@ -101,7 +101,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
   const [niche, setNiche] = useState<Market | null>(null);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  const [clusters, setClusters] = useState<SignalCluster[]>([]);
+  const [themes, setThemes] = useState<AccumulatedTheme[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
   const [, setCompetitors] = useState<NicheCompany[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -122,17 +122,17 @@ export default function NicheWorkspacePage({ params }: Props) {
     setPipelineStatus(null);
     setProgressActivity([]);
     try {
-      const [market, oppsRes, clustersRes, coldStartRes, feedbackRes, competitorsRes] = await Promise.all([
+      const [market, oppsRes, themesRes, coldStartRes, feedbackRes, competitorsRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getOpportunities({ market_id: marketId }),
-        signalApi.getClusters({ market_id: marketId }),
+        signalApi.getThemes({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
         signalApi.getMarketCompanies(marketId).catch(() => null),
       ]);
       setNiche(market);
       setOpportunities(oppsRes.opportunities);
-      setClusters(clustersRes.clusters);
+      setThemes(themesRes.themes);
       setColdStart(coldStartRes);
       setCompetitors(competitorsRes?.companies ?? []);
 
@@ -179,12 +179,12 @@ export default function NicheWorkspacePage({ params }: Props) {
 
   const refreshData = async () => {
     try {
-      const [oppsRes, clustersRes] = await Promise.all([
+      const [oppsRes, themesRes] = await Promise.all([
         signalApi.getOpportunities({ market_id: marketId }),
-        signalApi.getClusters({ market_id: marketId }),
+        signalApi.getThemes({ market_id: marketId }),
       ]);
       setOpportunities(oppsRes.opportunities);
-      setClusters(clustersRes.clusters);
+      setThemes(themesRes.themes);
     } catch {
       // ignore background errors
     }
@@ -261,7 +261,7 @@ export default function NicheWorkspacePage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipelineStatus, marketId]);
 
-  const clusterById = useMemo(() => new Map(clusters.map(c => [c.id, c])), [clusters]);
+  const themeById = useMemo(() => new Map(themes.map(theme => [theme.id, theme])), [themes]);
 
   const dismissedIds = useMemo(
     () => new Set([...itemFeedbackMap].filter(([, v]) => v === 'dismiss').map(([k]) => k)),
@@ -382,7 +382,13 @@ export default function NicheWorkspacePage({ params }: Props) {
                       rank={index + 1}
                       opportunity={opportunity}
                       marketId={marketId}
-                      theme={opportunity.cluster_id ? clusterById.get(opportunity.cluster_id) : undefined}
+                      theme={
+                        opportunity.source_theme_id
+                          ? themeById.get(opportunity.source_theme_id)
+                          : opportunity.cluster_id
+                          ? themeById.get(opportunity.cluster_id)
+                          : undefined
+                      }
                       meta={STRENGTH_META[evidenceStrength(opportunity)]}
                       itemAction={itemFeedbackMap.get(opportunity.id) ?? null}
                       trainingAction={trainingFeedbackMap.get(opportunity.id) ?? null}
@@ -782,7 +788,7 @@ function GapCard({
   rank: number;
   opportunity: Opportunity;
   marketId: string;
-  theme?: SignalCluster;
+  theme?: AccumulatedTheme;
   meta: typeof STRENGTH_META['early'];
   itemAction: ItemFeedbackAction | null;
   trainingAction: TrainingFeedbackAction | null;
