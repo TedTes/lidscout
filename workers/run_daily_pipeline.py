@@ -51,7 +51,11 @@ from application.source_quality import (
     source_observed_quality_score,
     source_scan_eligibility,
 )
-from application.theme_memory import ThemeAssignmentService, qualify_theme_for_opportunity
+from application.theme_memory import (
+    ThemeAssignmentService,
+    ThemeOpportunitySynthesisService,
+    qualify_theme_for_opportunity,
+)
 from domain.cluster import SignalCluster
 from domain.agent import AgentAction, AgentActivity
 from domain.finding import Finding
@@ -232,6 +236,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     accumulated_findings = _persist_accumulated_findings(config, signals, embeddings, posts)
     assigned_theme_ids = _assign_accumulated_findings_to_themes(config, accumulated_findings)
     _requalify_accumulated_themes(config, assigned_theme_ids)
+    _synthesize_accumulated_theme_opportunities(config, assigned_theme_ids)
     clusters = ClusteringService(config.similarity_threshold).cluster(
         clustered_signals,
         embeddings,
@@ -1392,6 +1397,41 @@ def _theme_status_for_qualification(qualified: bool, reason: str | None) -> str:
     if reason in {"off_niche", "vendor_fix_only"}:
         return "rejected"
     return "emerging"
+
+
+def _synthesize_accumulated_theme_opportunities(
+    config: PipelineConfig,
+    theme_ids: list[str],
+) -> int:
+    if (
+        config.theme_repository is None
+        or config.opportunity_repository is None
+        or config.user_niche_id is None
+        or not theme_ids
+    ):
+        return 0
+    target_ids = set(theme_ids)
+    qualified_themes = [
+        theme
+        for theme in config.theme_repository.list_themes(
+            user_niche_id=config.user_niche_id,
+            status="qualified",
+        )
+        if theme.id in target_ids
+    ]
+    if not qualified_themes:
+        return 0
+    synthesis_service = ThemeOpportunitySynthesisService()
+    context = _synthesis_context(config)
+    opportunities = []
+    for theme in qualified_themes:
+        findings = config.theme_repository.list_findings_for_theme(theme.id)
+        result = synthesis_service.synthesize(theme, findings, context)
+        if result.opportunity is not None:
+            opportunities.append(result.opportunity)
+    if not opportunities:
+        return 0
+    return config.opportunity_repository.save_opportunities(opportunities)
 
 
 def _signal_text(signal: Signal) -> str:

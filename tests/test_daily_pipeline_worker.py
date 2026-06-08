@@ -30,6 +30,7 @@ from workers.run_daily_pipeline import (
     SourceRelevanceStats,
     _configured_sources,
     _record_niche_source_health,
+    _synthesize_accumulated_theme_opportunities,
     run_daily_pipeline,
 )
 
@@ -119,6 +120,7 @@ class FakeThemeRepository:
         self.themes: list[Theme] = []
         self.assignments: list[ThemeFinding] = []
         self.refreshed_theme_ids: list[str] = []
+        self.findings_by_theme_id: dict[str, list[Finding]] = {}
 
     def save_themes(self, themes: list[Theme]) -> int:
         existing = {theme.id: theme for theme in self.themes}
@@ -148,7 +150,7 @@ class FakeThemeRepository:
         return [theme for theme in self.themes if theme.user_niche_id == user_niche_id]
 
     def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
-        return []
+        return self.findings_by_theme_id.get(theme_id, [])
 
     def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
         self.refreshed_theme_ids.extend(theme_ids)
@@ -355,6 +357,74 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             theme_repository.themes[0].qualification_reason,
             "insufficient_evidence",
         )
+
+    def test_synthesizes_opportunities_from_qualified_accumulated_themes(self):
+        theme = Theme.create(
+            id="c9158d97-9449-4bf2-9ef5-17bb825d522f",
+            user_niche_id="market-1",
+            title="Reporting export reliability",
+            summary="Finance teams need reliable report exports.",
+            status="qualified",
+            finding_count=2,
+            source_count=2,
+            average_confidence=0.8,
+        )
+        findings = [
+            Finding.create(
+                user_niche_id="market-1",
+                post_id="post-1",
+                pain="Report exports fail",
+                evidence_text="Report exports fail",
+                structured_embedding_text="Report exports fail",
+                urgency="high",
+                severity="medium",
+                confidence=0.8,
+                source_id="source-1",
+                affected_user="finance teams",
+                category="reporting",
+            ),
+            Finding.create(
+                user_niche_id="market-1",
+                post_id="post-2",
+                pain="CSV exports need manual cleanup",
+                evidence_text="CSV exports need manual cleanup",
+                structured_embedding_text="CSV exports need manual cleanup",
+                urgency="medium",
+                severity="medium",
+                confidence=0.8,
+                source_id="source-2",
+                affected_user="finance teams",
+                category="reporting",
+            ),
+        ]
+        theme_repository = FakeThemeRepository()
+        theme_repository.save_themes([theme])
+        theme_repository.findings_by_theme_id[theme.id] = findings
+        opportunity_repository = InMemoryOpportunityRepository()
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            opportunity_repository=opportunity_repository,
+            theme_repository=theme_repository,
+            llm_client=SequentialLLMClient([]),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=None,
+            recipient="",
+            user_niche_id="market-1",
+        )
+
+        inserted_count = _synthesize_accumulated_theme_opportunities(
+            config,
+            [theme.id],
+        )
+
+        self.assertEqual(inserted_count, 1)
+        opportunity = opportunity_repository.list_opportunities()[0]
+        self.assertEqual(opportunity.source_theme_id, theme.id)
+        self.assertIsNone(opportunity.cluster_id)
+        self.assertEqual(opportunity.evidence_count, 2)
 
     def test_runs_pipeline_from_enabled_niche_sources(self):
         user_niche_repository = InMemoryUserNicheRepository()
