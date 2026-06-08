@@ -32,6 +32,7 @@ from application.ports import (
     AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
+    FindingRepository,
     NicheCompanyRepository,
     NicheRepository,
     NicheSourceRepository,
@@ -40,6 +41,7 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    ThemeRepository,
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -216,6 +218,8 @@ class SignalApiDependencies:
     opportunity_repository: OpportunityRepository = field(
         default_factory=InMemoryOpportunityRepository
     )
+    finding_repository: FindingRepository | None = None
+    theme_repository: ThemeRepository | None = None
     pipeline_run_metrics_repository: PipelineRunMetricsRepository = field(
         default_factory=InMemoryPipelineRunMetricsRepository
     )

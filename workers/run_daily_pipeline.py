@@ -35,12 +35,14 @@ from application.ports import (
     AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
+    FindingRepository,
     NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    ThemeRepository,
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -84,6 +86,8 @@ class PipelineConfig:
     recipient: str
     relevance_llm_client: LLMClient | None = None
     opportunity_repository: OpportunityRepository | None = None
+    finding_repository: FindingRepository | None = None
+    theme_repository: ThemeRepository | None = None
     pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
     agent_preferences_repository: AgentPreferencesRepository | None = None
     agent_activity_repository: AgentActivityRepository | None = None

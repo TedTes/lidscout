@@ -61,6 +61,12 @@ class ApiDependencyTests(unittest.TestCase):
             opportunity_repository = stack.enter_context(
                 patch("api.dependencies.PostgresOpportunityRepository")
             )
+            finding_repository = stack.enter_context(
+                patch("api.dependencies.PostgresFindingRepository")
+            )
+            theme_repository = stack.enter_context(
+                patch("api.dependencies.PostgresThemeRepository")
+            )
             metrics_repository = stack.enter_context(
                 patch("api.dependencies.PostgresPipelineRunMetricsRepository")
             )
@@ -122,6 +128,8 @@ class ApiDependencyTests(unittest.TestCase):
         score_repository.assert_called_once_with(connection=connection)
         cluster_repository.assert_called_once_with(connection=connection)
         opportunity_repository.assert_called_once_with(connection=connection)
+        finding_repository.assert_called_once_with(connection=connection)
+        theme_repository.assert_called_once_with(connection=connection)
         metrics_repository.assert_called_once_with(connection=connection)
         agent_preferences_repository.assert_called_once_with(connection=connection)
         agent_feedback_repository.assert_called_once_with(connection=connection)
@@ -156,6 +164,8 @@ class ApiDependencyTests(unittest.TestCase):
             dependencies.opportunity_repository,
             opportunity_repository.return_value,
         )
+        self.assertIs(dependencies.finding_repository, finding_repository.return_value)
+        self.assertIs(dependencies.theme_repository, theme_repository.return_value)
         self.assertIs(
             dependencies.pipeline_run_metrics_repository,
             metrics_repository.return_value,
@@ -202,6 +212,8 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(dependencies.post_repository.connection, supplied_connection)
         self.assertIs(dependencies.signal_repository.connection, supplied_connection)
         self.assertIs(dependencies.niche_source_repository.connection, supplied_connection)
+        self.assertIs(dependencies.finding_repository.connection, supplied_connection)
+        self.assertIs(dependencies.theme_repository.connection, supplied_connection)
 
     def test_leaves_llm_client_empty_without_key(self):
         database_url = "postgresql://postgres.example/lidscout"
@@ -216,6 +228,8 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresScoreRepository",
                 "api.dependencies.PostgresClusterRepository",
                 "api.dependencies.PostgresOpportunityRepository",
+                "api.dependencies.PostgresFindingRepository",
+                "api.dependencies.PostgresThemeRepository",
                 "api.dependencies.PostgresPipelineRunMetricsRepository",
                 "api.dependencies.PostgresAgentPreferencesRepository",
                 "api.dependencies.PostgresAgentFeedbackRepository",

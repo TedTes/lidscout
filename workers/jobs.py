@@ -51,6 +51,8 @@ def run_configured_daily_pipeline(
             score_repository=runtime_dependencies.score_repository,
             cluster_repository=runtime_dependencies.cluster_repository,
             opportunity_repository=runtime_dependencies.opportunity_repository,
+            finding_repository=runtime_dependencies.finding_repository,
+            theme_repository=runtime_dependencies.theme_repository,
             pipeline_run_metrics_repository=(
                 runtime_dependencies.pipeline_run_metrics_repository
             ),

@@ -9,6 +9,7 @@ from infrastructure.db import (
     PostgresAgentFollowUpRepository,
     PostgresAgentPreferencesRepository,
     PostgresClusterRepository,
+    PostgresFindingRepository,
     PostgresNicheCompanyRepository,
     PostgresNicheRepository,
     PostgresNicheSourceRepository,
@@ -17,6 +18,7 @@ from infrastructure.db import (
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresThemeRepository,
     PostgresUserNicheRepository,
     connect_postgres,
 )
@@ -42,6 +44,8 @@ def build_signal_api_dependencies(
         score_repository=PostgresScoreRepository(connection=connection),
         cluster_repository=PostgresClusterRepository(connection=connection),
         opportunity_repository=PostgresOpportunityRepository(connection=connection),
+        finding_repository=PostgresFindingRepository(connection=connection),
+        theme_repository=PostgresThemeRepository(connection=connection),
         pipeline_run_metrics_repository=PostgresPipelineRunMetricsRepository(
             connection=connection,
         ),
