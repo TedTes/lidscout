@@ -1,4 +1,5 @@
 """Persistence contracts for domain entities."""
+from datetime import datetime
 from typing import Protocol
 
 from domain.niche import (
@@ -17,12 +18,14 @@ from domain.agent import (
     AgentPreferences,
 )
 from domain.cluster import SignalCluster
+from domain.finding import Finding
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.source import SourceLocator
+from domain.theme import Theme, ThemeFinding
 
 
 class PostRepository(Protocol):
@@ -110,6 +113,53 @@ class OpportunityRepository(Protocol):
 
     def list_opportunities(self) -> list[Opportunity]:
         """Load all persisted opportunities."""
+        ...
+
+
+class FindingRepository(Protocol):
+    """Persistence boundary for durable accumulated findings."""
+
+    def save_findings(self, findings: list[Finding]) -> int:
+        """Persist findings and return the number saved or updated."""
+        ...
+
+    def list_findings(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        unassigned_only: bool = False,
+    ) -> list[Finding]:
+        """Load accumulated findings, optionally scoped to one niche."""
+        ...
+
+
+class ThemeRepository(Protocol):
+    """Persistence boundary for durable accumulated themes."""
+
+    def save_themes(self, themes: list[Theme]) -> int:
+        """Persist themes and return the number saved or updated."""
+        ...
+
+    def save_theme_findings(self, assignments: list[ThemeFinding]) -> int:
+        """Persist theme-finding assignments."""
+        ...
+
+    def list_themes(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+    ) -> list[Theme]:
+        """Load accumulated themes, optionally scoped and filtered."""
+        ...
+
+    def list_changed_themes(
+        self,
+        *,
+        user_niche_id: str,
+        since: datetime,
+    ) -> list[Theme]:
+        """Load themes changed since a run timestamp."""
         ...
 
 
