@@ -402,6 +402,33 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(json.loads(connection.calls[1][1][-2]), {"same_unmet_need": True})
         self.assertEqual(connection.commit_count, 2)
 
+    def test_theme_repository_refreshes_rollups(self):
+        connection = FakeConnection([FakeCursor(rowcount=2)])
+        repository = PostgresThemeRepository(connection=connection)
+
+        self.assertEqual(
+            repository.refresh_theme_rollups(
+                [
+                    "c9158d97-9449-4bf2-9ef5-17bb825d522f",
+                    " ",
+                    "349d4322-1614-48c1-a7d3-b50b3821a27c",
+                ]
+            ),
+            2,
+        )
+
+        query, params = connection.calls[0]
+        self.assertIn("JOIN findings f ON f.id = tf.finding_id", query)
+        self.assertIn("avg(f.embedding)", query)
+        self.assertEqual(
+            params[0],
+            [
+                "c9158d97-9449-4bf2-9ef5-17bb825d522f",
+                "349d4322-1614-48c1-a7d3-b50b3821a27c",
+            ],
+        )
+        self.assertEqual(connection.commit_count, 1)
+
     def test_pipeline_run_metrics_repository_saves_and_loads_metrics(self):
         metrics = PipelineRunMetrics.create(
             id="run-1",

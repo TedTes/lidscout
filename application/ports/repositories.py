@@ -162,6 +162,10 @@ class ThemeRepository(Protocol):
         """Load themes changed since a run timestamp."""
         ...
 
+    def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
+        """Recompute theme counts and centroid embeddings from assigned findings."""
+        ...
+
 
 class AgentPreferencesRepository(Protocol):
     """Persistence boundary for per-niche agent preferences."""

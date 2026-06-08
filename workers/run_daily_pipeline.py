@@ -1331,7 +1331,11 @@ def _assign_accumulated_findings_to_themes(
             themes.append(result.theme)
     if new_themes:
         config.theme_repository.save_themes(new_themes)
-    return config.theme_repository.save_theme_findings(assignments)
+    saved_count = config.theme_repository.save_theme_findings(assignments)
+    config.theme_repository.refresh_theme_rollups(
+        sorted({assignment.theme_id for assignment in assignments})
+    )
+    return saved_count
 
 
 def _signal_text(signal: Signal) -> str:

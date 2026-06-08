@@ -2030,6 +2030,43 @@ class PostgresThemeRepository(_PostgresRepository, ThemeRepository):
         ).fetchall()
         return [_theme_from_row(row) for row in rows]
 
+    def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
+        normalized_ids = [theme_id.strip() for theme_id in theme_ids if theme_id.strip()]
+        if not normalized_ids:
+            return 0
+        cursor = self.connection.execute(
+            """
+            WITH stats AS (
+                SELECT
+                    tf.theme_id,
+                    count(*)::integer AS finding_count,
+                    count(DISTINCT f.source_id)::integer AS source_count,
+                    count(DISTINCT f.company_id)::integer AS company_count,
+                    coalesce(avg(f.confidence), 0)::double precision AS average_confidence,
+                    max(coalesce(f.detected_at, f.extracted_at)) AS latest_finding_at,
+                    avg(f.embedding) FILTER (WHERE f.embedding IS NOT NULL) AS centroid_embedding
+                FROM theme_findings tf
+                JOIN findings f ON f.id = tf.finding_id
+                WHERE tf.theme_id = ANY(%s::uuid[])
+                GROUP BY tf.theme_id
+            )
+            UPDATE themes t
+            SET
+                finding_count = stats.finding_count,
+                source_count = stats.source_count,
+                company_count = stats.company_count,
+                average_confidence = stats.average_confidence,
+                latest_finding_at = stats.latest_finding_at,
+                centroid_embedding = coalesce(stats.centroid_embedding, t.centroid_embedding),
+                updated_at = now()
+            FROM stats
+            WHERE t.id = stats.theme_id
+            """,
+            (normalized_ids,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor)
+
 
 class PostgresAgentPreferencesRepository(
     _PostgresRepository,

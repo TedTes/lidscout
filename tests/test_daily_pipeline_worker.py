@@ -118,6 +118,7 @@ class FakeThemeRepository:
     def __init__(self):
         self.themes: list[Theme] = []
         self.assignments: list[ThemeFinding] = []
+        self.refreshed_theme_ids: list[str] = []
 
     def save_themes(self, themes: list[Theme]) -> int:
         self.themes.extend(themes)
@@ -142,6 +143,10 @@ class FakeThemeRepository:
 
     def list_changed_themes(self, *, user_niche_id: str, since: object) -> list[Theme]:
         return [theme for theme in self.themes if theme.user_niche_id == user_niche_id]
+
+    def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
+        self.refreshed_theme_ids.extend(theme_ids)
+        return len(theme_ids)
 
 
 class DailyPipelineWorkerTests(unittest.TestCase):
@@ -334,6 +339,10 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(
             theme_repository.assignments[0].assignment_method,
             "seed_new_theme",
+        )
+        self.assertEqual(
+            theme_repository.refreshed_theme_ids,
+            [theme_repository.themes[0].id],
         )
 
     def test_runs_pipeline_from_enabled_niche_sources(self):
