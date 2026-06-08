@@ -1,7 +1,7 @@
 """Daily signal detection pipeline worker."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import json
 from urllib.parse import urlparse
@@ -51,7 +51,7 @@ from application.source_quality import (
     source_observed_quality_score,
     source_scan_eligibility,
 )
-from application.theme_memory import ThemeAssignmentService
+from application.theme_memory import ThemeAssignmentService, qualify_theme_for_opportunity
 from domain.cluster import SignalCluster
 from domain.agent import AgentAction, AgentActivity
 from domain.finding import Finding
@@ -230,7 +230,8 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         config.embedding_client,
     )
     accumulated_findings = _persist_accumulated_findings(config, signals, embeddings, posts)
-    _assign_accumulated_findings_to_themes(config, accumulated_findings)
+    assigned_theme_ids = _assign_accumulated_findings_to_themes(config, accumulated_findings)
+    _requalify_accumulated_themes(config, assigned_theme_ids)
     clusters = ClusteringService(config.similarity_threshold).cluster(
         clustered_signals,
         embeddings,
@@ -1312,13 +1313,13 @@ def _persist_accumulated_findings(
 def _assign_accumulated_findings_to_themes(
     config: PipelineConfig,
     findings: list[Finding],
-) -> int:
+) -> list[str]:
     if (
         config.theme_repository is None
         or config.user_niche_id is None
         or not findings
     ):
-        return 0
+        return []
     themes = config.theme_repository.list_themes(user_niche_id=config.user_niche_id)
     assignment_service = ThemeAssignmentService(llm_client=config.llm_client)
     assignments = []
@@ -1332,10 +1333,65 @@ def _assign_accumulated_findings_to_themes(
     if new_themes:
         config.theme_repository.save_themes(new_themes)
     saved_count = config.theme_repository.save_theme_findings(assignments)
-    config.theme_repository.refresh_theme_rollups(
-        sorted({assignment.theme_id for assignment in assignments})
-    )
-    return saved_count
+    assigned_theme_ids = sorted({assignment.theme_id for assignment in assignments})
+    config.theme_repository.refresh_theme_rollups(assigned_theme_ids)
+    return assigned_theme_ids if saved_count else []
+
+
+def _requalify_accumulated_themes(
+    config: PipelineConfig,
+    theme_ids: list[str],
+) -> int:
+    if config.theme_repository is None or config.user_niche_id is None or not theme_ids:
+        return 0
+    target_ids = set(theme_ids)
+    themes = [
+        theme
+        for theme in config.theme_repository.list_themes(
+            user_niche_id=config.user_niche_id
+        )
+        if theme.id in target_ids
+    ]
+    if not themes:
+        return 0
+    context = _synthesis_context(config)
+    updated_themes = []
+    now = datetime.now(tz=UTC)
+    for theme in themes:
+        findings = config.theme_repository.list_findings_for_theme(theme.id)
+        qualification = qualify_theme_for_opportunity(theme, findings, context)
+        updated_themes.append(
+            replace(
+                theme,
+                status=_theme_status_for_qualification(qualification.qualified, qualification.reason),
+                qualification_reason=qualification.reason,
+                last_qualified_at=now,
+                updated_at=now,
+                metadata={
+                    **theme.metadata,
+                    "last_qualification": {
+                        "qualified": qualification.qualified,
+                        "reason": qualification.reason,
+                        "finding_count": qualification.finding_count,
+                        "source_count": qualification.source_count,
+                        "company_count": qualification.company_count,
+                        "buyer_context_count": qualification.buyer_context_count,
+                        "strong_pain_count": qualification.strong_pain_count,
+                        "high_signal_source_count": qualification.high_signal_source_count,
+                        "average_confidence": qualification.average_confidence,
+                    },
+                },
+            )
+        )
+    return config.theme_repository.save_themes(updated_themes)
+
+
+def _theme_status_for_qualification(qualified: bool, reason: str | None) -> str:
+    if qualified:
+        return "qualified"
+    if reason in {"off_niche", "vendor_fix_only"}:
+        return "rejected"
+    return "emerging"
 
 
 def _signal_text(signal: Signal) -> str:

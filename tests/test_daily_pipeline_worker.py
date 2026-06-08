@@ -121,7 +121,10 @@ class FakeThemeRepository:
         self.refreshed_theme_ids: list[str] = []
 
     def save_themes(self, themes: list[Theme]) -> int:
-        self.themes.extend(themes)
+        existing = {theme.id: theme for theme in self.themes}
+        for theme in themes:
+            existing[theme.id] = theme
+        self.themes = list(existing.values())
         return len(themes)
 
     def save_theme_findings(self, assignments: list[ThemeFinding]) -> int:
@@ -143,6 +146,9 @@ class FakeThemeRepository:
 
     def list_changed_themes(self, *, user_niche_id: str, since: object) -> list[Theme]:
         return [theme for theme in self.themes if theme.user_niche_id == user_niche_id]
+
+    def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
+        return []
 
     def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
         self.refreshed_theme_ids.extend(theme_ids)
@@ -343,6 +349,11 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(
             theme_repository.refreshed_theme_ids,
             [theme_repository.themes[0].id],
+        )
+        self.assertEqual(theme_repository.themes[0].status, "emerging")
+        self.assertEqual(
+            theme_repository.themes[0].qualification_reason,
+            "insufficient_evidence",
         )
 
     def test_runs_pipeline_from_enabled_niche_sources(self):
