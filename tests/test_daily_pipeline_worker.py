@@ -4,6 +4,7 @@ from typing import Any
 
 from domain.agent import AgentPreferences
 from domain.competitor import Competitor
+from domain.finding import Finding
 from domain.market import Market
 from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
 from domain.post import RawPost
@@ -89,6 +90,29 @@ class FakeEmailNotifier(EmailNotifier):
         self.calls.append((subject, body, recipients))
 
 
+class FakeFindingRepository:
+    def __init__(self):
+        self.findings: list[Finding] = []
+
+    def save_findings(self, findings: list[Finding]) -> int:
+        self.findings.extend(findings)
+        return len(findings)
+
+    def list_findings(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        unassigned_only: bool = False,
+    ) -> list[Finding]:
+        if user_niche_id is None:
+            return self.findings
+        return [
+            finding
+            for finding in self.findings
+            if finding.user_niche_id == user_niche_id
+        ]
+
+
 class DailyPipelineWorkerTests(unittest.TestCase):
     def test_runs_pipeline_with_generic_sources(self):
         signal_repository = InMemorySignalRepository()
@@ -160,6 +184,68 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
         self.assertIsNone(opportunity_repository.get_opportunity("opportunity-cluster-1"))
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
+
+    def test_persists_accumulated_findings_with_source_provenance(self):
+        finding_repository = FakeFindingRepository()
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            finding_repository=finding_repository,
+            llm_client=SequentialLLMClient(
+                [
+                    """
+                    {
+                      "has_signal": true,
+                      "is_about_competitor": true,
+                      "competitor_match_reason": null,
+                      "signal": {
+                        "pain": "Export workflows are painful",
+                        "user_type": "finance team",
+                        "job_to_be_done": "export reports",
+                        "current_workaround": "manual CSV cleanup",
+                        "urgency": 3,
+                        "severity": 3,
+                        "willingness_to_pay": 5,
+                        "category": "reporting",
+                        "confidence": 0.8
+                      }
+                    }
+                    """
+                ]
+            ),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=None,
+            recipient="",
+            send_email=False,
+            source_adapters=[FakeSourceAdapter()],
+            user_niche_id="market-1",
+            sources=[
+                SourceInput.create(
+                    locator="https://example.com/reviews",
+                    limit=1,
+                    options={
+                        "niche_source_id": "source-1",
+                        "source_type": "review_search",
+                        "source_family": "reviews",
+                        "market_id": "niche-1",
+                    },
+                )
+            ],
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.extracted_count, 1)
+        self.assertEqual(len(finding_repository.findings), 1)
+        finding = finding_repository.findings[0]
+        self.assertEqual(finding.user_niche_id, "market-1")
+        self.assertEqual(finding.source_id, "source-1")
+        self.assertEqual(finding.niche_id, "niche-1")
+        self.assertEqual(finding.source_url, "https://example.com/reviews")
+        self.assertEqual(finding.embedding, [1.0, 0.0])
+        self.assertEqual(finding.metadata["source_family"], "reviews")
 
     def test_runs_pipeline_from_enabled_niche_sources(self):
         user_niche_repository = InMemoryUserNicheRepository()

@@ -53,6 +53,7 @@ from application.source_quality import (
 )
 from domain.cluster import SignalCluster
 from domain.agent import AgentAction, AgentActivity
+from domain.finding import Finding
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
@@ -227,6 +228,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         signals,
         config.embedding_client,
     )
+    _persist_accumulated_findings(config, signals, embeddings, posts)
     clusters = ClusteringService(config.similarity_threshold).cluster(
         clustered_signals,
         embeddings,
@@ -1278,6 +1280,32 @@ def _embed_signals(
     return clustered_signals, embeddings, failed_count
 
 
+def _persist_accumulated_findings(
+    config: PipelineConfig,
+    signals: list[Signal],
+    embeddings: dict[str, list[float]],
+    posts: list[RawPost],
+) -> int:
+    if config.finding_repository is None or config.user_niche_id is None:
+        return 0
+    post_index = {post.id: post for post in posts}
+    findings: list[Finding] = []
+    for signal in signals:
+        post = post_index.get(signal.post_id)
+        findings.append(
+            Finding.from_signal(
+                user_niche_id=config.user_niche_id,
+                signal=signal,
+                source_id=_post_niche_source_id(post) if post else None,
+                post_title=post.title if post else None,
+                source_url=post.url if post else None,
+                embedding=embeddings.get(signal.id),
+                metadata=_finding_metadata(post),
+            )
+        )
+    return config.finding_repository.save_findings(findings)
+
+
 def _signal_text(signal: Signal) -> str:
     parts = [
         signal.pain,
@@ -1287,3 +1315,25 @@ def _signal_text(signal: Signal) -> str:
         signal.category,
     ]
     return "\n".join(part for part in parts if part)
+
+
+def _finding_metadata(post: RawPost | None) -> dict[str, object]:
+    if post is None:
+        return {}
+    keys = (
+        "source_type",
+        "source_family",
+        "source_tier",
+        "source_quality_score",
+        "source_access_mode",
+        "market_id",
+        "market_name",
+        "competitor_id",
+        "competitor_name",
+        "niche_source_id",
+    )
+    return {
+        key: post.metadata[key]
+        for key in keys
+        if key in post.metadata and post.metadata[key] is not None
+    }
