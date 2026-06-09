@@ -381,7 +381,7 @@ function NicheList({
               }`}
             >
               <NicheIcon marketId={market.id} marketName={market.name} active={active} />
-              <span className="min-w-0 flex-1 leading-snug line-clamp-2">{market.name}</span>
+              <span className="min-w-0 flex-1 leading-snug line-clamp-2">{market.display_label ?? market.name}</span>
             </Link>
             <button
               onClick={e => { e.preventDefault(); setConfirmId(market.id); }}
@@ -487,6 +487,17 @@ export default function DashboardNav() {
         .catch(() => {});
     }
   }, [activeId, markets]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowAddNiche(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const handleNicheCreated = (market: Market) => {
     setMarkets(prev => [...prev, market]);

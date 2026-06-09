@@ -625,6 +625,8 @@ class SignalApiService {
   async getOpportunities(params?: {
     company_id?: string;
     market_id?: string;
+    recency_days?: number | null;
+    feedback_filter?: 'all' | 'saved' | 'dismissed' | null;
   }): Promise<OpportunitiesResponse> {
     try {
       const response = await api.get<OpportunitiesResponse>('/opportunities', { params });

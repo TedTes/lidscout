@@ -24,6 +24,8 @@ type Status = 'loading' | 'ready' | 'error';
 type EvidenceStrength = 'early' | 'moderate' | 'strong' | 'emerging' | 'validated';
 type ItemFeedbackAction = Extract<AgentFeedbackAction, 'save' | 'dismiss'>;
 type TrainingFeedbackAction = Extract<AgentFeedbackAction, 'more_like_this' | 'less_like_this'>;
+type RecencyFilter = 7 | 30 | 90 | null;
+type FeedbackFilter = 'all' | 'saved' | 'dismissed';
 
 const STRENGTH_META: Record<EvidenceStrength, { label: string; dotCls: string; badgeCls: string }> = {
   strong:    { label: 'Strong signal',    dotCls: 'bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.85)]',   badgeCls: 'border-emerald-400/35 bg-emerald-400/15 text-emerald-200' },
@@ -109,6 +111,18 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [itemFeedbackMap, setItemFeedbackMap] = useState<Map<string, ItemFeedbackAction>>(new Map());
   const [trainingFeedbackMap, setTrainingFeedbackMap] = useState<Map<string, TrainingFeedbackAction>>(new Map());
+  const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>(null);
+  const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all');
+
+  const fetchOpportunities = async (days: RecencyFilter) => {
+    try {
+      const res = await signalApi.getOpportunities({
+        market_id: marketId,
+        recency_days: days ?? undefined,
+      });
+      setOpportunities(res.opportunities);
+    } catch { /* ignore background errors */ }
+  };
 
   const load = async () => {
     setStatus('loading');
@@ -162,6 +176,12 @@ export default function NicheWorkspacePage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
+  useEffect(() => {
+    if (status !== 'ready') return;
+    fetchOpportunities(recencyFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recencyFilter]);
+
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
   const [lastEventAt, setLastEventAt] = useState<string | null>(null);
   const [progressActivity, setProgressActivity] = useState<AgentActivity[]>([]);
@@ -180,7 +200,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   const refreshData = async () => {
     try {
       const [oppsRes, themesRes] = await Promise.all([
-        signalApi.getOpportunities({ market_id: marketId }),
+        signalApi.getOpportunities({ market_id: marketId, recency_days: recencyFilter ?? undefined }),
         signalApi.getThemes({ market_id: marketId }),
       ]);
       setOpportunities(oppsRes.opportunities);
@@ -263,12 +283,20 @@ export default function NicheWorkspacePage({ params }: Props) {
 
   const themeById = useMemo(() => new Map(themes.map(theme => [theme.id, theme])), [themes]);
 
+  const savedIds = useMemo(
+    () => new Set([...itemFeedbackMap].filter(([, v]) => v === 'save').map(([k]) => k)),
+    [itemFeedbackMap]
+  );
   const dismissedIds = useMemo(
     () => new Set([...itemFeedbackMap].filter(([, v]) => v === 'dismiss').map(([k]) => k)),
     [itemFeedbackMap]
   );
 
-  const visibleOpportunities = opportunities.filter(o => !dismissedIds.has(o.id));
+  const visibleOpportunities = useMemo(() => {
+    if (feedbackFilter === 'saved') return opportunities.filter(o => savedIds.has(o.id));
+    if (feedbackFilter === 'dismissed') return opportunities.filter(o => dismissedIds.has(o.id));
+    return opportunities.filter(o => !dismissedIds.has(o.id));
+  }, [opportunities, feedbackFilter, savedIds, dismissedIds]);
 
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
 
@@ -351,6 +379,39 @@ export default function NicheWorkspacePage({ params }: Props) {
                   lastEventAt={lastEventAt}
                   isRunning={pipelineStatus === 'running'}
                 />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 rounded-lg border border-slate-800/70 bg-slate-900/40 p-1">
+                    {(['all', 'saved', 'dismissed'] as FeedbackFilter[]).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setFeedbackFilter(f)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition ${
+                          feedbackFilter === f
+                            ? 'bg-slate-700/80 text-slate-200'
+                            : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1 rounded-lg border border-slate-800/70 bg-slate-900/40 p-1">
+                    {([null, 7, 30, 90] as RecencyFilter[]).map(d => (
+                      <button
+                        key={d ?? 'all'}
+                        onClick={() => setRecencyFilter(d)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                          recencyFilter === d
+                            ? 'bg-slate-700/80 text-slate-200'
+                            : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        {d == null ? 'All time' : `${d}d`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {feedbackError && <p className="text-xs text-rose-400">{feedbackError}</p>}
 
@@ -877,6 +938,16 @@ function GapCard({
               </div>
             ))}
           </div>
+          {opportunity.verification_note && (
+            <div className="mt-2.5 flex items-start gap-1.5 rounded-md bg-slate-800/50 px-2.5 py-2">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0 text-slate-500">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <p className="text-[11px] leading-relaxed text-slate-500">{opportunity.verification_note}</p>
+            </div>
+          )}
           {(needLabel || theme) && (
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
               {needLabel && (

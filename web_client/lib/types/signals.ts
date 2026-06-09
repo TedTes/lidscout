@@ -97,6 +97,7 @@ export type Opportunity = {
   evidence_source_count: number;
   evidence_strength: 'early' | 'moderate' | 'strong' | 'emerging' | 'validated';
   unmet_need_type?: 'time' | 'money' | 'effort' | 'capability' | 'fit' | null;
+  verification_note?: string | null;
   evidence_items?: EvidenceItem[];
   source_family_breakdown?: SourceFamilyBreakdownItem[];
 };
@@ -114,6 +115,7 @@ export type NicheCompany = {
 export type Market = {
   id: string;
   name: string;
+  display_label: string;
   description: string | null;
   target_user: string | null;
   idea_prompt: string | null;
@@ -123,6 +125,8 @@ export type Market = {
 export type NicheTemplate = {
   id: string;
   name: string;
+  display_label: string;
+  category: string;
   description: string;
   company_count: number;
   company_names: string[];

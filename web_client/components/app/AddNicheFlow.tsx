@@ -145,7 +145,9 @@ function TemplatePickerStep({
 }) {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
+  const [focusedIndex, setFocusedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => inputRef.current?.focus(), 40);
@@ -195,12 +197,31 @@ function TemplatePickerStep({
     }).sort((a, b) => Number(a.alreadyAdded) - Number(b.alreadyAdded));
   }, [activeCategory, query, templatesWithCategory]);
 
-  const firstSelectable = filtered.find(item => !item.alreadyAdded)?.template ?? null;
+  const selectableFiltered = filtered.filter(item => !item.alreadyAdded);
+
+  // Reset focused index when results change
+  useEffect(() => { setFocusedIndex(0); }, [query, activeCategory]);
+
+  // Scroll focused row into view
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const rows = list.querySelectorAll<HTMLButtonElement>('[data-picker-row]');
+    rows[focusedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [focusedIndex]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter' || !firstSelectable) return;
-    event.preventDefault();
-    onSelect(firstSelectable);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setFocusedIndex(i => Math.min(i + 1, selectableFiltered.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setFocusedIndex(i => Math.max(i - 1, 0));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const target = selectableFiltered[focusedIndex];
+      if (target) onSelect(target.template);
+    }
   };
 
   return (
@@ -248,26 +269,32 @@ function TemplatePickerStep({
         {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto border-t border-white/10">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto border-t border-white/10">
         {loading && (
           <LoadingTemplates />
         )}
         {!loading && filtered.length === 0 && (
           <div className="px-8 py-12 text-sm text-slate-500">No curated markets match that search.</div>
         )}
-        {!loading && filtered.map(({ template, category, alreadyAdded }, index) => {
+        {!loading && filtered.map(({ template, category, alreadyAdded }) => {
           const accessLabel = sourceAccessLabel(template);
           const creating = creatingTemplateId === template.id;
           const disabled = alreadyAdded || creatingTemplateId !== null;
+          const selectableIdx = selectableFiltered.findIndex(s => s.template.id === template.id);
+          const isFocused = !alreadyAdded && selectableIdx === focusedIndex;
           return (
             <button
               key={template.id}
               type="button"
+              data-picker-row=""
               disabled={disabled}
               onClick={() => onSelect(template)}
+              onMouseEnter={() => { if (!alreadyAdded) setFocusedIndex(selectableIdx); }}
               className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-5 border-b border-white/10 px-8 py-5 text-left transition ${
                 alreadyAdded
                   ? 'cursor-default opacity-45'
+                  : isFocused
+                  ? 'bg-white/[0.05]'
                   : 'hover:bg-white/[0.035]'
               }`}
             >
@@ -276,7 +303,7 @@ function TemplatePickerStep({
                   <h3 className="max-w-2xl text-base font-bold leading-tight text-slate-100">
                     {template.name}
                   </h3>
-                  {index === 0 && !alreadyAdded && !query && (
+                  {isFocused && !query && (
                     <span className="hidden text-xs text-slate-600 sm:inline">Enter</span>
                   )}
                 </div>
