@@ -18,6 +18,8 @@ class Opportunity:
     evidence_signal_ids: list[str]
     unmet_need_type: str | None = None
     source_theme_id: str | None = None
+    evidence_signature: str | None = None
+    verification_note: str | None = None
 
     @classmethod
     def create(
@@ -35,6 +37,8 @@ class Opportunity:
         evidence_signal_ids: list[str],
         unmet_need_type: str | None = None,
         source_theme_id: str | None = None,
+        evidence_signature: str | None = None,
+        verification_note: str | None = None,
     ) -> "Opportunity":
         """Create a validated synthesized opportunity entity."""
         opportunity_id = id.strip()
@@ -86,6 +90,8 @@ class Opportunity:
             evidence_signal_ids=normalized_signal_ids,
             unmet_need_type=normalized_unmet_need_type,
             source_theme_id=normalized_source_theme_id,
+            evidence_signature=evidence_signature or None,
+            verification_note=verification_note.strip() if verification_note else None,
         )
 
     @staticmethod
