@@ -376,8 +376,16 @@ async def list_opportunities(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     company_id: str | None = None,
     market_id: str | None = None,
+    recency_days: int | None = None,
+    feedback_filter: str | None = None,
 ) -> dict[str, Any]:
-    """Return synthesized product opportunities, optionally filtered by scope."""
+    """Return synthesized product opportunities, optionally filtered by scope.
+
+    recency_days: if set (7/30/90), only include opps whose source theme has
+        a latest_finding_at within the last N days.
+    feedback_filter: "saved" | "dismissed" — filter to user-actioned opps only.
+        Omit or pass "all" to show everything.
+    """
     opportunities = dependencies.opportunity_repository.list_opportunities()
     all_signals = dependencies.signal_repository.list_signals()
     if company_id is not None or market_id is not None:
@@ -401,14 +409,45 @@ async def list_opportunities(
                 and o.source_theme_id in scoped_theme_ids
             )
         ]
+
+    if recency_days is not None and dependencies.theme_repository is not None and market_id is not None:
+        cutoff = datetime.now(UTC).replace(tzinfo=UTC)
+        from datetime import timedelta
+        cutoff = cutoff - timedelta(days=recency_days)
+        recent_theme_ids: set[str] = set()
+        for theme in dependencies.theme_repository.list_themes(user_niche_id=market_id):
+            lat = theme.latest_finding_at
+            if lat is not None:
+                if isinstance(lat, str):
+                    from datetime import timezone
+                    try:
+                        lat = datetime.fromisoformat(lat.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                lat_aware = lat if lat.tzinfo else lat.replace(tzinfo=UTC)
+                if lat_aware >= cutoff:
+                    recent_theme_ids.add(theme.id)
+        opportunities = [
+            o for o in opportunities
+            if o.source_theme_id in recent_theme_ids
+        ]
+
+    market_feedback = (
+        dependencies.agent_feedback_repository.list_agent_feedback(user_niche_id=market_id)
+        if market_id is not None
+        else []
+    )
+
+    if feedback_filter in ("saved", "dismissed"):
+        actioned_ids = {
+            f.opportunity_id for f in market_feedback if f.action == feedback_filter
+        }
+        opportunities = [o for o in opportunities if o.id in actioned_ids]
+
     opportunities = merge_near_duplicate_opportunities(opportunities)
     if market_id is not None:
-        opportunities = rank_opportunities_with_feedback(
-            opportunities,
-            dependencies.agent_feedback_repository.list_agent_feedback(
-                user_niche_id=market_id,
-            ),
-        )
+        opportunities = rank_opportunities_with_feedback(opportunities, market_feedback)
+
     signals_by_id = {s.id: s for s in all_signals}
     return {
         "opportunities": [
@@ -1496,10 +1535,9 @@ async def run_pipeline(
     result = run_daily_pipeline(
         PipelineConfig(
             post_repository=dependencies.post_repository,
-            signal_repository=dependencies.signal_repository,
-            score_repository=dependencies.score_repository,
-            cluster_repository=dependencies.cluster_repository,
             opportunity_repository=dependencies.opportunity_repository,
+            finding_repository=dependencies.finding_repository,
+            theme_repository=dependencies.theme_repository,
             pipeline_run_metrics_repository=(
                 dependencies.pipeline_run_metrics_repository
             ),
@@ -1525,7 +1563,6 @@ async def run_pipeline(
             ],
             user_niche_id=request.market_id,
             default_limit=request.default_limit,
-            similarity_threshold=request.similarity_threshold,
         )
     )
     return _serialize_pipeline_result(result)
@@ -2367,6 +2404,8 @@ def _serialize_niche_template(
     return {
         "id": niche.id,
         "name": niche.job,
+        "display_label": niche.display_label or niche.job[:32],
+        "category": niche.category,
         "description": niche.description or niche.category,
         "company_count": len(companies),
         "company_names": [c.name for c in companies],
@@ -2378,6 +2417,7 @@ def _serialize_market(user_niche: UserNiche) -> dict[str, Any]:
     return {
         "id": user_niche.id,
         "name": user_niche.job,
+        "display_label": user_niche.job[:32],
         "description": user_niche.category,
         "target_user": user_niche.buyer,
         "idea_prompt": None,
@@ -3145,6 +3185,7 @@ def _serialize_opportunity(
         "confidence": opportunity.confidence,
         "evidence_signal_ids": opportunity.evidence_signal_ids,
         "unmet_need_type": opportunity.unmet_need_type,
+        "verification_note": opportunity.verification_note,
     }
     if dependencies is not None:
         signal_index = _signals_by_id or {
@@ -3290,21 +3331,9 @@ def _serialize_pipeline_result(result: PipelineRunResult) -> dict[str, Any]:
         "extracted_count": result.extracted_count,
         "no_signal_count": result.no_signal_count,
         "extraction_failed_count": result.extraction_failed_count,
-        "signal_inserted_count": result.signal_inserted_count,
-        "scoring": {
-            "scored_count": result.scoring_result.scored_count,
-            "failed_count": result.scoring_result.failed_count,
-            "average_score": result.scoring_result.average_score,
-        },
         "embedding_failed_count": result.embedding_failed_count,
-        "clustered_count": result.clustered_count,
-        "cluster_inserted_count": result.cluster_inserted_count,
         "opportunity_synthesis": {
-            "synthesized_count": (
-                result.opportunity_synthesis_result.synthesized_count
-            ),
-            "inserted_count": result.opportunity_synthesis_result.inserted_count,
-            "failed_count": result.opportunity_synthesis_result.failed_count,
+            "synthesized_count": result.theme_opportunity_count,
         },
         "report": _serialize_report(result.report),
         "email": _serialize_email_result(result.email_result),

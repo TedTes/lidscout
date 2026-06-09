@@ -1,6 +1,7 @@
 """Synthesize opportunities from qualified accumulated themes."""
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from dataclasses import dataclass
 
@@ -21,16 +22,34 @@ class ThemeOpportunitySynthesisResult:
 class ThemeOpportunitySynthesisService:
     """Builds product opportunities from qualified accumulated themes."""
 
+    MATERIAL_CHANGE_THRESHOLD = 0.25
+
     def synthesize(
         self,
         theme: Theme,
         findings: list[Finding],
         context: OpportunitySynthesisContext | None = None,
+        *,
+        existing_signature: str | None = None,
+        existing_finding_count: int = 0,
     ) -> ThemeOpportunitySynthesisResult:
         if theme.status != "qualified":
             return ThemeOpportunitySynthesisResult(None, "theme_not_qualified")
         if len(findings) < 2:
             return ThemeOpportunitySynthesisResult(None, "insufficient_evidence")
+
+        # Skip re-synthesis when new findings represent < 25% growth vs the
+        # last synthesis run — avoids burning LLM calls on marginal updates.
+        new_signature = compute_evidence_signature([f.id for f in findings])
+        if (
+            existing_signature is not None
+            and existing_signature == new_signature
+        ):
+            return ThemeOpportunitySynthesisResult(None, "no_change")
+        if existing_signature is not None and existing_finding_count > 0:
+            growth = (len(findings) - existing_finding_count) / existing_finding_count
+            if growth < self.MATERIAL_CHANGE_THRESHOLD:
+                return ThemeOpportunitySynthesisResult(None, "marginal_change")
 
         source_count = len({finding.source_id for finding in findings if finding.source_id})
         target_user = _target_user(findings, context)
@@ -40,6 +59,7 @@ class ThemeOpportunitySynthesisService:
         )
         confidence = _confidence(theme, findings, source_count)
 
+        finding_ids = [finding.id for finding in findings]
         return ThemeOpportunitySynthesisResult(
             Opportunity.create(
                 id=f"opportunity-theme-{theme.id}",
@@ -52,8 +72,10 @@ class ThemeOpportunitySynthesisService:
                 suggested_wedge=_suggested_wedge(category, findings),
                 evidence_count=len(findings),
                 confidence=confidence,
-                evidence_signal_ids=[finding.id for finding in findings],
+                evidence_signal_ids=finding_ids,
                 unmet_need_type=_infer_unmet_need_type(theme, findings),
+                evidence_signature=new_signature,
+                verification_note=_verification_note(len(findings), source_count),
             )
         )
 
@@ -154,3 +176,18 @@ def _most_common(values: list[str], *, fallback: str | None) -> str:
     if not values:
         return fallback or "affected users"
     return Counter(values).most_common(1)[0][0]
+
+
+def _verification_note(finding_count: int, source_count: int) -> str:
+    findings_phrase = f"{finding_count} piece{'s' if finding_count != 1 else ''} of evidence"
+    sources_phrase = f"{source_count} source{'s' if source_count != 1 else ''}"
+    return (
+        f"Based on {findings_phrase} from {sources_phrase}. "
+        "Treat as a signal to investigate, not a confirmed market gap."
+    )
+
+
+def compute_evidence_signature(finding_ids: list[str]) -> str:
+    """Stable short hash of a finding set. Same set → same hash across runs."""
+    payload = "|".join(sorted(finding_ids))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
