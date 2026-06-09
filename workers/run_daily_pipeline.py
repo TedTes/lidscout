@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 import json
 from urllib.parse import urlparse
 
-from application.clustering import ClusteringService
 from application.agent import (
     AgentActionExecutor,
     AgentPlannerInput,
@@ -23,30 +22,22 @@ from application.ingestion import (
     SourceFetchDetail,
     SourceResolver,
 )
-from application.opportunity import (
-    OpportunitySynthesisContext,
-    OpportunitySynthesisResult,
-    OpportunitySynthesisService,
-)
+from application.opportunity import OpportunitySynthesisContext
 from application.ports import (
     AgentActionRepository,
     AgentActivityRepository,
     AgentAlertRepository,
     AgentFollowUpRepository,
     AgentPreferencesRepository,
-    ClusterRepository,
     FindingRepository,
     NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
-    ScoreRepository,
-    SignalRepository,
     ThemeRepository,
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
-from application.scoring import ScoringResult, ScoringService
 from application.source_quality import (
     source_observed_quality_score,
     source_scan_eligibility,
@@ -56,7 +47,6 @@ from application.theme_memory import (
     ThemeOpportunitySynthesisService,
     qualify_theme_for_opportunity,
 )
-from domain.cluster import SignalCluster
 from domain.agent import AgentAction, AgentActivity
 from domain.finding import Finding
 from domain.opportunity import Opportunity
@@ -83,9 +73,6 @@ class PipelineConfig:
     """Dependencies and source settings for a daily pipeline run."""
 
     post_repository: PostRepository
-    signal_repository: SignalRepository
-    score_repository: ScoreRepository
-    cluster_repository: ClusterRepository
     llm_client: LLMClient
     embedding_client: EmbeddingClient
     email_client: EmailClient | None
@@ -106,7 +93,6 @@ class PipelineConfig:
     sources: list[SourceInput] = field(default_factory=list)
     user_niche_id: str | None = None
     default_limit: int = 25
-    similarity_threshold: float = 0.82
     send_email: bool = True
     allow_proxy_sources: bool = False
     allow_auth_sources: bool = False
@@ -126,12 +112,8 @@ class PipelineRunResult:
     extracted_count: int
     no_signal_count: int
     extraction_failed_count: int
-    signal_inserted_count: int
-    scoring_result: ScoringResult
     embedding_failed_count: int
-    clustered_count: int
-    cluster_inserted_count: int
-    opportunity_synthesis_result: OpportunitySynthesisResult
+    theme_opportunity_count: int
     report: MarketSignalReport
     email_result: EmailSendResult
 
@@ -216,7 +198,6 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         relevance_result.posts,
         config.llm_client,
     )
-    signal_inserted_count = config.signal_repository.save_signals(signals)
     if signals:
         _record_agent_activity(
             config.agent_activity_repository,
@@ -227,51 +208,23 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
             metadata={"signal_count": len(signals), "no_signal_count": no_signal_count},
         )
 
-    scoring_result = ScoringService(config.score_repository).score(signals)
-
-    clustered_signals, embeddings, embedding_failed_count = _embed_signals(
+    _, embeddings, embedding_failed_count = _embed_signals(
         signals,
         config.embedding_client,
     )
     accumulated_findings = _persist_accumulated_findings(config, signals, embeddings, posts)
     assigned_theme_ids = _assign_accumulated_findings_to_themes(config, accumulated_findings)
     _requalify_accumulated_themes(config, assigned_theme_ids)
-    _synthesize_accumulated_theme_opportunities(config, assigned_theme_ids)
-    clusters = ClusteringService(config.similarity_threshold).cluster(
-        clustered_signals,
-        embeddings,
-    )
-    cluster_inserted_count = config.cluster_repository.save_clusters(clusters)
-    if clusters:
-        _record_agent_activity(
-            config.agent_activity_repository,
-            user_niche_id=config.user_niche_id,
-            event_type="clusters_formed",
-            title=f"Grouped signals into {len(clusters)} theme(s)",
-            detail=f"Clustered {len(clustered_signals)} signal(s) into {len(clusters)} theme(s).",
-            metadata={"cluster_count": len(clusters), "signal_count": len(clustered_signals)},
-        )
+    theme_opportunity_count = _synthesize_accumulated_theme_opportunities(config, assigned_theme_ids)
 
-    opportunity_synthesis_result = _synthesize_opportunities(
-        config.opportunity_repository,
-        config.llm_client,
-        clusters,
-        signals,
-        _synthesis_context(config),
-    )
-    _record_synthesis_qualification_activity(
-        config,
-        clusters,
-        opportunity_synthesis_result,
-    )
-    if opportunity_synthesis_result.synthesized_count > 0:
+    if theme_opportunity_count > 0:
         _record_agent_activity(
             config.agent_activity_repository,
             user_niche_id=config.user_niche_id,
             event_type="gaps_synthesized",
-            title=f"Identified {opportunity_synthesis_result.synthesized_count} gap(s)",
-            detail=f"Synthesized {opportunity_synthesis_result.synthesized_count} product gap(s) from clustered signals.",
-            metadata={"gap_count": opportunity_synthesis_result.synthesized_count},
+            title=f"Identified {theme_opportunity_count} gap(s)",
+            detail=f"Synthesized {theme_opportunity_count} product gap(s) from accumulated themes.",
+            metadata={"gap_count": theme_opportunity_count},
         )
 
     _record_niche_source_health(
@@ -280,9 +233,14 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         relevance_result.source_stats,
     )
 
+    all_opportunities = (
+        config.opportunity_repository.list_opportunities()
+        if config.opportunity_repository is not None
+        else []
+    )
     report = ReportingService().generate(
-        clusters,
-        opportunity_synthesis_result.opportunities,
+        [],
+        all_opportunities,
         title=_market_report_title(config),
     )
     email_result = _send_pipeline_report(config, report)
@@ -298,17 +256,13 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         extracted_count=len(signals),
         no_signal_count=no_signal_count,
         extraction_failed_count=extraction_failed_count,
-        signal_inserted_count=signal_inserted_count,
-        scoring_result=scoring_result,
         embedding_failed_count=embedding_failed_count,
-        clustered_count=len(clusters),
-        cluster_inserted_count=cluster_inserted_count,
-        opportunity_synthesis_result=opportunity_synthesis_result,
+        theme_opportunity_count=theme_opportunity_count,
         report=report,
         email_result=email_result,
     )
     _save_pipeline_run_metrics(config.pipeline_run_metrics_repository, result)
-    _record_threshold_alerts(config, clusters, opportunity_synthesis_result.opportunities)
+    _record_threshold_alerts(config, all_opportunities)
     _record_pipeline_activity(config, result)
     _persist_planned_agent_actions(config)
     return result
@@ -346,88 +300,6 @@ class RelevanceFilterResult:
     source_stats: dict[str, SourceRelevanceStats] = field(default_factory=dict)
 
 
-def _synthesize_opportunities(
-    opportunity_repository: OpportunityRepository | None,
-    llm_client: LLMClient,
-    clusters: list[SignalCluster],
-    signals: list[Signal],
-    context: OpportunitySynthesisContext | None = None,
-) -> OpportunitySynthesisResult:
-    if opportunity_repository is None:
-        return OpportunitySynthesisResult(
-            synthesized_count=0,
-            inserted_count=0,
-            failed_count=0,
-            opportunities=[],
-            rejected_qualifications=[],
-        )
-    return OpportunitySynthesisService(
-        opportunity_repository,
-        llm_client=llm_client,
-    ).synthesize(clusters, signals, context=context)
-
-
-def _record_synthesis_qualification_activity(
-    config: PipelineConfig,
-    clusters: list[SignalCluster],
-    result: OpportunitySynthesisResult,
-) -> None:
-    cluster_index = {cluster.id: cluster for cluster in clusters}
-    for opportunity in result.opportunities:
-        cluster = cluster_index.get(opportunity.cluster_id)
-        _record_agent_activity(
-            config.agent_activity_repository,
-            user_niche_id=config.user_niche_id,
-            event_type="theme_promoted",
-            title=f"Promoted theme to candidate: {opportunity.title}",
-            detail=(
-                f"{opportunity.evidence_count} finding(s) qualified this theme as a strategic gap."
-            ),
-            metadata={
-                "cluster_id": opportunity.cluster_id,
-                "opportunity_id": opportunity.id,
-                "theme": cluster.theme if cluster else None,
-                "finding_count": opportunity.evidence_count,
-                "unmet_need_type": opportunity.unmet_need_type,
-            },
-        )
-    for qualification in result.rejected_qualifications:
-        cluster = cluster_index.get(qualification.cluster_id)
-        _record_agent_activity(
-            config.agent_activity_repository,
-            user_niche_id=config.user_niche_id,
-            event_type="theme_rejected",
-            title=f"Theme not promoted: {cluster.theme if cluster else qualification.cluster_id}",
-            detail=_qualification_reason_detail(qualification.reason),
-            metadata={
-                "cluster_id": qualification.cluster_id,
-                "theme": cluster.theme if cluster else None,
-                "reason": qualification.reason,
-                "finding_count": qualification.finding_count,
-                "source_count": qualification.source_count,
-                "company_count": qualification.company_count,
-                "general_finding_count": qualification.general_finding_count,
-                "high_signal_source_count": qualification.high_signal_source_count,
-                "buyer_context_signal_count": (
-                    qualification.buyer_context_signal_count
-                ),
-                "strong_pain_signal_count": qualification.strong_pain_signal_count,
-                "average_signal_confidence": qualification.average_signal_confidence,
-            },
-        )
-
-
-def _qualification_reason_detail(reason: str | None) -> str:
-    return {
-        "insufficient_evidence": "Needs at least 2 findings from 2 distinct sources.",
-        "no_cross_tool_pattern": "Needs cross-tool corroboration or broader non-vendor evidence.",
-        "vendor_fix_only": "Looks like a vendor fix rather than a strategic gap.",
-        "off_niche": "Evidence does not match the niche job-to-be-done.",
-        "weak_source_mix": "Needs stronger buyer-side sources or more corroborating evidence.",
-        "low_extraction_confidence": "Needs higher-confidence extracted evidence before promotion.",
-        "thin_buyer_context": "Needs clearer buyer, job-to-be-done, workaround, or willingness-to-pay context.",
-        "low_pain_intensity": "Needs stronger urgency, severity, or willingness-to-pay evidence.",
-    }.get(reason or "", "Theme did not meet strategic gap qualification criteria.")
 
 
 def _synthesis_context(
@@ -470,22 +342,16 @@ def _save_pipeline_run_metrics(
             extracted_count=result.extracted_count,
             no_signal_count=result.no_signal_count,
             extraction_failed_count=result.extraction_failed_count,
-            signal_inserted_count=result.signal_inserted_count,
-            scored_count=result.scoring_result.scored_count,
-            scoring_failed_count=result.scoring_result.failed_count,
-            average_score=result.scoring_result.average_score,
+            signal_inserted_count=0,
+            scored_count=0,
+            scoring_failed_count=0,
+            average_score=0.0,
             embedding_failed_count=result.embedding_failed_count,
-            clustered_count=result.clustered_count,
-            cluster_inserted_count=result.cluster_inserted_count,
-            opportunity_synthesized_count=(
-                result.opportunity_synthesis_result.synthesized_count
-            ),
-            opportunity_inserted_count=(
-                result.opportunity_synthesis_result.inserted_count
-            ),
-            opportunity_failed_count=(
-                result.opportunity_synthesis_result.failed_count
-            ),
+            clustered_count=0,
+            cluster_inserted_count=0,
+            opportunity_synthesized_count=result.theme_opportunity_count,
+            opportunity_inserted_count=result.theme_opportunity_count,
+            opportunity_failed_count=0,
             email_sent=result.email_result.sent,
             email_error=result.email_result.error,
         )
@@ -529,7 +395,7 @@ def _record_pipeline_activity(
         detail=(
             f"Fetched {result.fetched_count} post(s), extracted "
             f"{result.extracted_count} finding(s), and synthesized "
-            f"{result.opportunity_synthesis_result.synthesized_count} gap(s)."
+            f"{result.theme_opportunity_count} gap(s)."
         ),
         metadata={
             "fetched_count": result.fetched_count,
@@ -537,10 +403,7 @@ def _record_pipeline_activity(
             "rule_filtered_count": result.rule_filtered_count,
             "llm_filtered_count": result.llm_filtered_count,
             "extracted_count": result.extracted_count,
-            "clustered_count": result.clustered_count,
-            "opportunity_synthesized_count": (
-                result.opportunity_synthesis_result.synthesized_count
-            ),
+            "opportunity_synthesized_count": result.theme_opportunity_count,
             "email_sent": result.email_result.sent,
             "email_error": result.email_result.error,
         },
@@ -663,14 +526,13 @@ def _persist_planned_agent_actions(config: PipelineConfig) -> None:
 
 def _record_threshold_alerts(
     config: PipelineConfig,
-    clusters: list[SignalCluster],
     opportunities: list[Opportunity],
 ) -> None:
     if config.agent_alert_repository is None or config.user_niche_id is None:
         return
     alerts = generate_threshold_alerts(
         user_niche_id=config.user_niche_id,
-        clusters=clusters,
+        clusters=[],
         opportunities=opportunities,
     )
     for alert in alerts:
@@ -772,6 +634,13 @@ def _record_niche_source_health(
                 True if stats.relevant_posts_count >= 3 else None
             ),
         )
+        if stats.consecutive_failures >= 5:
+            niche_source_repository.update_niche_source_health(
+                source_id,
+                "paused",
+                scanned_at,
+                stats.last_error,
+            )
 
 
 def _next_niche_source_run_stats(
@@ -1426,7 +1295,15 @@ def _synthesize_accumulated_theme_opportunities(
     opportunities = []
     for theme in qualified_themes:
         findings = config.theme_repository.list_findings_for_theme(theme.id)
-        result = synthesis_service.synthesize(theme, findings, context)
+        opportunity_id = f"opportunity-theme-{theme.id}"
+        existing = config.opportunity_repository.get_opportunity(opportunity_id)
+        result = synthesis_service.synthesize(
+            theme,
+            findings,
+            context,
+            existing_signature=existing.evidence_signature if existing else None,
+            existing_finding_count=existing.evidence_count if existing else 0,
+        )
         if result.opportunity is not None:
             opportunities.append(result.opportunity)
     if not opportunities:

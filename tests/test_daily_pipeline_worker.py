@@ -12,15 +12,12 @@ from domain.source import MonitoredSource, SourceInput
 from domain.theme import Theme, ThemeFinding
 from application.ingestion import SourceFetchDetail
 from infrastructure.db import (
-    InMemoryClusterRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryNicheCompanyRepository,
     InMemoryUserNicheRepository,
     InMemoryPostRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
-    InMemoryScoreRepository,
-    InMemorySignalRepository,
     InMemoryNicheSourceRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
@@ -159,9 +156,6 @@ class FakeThemeRepository:
 
 class DailyPipelineWorkerTests(unittest.TestCase):
     def test_runs_pipeline_with_generic_sources(self):
-        signal_repository = InMemorySignalRepository()
-        score_repository = InMemoryScoreRepository()
-        cluster_repository = InMemoryClusterRepository()
         opportunity_repository = InMemoryOpportunityRepository()
         llm_client = SequentialLLMClient(
             [
@@ -188,9 +182,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         email_notifier = FakeEmailNotifier()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=signal_repository,
-            score_repository=score_repository,
-            cluster_repository=cluster_repository,
             opportunity_repository=opportunity_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -212,20 +203,8 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.ingestion_result.inserted_count, 1)
         self.assertEqual(result.extracted_count, 1)
         self.assertEqual(result.no_signal_count, 0)
-        self.assertEqual(result.scoring_result.scored_count, 1)
         self.assertEqual(result.embedding_failed_count, 0)
-        self.assertEqual(result.clustered_count, 1)
-        self.assertEqual(result.opportunity_synthesis_result.synthesized_count, 0)
-        self.assertEqual(result.opportunity_synthesis_result.inserted_count, 0)
-        self.assertEqual(
-            result.opportunity_synthesis_result.rejected_qualifications[0].reason,
-            "insufficient_evidence",
-        )
         self.assertTrue(result.email_result.sent)
-        signal = signal_repository.list_signals()[0]
-        self.assertEqual(signal.pain, "Export workflows are painful")
-        self.assertEqual(score_repository.get_score(signal.id).total_score, 7.6)
-        self.assertEqual(cluster_repository.get_cluster("cluster-1").theme, "reporting")
         self.assertIsNone(opportunity_repository.get_opportunity("opportunity-cluster-1"))
         self.assertEqual(email_notifier.calls[0][2], ["founder@example.com"])
 
@@ -233,9 +212,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         finding_repository = FakeFindingRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             finding_repository=finding_repository,
             llm_client=SequentialLLMClient(
                 [
@@ -296,9 +272,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         theme_repository = FakeThemeRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             finding_repository=finding_repository,
             theme_repository=theme_repository,
             llm_client=SequentialLLMClient(
@@ -403,9 +376,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         opportunity_repository = InMemoryOpportunityRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             opportunity_repository=opportunity_repository,
             theme_repository=theme_repository,
             llm_client=SequentialLLMClient([]),
@@ -475,9 +445,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             niche_source_repository=niche_source_repository,
             user_niche_repository=user_niche_repository,
             llm_client=llm_client,
@@ -519,7 +486,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 )
             ]
         )
-        signal_repository = InMemorySignalRepository()
         source_health_repository = InMemorySourceHealthRepository()
         llm_client = SequentialLLMClient(
             [
@@ -545,9 +511,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=signal_repository,
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             opportunity_repository=InMemoryOpportunityRepository(),
             competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
@@ -565,7 +528,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.extracted_count, 1)
         self.assertIn("competitor_name: Acme CRM", llm_client.calls[0][1])
         self.assertIn("competitor_domain: acme.example", llm_client.calls[0][1])
-        signal = signal_repository.list_signals()[0]
         self.assertEqual(signal.competitor_id, "competitor-1")
         self.assertEqual(
             signal.evidence_url,
@@ -600,9 +562,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         source_health_repository = InMemorySourceHealthRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             monitored_source_repository=monitored_source_repository,
             source_health_repository=source_health_repository,
             llm_client=SequentialLLMClient([]),
@@ -660,7 +619,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 ),
             ]
         )
-        signal_repository = InMemorySignalRepository()
         llm_client = SequentialLLMClient(
             [
                 """
@@ -685,9 +643,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=signal_repository,
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             market_repository=market_repository,
             monitored_source_repository=monitored_source_repository,
             llm_client=llm_client,
@@ -703,7 +658,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.fetched_count, 1)
         self.assertIn("market_name: Workspace tools", llm_client.calls[0][1])
         self.assertIn("market_target_user: product teams", llm_client.calls[0][1])
-        signal = signal_repository.list_signals()[0]
         self.assertEqual(signal.market_id, "workspace-tools")
         self.assertEqual(result.report.title, "Workspace tools Market Gap Report")
 
@@ -741,9 +695,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             agent_preferences_repository=agent_preferences_repository,
             market_repository=market_repository,
             monitored_source_repository=monitored_source_repository,
@@ -804,9 +755,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             agent_preferences_repository=agent_preferences_repository,
             niche_source_repository=monitored_source_repository,
             llm_client=SequentialLLMClient([]),
@@ -846,7 +794,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 )
             ]
         )
-        signal_repository = InMemorySignalRepository()
         llm_client = SequentialLLMClient(
             [
                 """
@@ -871,9 +818,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=signal_repository,
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
             llm_client=llm_client,
@@ -888,7 +832,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.extracted_count, 0)
         self.assertEqual(result.no_signal_count, 1)
-        self.assertEqual(signal_repository.list_signals(), [])
 
     def test_filters_wrong_subject_before_extraction(self):
         extraction_llm_client = RecordingLLMClient(
@@ -928,12 +871,8 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         post_repository = InMemoryPostRepository()
-        signal_repository = InMemorySignalRepository()
         config = PipelineConfig(
             post_repository=post_repository,
-            signal_repository=signal_repository,
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             llm_client=extraction_llm_client,
             relevance_llm_client=relevance_llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -952,7 +891,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.extraction_attempted_count, 0)
         self.assertEqual(result.extracted_count, 0)
         self.assertEqual(extraction_llm_client.calls, [])
-        self.assertEqual(signal_repository.list_signals(), [])
 
     def test_extracts_only_posts_that_pass_relevance_filter(self):
         extraction_llm_client = RecordingLLMClient(
@@ -991,12 +929,8 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 """
             ]
         )
-        signal_repository = InMemorySignalRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=signal_repository,
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             llm_client=extraction_llm_client,
             relevance_llm_client=relevance_llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -1011,15 +945,11 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.extraction_attempted_count, 1)
         self.assertEqual(result.extracted_count, 1)
         self.assertEqual(len(extraction_llm_client.calls), 1)
-        self.assertEqual(signal_repository.list_signals()[0].pain, "Export workflows are painful")
 
     def test_persists_pipeline_run_metrics(self):
         metrics_repository = InMemoryPipelineRunMetricsRepository()
         config = PipelineConfig(
             post_repository=InMemoryPostRepository(),
-            signal_repository=InMemorySignalRepository(),
-            score_repository=InMemoryScoreRepository(),
-            cluster_repository=InMemoryClusterRepository(),
             pipeline_run_metrics_repository=metrics_repository,
             llm_client=SequentialLLMClient(
                 [
