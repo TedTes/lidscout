@@ -38,6 +38,7 @@ class Niche:
     category: str
     description: str | None = None
     display_label: str | None = None
+    is_custom: bool = False
     status: NicheStatus = "defined"
     monitorability_score: float | None = None
     opportunity_score: float | None = None
@@ -54,6 +55,7 @@ class Niche:
         category: str,
         description: str | None = None,
         display_label: str | None = None,
+        is_custom: bool = False,
         status: NicheStatus = "defined",
         monitorability_score: float | None = None,
         opportunity_score: float | None = None,
@@ -77,6 +79,7 @@ class Niche:
             category=category.strip(),
             description=description.strip() if description else None,
             display_label=display_label.strip() if display_label else None,
+            is_custom=is_custom,
             status=status,
             monitorability_score=monitorability_score,
             opportunity_score=opportunity_score,

@@ -30,14 +30,14 @@ class PostgresNicheRepository(_PostgresRepository, NicheRepository):
             cursor = self.connection.execute(
                 """
                 INSERT INTO niches (
-                    id, job, buyer, category, description, status,
+                    id, job, buyer, category, description, is_custom, status,
                     monitorability_score, opportunity_score, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING
                 """,
                 (
                     niche.id, niche.job, niche.buyer, niche.category,
-                    niche.description, niche.status,
+                    niche.description, niche.is_custom, niche.status,
                     niche.monitorability_score, niche.opportunity_score,
                     niche.created_at, niche.updated_at,
                 ),
@@ -57,6 +57,7 @@ class PostgresNicheRepository(_PostgresRepository, NicheRepository):
         *,
         category: str | None = None,
         status: str | None = None,
+        is_custom: bool | None = None,
     ) -> list[Niche]:
         clauses, params = [], []
         if category:
@@ -65,6 +66,9 @@ class PostgresNicheRepository(_PostgresRepository, NicheRepository):
         if status:
             clauses.append("status = %s")
             params.append(status)
+        if is_custom is not None:
+            clauses.append("is_custom = %s")
+            params.append(is_custom)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         rows = self.connection.execute(
             f"SELECT * FROM niches {where} ORDER BY created_at DESC", params
@@ -493,6 +497,7 @@ def _niche_from_row(row: dict[str, Any]) -> Niche:
         buyer=row["buyer"],
         category=row["category"],
         description=row.get("description"),
+        is_custom=bool(row.get("is_custom", False)),
         status=row["status"],
         monitorability_score=row.get("monitorability_score"),
         opportunity_score=row.get("opportunity_score"),

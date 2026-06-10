@@ -372,8 +372,9 @@ class NicheRepository(Protocol):
         *,
         category: str | None = None,
         status: str | None = None,
+        is_custom: bool | None = None,
     ) -> list[Niche]:
-        """Load niches, optionally filtered by category or status."""
+        """Load niches, optionally filtered by category, status, or is_custom."""
         ...
 
     def update_niche(self, niche: Niche) -> bool:
