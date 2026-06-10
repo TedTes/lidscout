@@ -197,10 +197,7 @@ def _pipeline_job_summary(result: PipelineRunResult) -> dict[str, object]:
         "relevance_failed_count": result.relevance_failed_count,
         "extraction_attempted_count": result.extraction_attempted_count,
         "extracted_count": result.extracted_count,
-        "clustered_count": result.clustered_count,
-        "opportunity_synthesized_count": (
-            result.opportunity_synthesis_result.synthesized_count
-        ),
+        "opportunity_synthesized_count": result.theme_opportunity_count,
         "email_sent": result.email_result.sent,
         "email_error": result.email_result.error,
     }
