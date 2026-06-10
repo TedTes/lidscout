@@ -37,10 +37,14 @@ THEME_ASSIGNMENT_RESPONSE_SCHEMA = {
 class ThemeAssignmentResult:
     """Decision from assigning one finding into theme memory."""
 
-    theme: Theme
-    assignment: ThemeFinding
+    theme: Theme | None
+    assignment: ThemeFinding | None
     created_theme: bool
     llm_evaluated: bool = False
+
+    @property
+    def is_assigned(self) -> bool:
+        return self.assignment is not None
 
 
 class ThemeAssignmentService:
@@ -63,10 +67,21 @@ class ThemeAssignmentService:
         self.borderline_threshold = borderline_threshold
         self.max_borderline_candidates = max_borderline_candidates
 
-    def assign(self, finding: Finding, themes: list[Theme]) -> ThemeAssignmentResult:
-        """Assign one finding to an existing theme or create a new seed theme."""
+    def assign(
+        self,
+        finding: Finding,
+        themes: list[Theme],
+        *,
+        create_seed: bool = True,
+    ) -> ThemeAssignmentResult:
+        """Assign one finding to an existing theme.
+
+        When create_seed=False, returns an unassigned result instead of
+        immediately creating a singleton seed theme. The caller is then
+        responsible for clustering unassigned findings together.
+        """
         if not finding.embedding:
-            return self._create_seed_theme(finding)
+            return self._create_seed_theme(finding) if create_seed else _unassigned()
 
         candidates = self._rank_candidates(finding, themes)
         for theme, similarity in candidates:
@@ -103,7 +118,74 @@ class ThemeAssignmentService:
                     llm_evaluated=True,
                 )
 
-        return self._create_seed_theme(finding, llm_evaluated=bool(borderline))
+        if create_seed:
+            return self._create_seed_theme(finding, llm_evaluated=bool(borderline))
+        return _unassigned(llm_evaluated=bool(borderline))
+
+    def cluster_unassigned(
+        self,
+        findings: list[Finding],
+        *,
+        threshold: float = 0.75,
+    ) -> list[ThemeAssignmentResult]:
+        """Cluster unassigned findings among themselves.
+
+        Findings with mutual similarity >= threshold form a shared seed theme.
+        Singletons (no match) are dropped — they remain in the findings table
+        without a theme assignment until future runs accumulate more evidence.
+        Returns one ThemeAssignmentResult per finding that joined a cluster.
+        """
+        if not findings:
+            return []
+
+        # Build connected components via pairwise cosine similarity.
+        n = len(findings)
+        component: list[int] = list(range(n))
+
+        def root(i: int) -> int:
+            while component[i] != i:
+                component[i] = component[component[i]]
+                i = component[i]
+            return i
+
+        def union(i: int, j: int) -> None:
+            component[root(i)] = root(j)
+
+        for i in range(n):
+            if not findings[i].embedding:
+                continue
+            for j in range(i + 1, n):
+                if not findings[j].embedding:
+                    continue
+                sim = _cosine_similarity(findings[i].embedding, findings[j].embedding)
+                if sim >= threshold:
+                    union(i, j)
+
+        # Group by root into clusters; discard singletons.
+        groups: dict[int, list[int]] = {}
+        for i in range(n):
+            r = root(i)
+            groups.setdefault(r, []).append(i)
+        clusters = [idxs for idxs in groups.values() if len(idxs) >= 2]
+
+        results: list[ThemeAssignmentResult] = []
+        for idxs in clusters:
+            members = [findings[i] for i in idxs]
+            theme = _seed_theme_for_cluster(members)
+            for finding in members:
+                results.append(
+                    ThemeAssignmentResult(
+                        theme=theme,
+                        assignment=ThemeFinding.create(
+                            theme_id=theme.id,
+                            finding_id=finding.id,
+                            assignment_method="seed_new_theme",
+                            similarity_score=None,
+                        ),
+                        created_theme=True,
+                    )
+                )
+        return results
 
     def _rank_candidates(
         self,
@@ -173,6 +255,54 @@ class ThemeAssignmentService:
             created_theme=True,
             llm_evaluated=llm_evaluated,
         )
+
+
+def _unassigned(*, llm_evaluated: bool = False) -> ThemeAssignmentResult:
+    return ThemeAssignmentResult(
+        theme=None,
+        assignment=None,
+        created_theme=False,
+        llm_evaluated=llm_evaluated,
+    )
+
+
+def _seed_theme_for_cluster(findings: list[Finding]) -> Theme:
+    """Create a seed theme whose centroid is the average of member embeddings."""
+    anchor = findings[0]
+    title = _theme_title_for(anchor)
+    summary = anchor.pain
+
+    embeddings = [f.embedding for f in findings if f.embedding]
+    centroid: list[float] | None = None
+    if embeddings:
+        dim = len(embeddings[0])
+        centroid = [
+            sum(emb[d] for emb in embeddings) / len(embeddings)
+            for d in range(dim)
+        ]
+
+    source_ids = {f.source_id for f in findings if f.source_id}
+    company_ids = {f.company_id for f in findings if f.company_id}
+    confidences = [f.confidence for f in findings]
+    timestamps = [
+        t for f in findings
+        for t in [f.detected_at or f.extracted_at]
+        if t is not None
+    ]
+
+    return Theme.create(
+        user_niche_id=anchor.user_niche_id,
+        niche_id=anchor.niche_id,
+        title=title,
+        summary=summary,
+        finding_count=len(findings),
+        source_count=len(source_ids),
+        company_count=len(company_ids),
+        average_confidence=sum(confidences) / len(confidences),
+        latest_finding_at=max(timestamps) if timestamps else None,
+        centroid_embedding=centroid,
+        metadata={"seed_finding_ids": [f.id for f in findings]},
+    )
 
 
 def _assignment_prompt_content(finding: Finding, theme: Theme) -> str:

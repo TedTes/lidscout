@@ -1198,18 +1198,37 @@ def _assign_accumulated_findings_to_themes(
         return []
     themes = config.theme_repository.list_themes(user_niche_id=config.user_niche_id)
     assignment_service = ThemeAssignmentService(llm_client=config.llm_client)
+
+    # Pass 1: assign each finding to an existing theme. Findings that don't
+    # match any theme are collected for inter-finding clustering (pass 2).
     assignments = []
     new_themes = []
+    unassigned: list[Finding] = []
     for finding in findings:
-        result = assignment_service.assign(finding, themes)
-        assignments.append(result.assignment)
-        if result.created_theme:
+        result = assignment_service.assign(finding, themes, create_seed=False)
+        if result.is_assigned:
+            assignments.append(result.assignment)
+            if result.created_theme and result.theme is not None:
+                new_themes.append(result.theme)
+                themes.append(result.theme)
+        else:
+            unassigned.append(finding)
+
+    # Pass 2: cluster unassigned findings among themselves. Groups of 2+
+    # similar findings form a shared seed theme. Singletons stay unassigned.
+    cluster_results = assignment_service.cluster_unassigned(unassigned)
+    seen_theme_ids: set[str] = set()
+    for result in cluster_results:
+        if result.assignment is not None:
+            assignments.append(result.assignment)
+        if result.created_theme and result.theme is not None and result.theme.id not in seen_theme_ids:
             new_themes.append(result.theme)
-            themes.append(result.theme)
+            seen_theme_ids.add(result.theme.id)
+
     if new_themes:
         config.theme_repository.save_themes(new_themes)
     saved_count = config.theme_repository.save_theme_findings(assignments)
-    assigned_theme_ids = sorted({assignment.theme_id for assignment in assignments})
+    assigned_theme_ids = sorted({a.theme_id for a in assignments})
     config.theme_repository.refresh_theme_rollups(assigned_theme_ids)
     return assigned_theme_ids if saved_count else []
 

@@ -81,6 +81,42 @@ class FakeEmbeddingClient(EmbeddingClient):
         return [1.0, 0.0]
 
 
+class _TwoPostSourceAdapter:
+    def can_handle(self, source: SourceInput) -> bool:
+        return source.locator == "https://example.com/two"
+
+    def fetch_source(self, source: SourceInput, default_limit: int = 25) -> list[RawPost]:
+        return [
+            RawPost.create(
+                source="web",
+                source_id=f"post-{i}",
+                title=f"Post {i}",
+                body="Acme CRM export pain.",
+                url=f"https://example.com/post-{i}",
+                metadata={k: v for k, v in source.options.items() if isinstance(v, str)},
+            )
+            for i in range(2)
+        ]
+
+
+def _extraction_response(pain: str, user_type: str) -> str:
+    return f"""{{
+        "has_signal": true,
+        "is_about_competitor": false,
+        "competitor_match_reason": null,
+        "signal": {{
+            "pain": "{pain}",
+            "user_type": "{user_type}",
+            "job_to_be_done": "export reports",
+            "current_workaround": "manual CSV",
+            "urgency": 3, "severity": 3,
+            "willingness_to_pay": 5,
+            "category": "reporting",
+            "confidence": 0.8
+        }}
+    }}"""
+
+
 class FakeEmailNotifier(EmailNotifier):
     def __init__(self):
         self.calls: list[tuple[str, str, list[str]]] = []
@@ -321,22 +357,60 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         result = run_daily_pipeline(config)
 
+        # A single finding with no existing themes is a singleton — it stays
+        # unassigned until a future run produces a similar finding to cluster with.
         self.assertEqual(result.extracted_count, 1)
+        self.assertEqual(len(finding_repository.findings), 1)
+        self.assertEqual(len(theme_repository.themes), 0)
+        self.assertEqual(len(theme_repository.assignments), 0)
+
+    def test_clusters_similar_unassigned_findings_into_shared_theme(self):
+        """Two unassigned findings with high similarity form one shared seed theme."""
+        finding_repository = FakeFindingRepository()
+        theme_repository = FakeThemeRepository()
+
+        two_post_adapter = _TwoPostSourceAdapter()
+        config = PipelineConfig(
+            post_repository=InMemoryPostRepository(),
+            finding_repository=finding_repository,
+            theme_repository=theme_repository,
+            llm_client=SequentialLLMClient(
+                [
+                    _extraction_response("Export pain A", "finance team"),
+                    _extraction_response("Export pain B", "ops team"),
+                ]
+            ),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=None,
+            recipient="",
+            send_email=False,
+            source_adapters=[two_post_adapter],
+            user_niche_id="market-1",
+            sources=[
+                SourceInput.create(
+                    locator="https://example.com/two",
+                    limit=2,
+                    options={"niche_source_id": "source-1"},
+                )
+            ],
+        )
+
+        run_daily_pipeline(config)
+
+        self.assertEqual(len(finding_repository.findings), 2)
+        # Both unassigned findings were similar → one shared theme, two assignments.
         self.assertEqual(len(theme_repository.themes), 1)
-        self.assertEqual(theme_repository.themes[0].title, "reporting")
-        self.assertEqual(len(theme_repository.assignments), 1)
+        self.assertEqual(len(theme_repository.assignments), 2)
+        self.assertEqual(theme_repository.themes[0].finding_count, 2)
         self.assertEqual(
-            theme_repository.assignments[0].assignment_method,
-            "seed_new_theme",
+            theme_repository.assignments[0].assignment_method, "seed_new_theme"
         )
         self.assertEqual(
-            theme_repository.refreshed_theme_ids,
-            [theme_repository.themes[0].id],
+            theme_repository.assignments[1].assignment_method, "seed_new_theme"
         )
-        self.assertEqual(theme_repository.themes[0].status, "emerging")
         self.assertEqual(
-            theme_repository.themes[0].qualification_reason,
-            "insufficient_evidence",
+            theme_repository.assignments[0].theme_id,
+            theme_repository.assignments[1].theme_id,
         )
 
     def test_synthesizes_opportunities_from_qualified_accumulated_themes(self):
