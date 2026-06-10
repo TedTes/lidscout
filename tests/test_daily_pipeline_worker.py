@@ -15,7 +15,6 @@ from infrastructure.db import (
     InMemoryAgentPreferencesRepository,
     InMemoryNicheCompanyRepository,
     InMemoryUserNicheRepository,
-    InMemoryPostRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
     InMemoryNicheSourceRepository,
@@ -251,7 +250,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         email_notifier = FakeEmailNotifier()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             opportunity_repository=opportunity_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -270,7 +268,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.fetch_failed_count, 0)
-        self.assertEqual(result.ingestion_result.inserted_count, 1)
         self.assertEqual(result.extracted_count, 1)
         self.assertEqual(result.no_signal_count, 0)
         self.assertEqual(result.embedding_failed_count, 0)
@@ -281,7 +278,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
     def test_persists_accumulated_findings_with_source_provenance(self):
         finding_repository = FakeFindingRepository()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             finding_repository=finding_repository,
             llm_client=SequentialLLMClient(
                 [
@@ -341,7 +337,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         finding_repository = FakeFindingRepository()
         theme_repository = FakeThemeRepository()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             finding_repository=finding_repository,
             theme_repository=theme_repository,
             llm_client=SequentialLLMClient(
@@ -397,7 +392,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
 
         two_post_adapter = _TwoPostSourceAdapter()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             finding_repository=finding_repository,
             theme_repository=theme_repository,
             llm_client=SequentialLLMClient(
@@ -483,7 +477,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         theme_repository.findings_by_theme_id[theme.id] = findings
         opportunity_repository = InMemoryOpportunityRepository()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             opportunity_repository=opportunity_repository,
             theme_repository=theme_repository,
             llm_client=SequentialLLMClient([]),
@@ -552,7 +545,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             niche_source_repository=niche_source_repository,
             user_niche_repository=user_niche_repository,
             llm_client=llm_client,
@@ -618,7 +610,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             opportunity_repository=InMemoryOpportunityRepository(),
             competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
@@ -669,7 +660,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         source_health_repository = InMemorySourceHealthRepository()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             monitored_source_repository=monitored_source_repository,
             source_health_repository=source_health_repository,
             llm_client=SequentialLLMClient([]),
@@ -750,7 +740,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             market_repository=market_repository,
             monitored_source_repository=monitored_source_repository,
             llm_client=llm_client,
@@ -802,7 +791,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             agent_preferences_repository=agent_preferences_repository,
             market_repository=market_repository,
             monitored_source_repository=monitored_source_repository,
@@ -862,7 +850,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             agent_preferences_repository=agent_preferences_repository,
             niche_source_repository=monitored_source_repository,
             llm_client=SequentialLLMClient([]),
@@ -925,7 +912,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             competitor_repository=competitor_repository,
             monitored_source_repository=monitored_source_repository,
             llm_client=llm_client,
@@ -978,9 +964,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 """
             ]
         )
-        post_repository = InMemoryPostRepository()
         config = PipelineConfig(
-            post_repository=post_repository,
             llm_client=extraction_llm_client,
             relevance_llm_client=relevance_llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -1038,7 +1022,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             llm_client=extraction_llm_client,
             relevance_llm_client=relevance_llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -1057,7 +1040,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
     def test_persists_pipeline_run_metrics(self):
         metrics_repository = InMemoryPipelineRunMetricsRepository()
         config = PipelineConfig(
-            post_repository=InMemoryPostRepository(),
             pipeline_run_metrics_repository=metrics_repository,
             llm_client=SequentialLLMClient(
                 [

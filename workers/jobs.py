@@ -46,7 +46,6 @@ def run_configured_daily_pipeline(
 
     return run_daily_pipeline(
         PipelineConfig(
-            post_repository=runtime_dependencies.post_repository,
             opportunity_repository=runtime_dependencies.opportunity_repository,
             finding_repository=runtime_dependencies.finding_repository,
             theme_repository=runtime_dependencies.theme_repository,

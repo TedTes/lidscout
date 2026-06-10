@@ -83,7 +83,6 @@ from infrastructure.db import (
     InMemoryNicheSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
-    InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
     InMemoryUserNicheRepository,
@@ -213,7 +212,6 @@ class NicheSourceUpdateRequest(BaseModel):
 class SignalApiDependencies:
     """Runtime dependencies for signal API routes."""
 
-    post_repository: PostRepository = field(default_factory=InMemoryPostRepository)
     signal_repository: SignalRepository = field(default_factory=InMemorySignalRepository)
     score_repository: ScoreRepository = field(default_factory=InMemoryScoreRepository)
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
@@ -1534,7 +1532,6 @@ async def run_pipeline(
     )
     result = run_daily_pipeline(
         PipelineConfig(
-            post_repository=dependencies.post_repository,
             opportunity_repository=dependencies.opportunity_repository,
             finding_repository=dependencies.finding_repository,
             theme_repository=dependencies.theme_repository,
@@ -3322,12 +3319,6 @@ def _serialize_pipeline_result(result: PipelineRunResult) -> dict[str, Any]:
         "llm_filtered_count": result.llm_filtered_count,
         "relevance_failed_count": result.relevance_failed_count,
         "extraction_attempted_count": result.extraction_attempted_count,
-        "ingestion": {
-            "received_count": result.ingestion_result.received_count,
-            "inserted_count": result.ingestion_result.inserted_count,
-            "duplicate_count": result.ingestion_result.duplicate_count,
-            "failed_count": result.ingestion_result.failed_count,
-        },
         "extracted_count": result.extracted_count,
         "no_signal_count": result.no_signal_count,
         "extraction_failed_count": result.extraction_failed_count,

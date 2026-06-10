@@ -16,8 +16,6 @@ from application.agent.action_keys import agent_action_dedupe_key
 from application.extraction import ExtractionService
 from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from application.ingestion import (
-    IngestionResult,
-    IngestionService,
     SourceAdapter,
     SourceFetchDetail,
     SourceResolver,
@@ -33,7 +31,6 @@ from application.ports import (
     NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
-    PostRepository,
     ThemeRepository,
     UserNicheRepository,
 )
@@ -72,7 +69,6 @@ _JSON_SOURCE_ITEMS_PATH = {
 class PipelineConfig:
     """Dependencies and source settings for a daily pipeline run."""
 
-    post_repository: PostRepository
     llm_client: LLMClient
     embedding_client: EmbeddingClient
     email_client: EmailClient | None
@@ -104,7 +100,6 @@ class PipelineRunResult:
 
     fetched_count: int
     fetch_failed_count: int
-    ingestion_result: IngestionResult
     rule_filtered_count: int
     llm_filtered_count: int
     relevance_failed_count: int
@@ -172,9 +167,6 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
             "sources": _build_source_post_list(fetch_result.details, posts),
         },
     )
-
-    ingestion_service = IngestionService(config.post_repository)
-    ingestion_result = ingestion_service.ingest(posts)
 
     posts = _filter_seen_posts(posts, config)
 
@@ -250,7 +242,6 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     result = PipelineRunResult(
         fetched_count=len(posts),
         fetch_failed_count=fetch_result.failed_count,
-        ingestion_result=ingestion_result,
         rule_filtered_count=relevance_result.rule_filtered_count,
         llm_filtered_count=relevance_result.llm_filtered_count,
         relevance_failed_count=relevance_result.failed_count,
