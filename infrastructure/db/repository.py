@@ -1901,6 +1901,22 @@ class PostgresFindingRepository(_PostgresRepository, FindingRepository):
         self.connection.commit()
         return saved_count
 
+    def get_seen_post_ids(
+        self,
+        user_niche_id: str,
+        post_ids: list[str],
+    ) -> set[str]:
+        if not post_ids:
+            return set()
+        cursor = self.connection.execute(
+            """
+            SELECT post_id FROM findings
+            WHERE user_niche_id = %s::uuid AND post_id = ANY(%s)
+            """,
+            (user_niche_id, post_ids),
+        )
+        return {row["post_id"] for row in cursor.fetchall()}
+
     def list_findings(
         self,
         *,

@@ -176,6 +176,8 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     ingestion_service = IngestionService(config.post_repository)
     ingestion_result = ingestion_service.ingest(posts)
 
+    posts = _filter_seen_posts(posts, config)
+
     relevance_result = _filter_relevant_posts(
         posts,
         config.relevance_llm_client,
@@ -1320,6 +1322,26 @@ def _signal_text(signal: Signal) -> str:
         signal.category,
     ]
     return "\n".join(part for part in parts if part)
+
+
+def _filter_seen_posts(
+    posts: list[RawPost],
+    config: PipelineConfig,
+) -> list[RawPost]:
+    """Drop posts whose findings already exist in the DB, avoiding repeat LLM calls."""
+    if (
+        config.finding_repository is None
+        or config.user_niche_id is None
+        or not posts
+    ):
+        return posts
+    post_ids = [p.id for p in posts if p.id]
+    if not post_ids:
+        return posts
+    seen = config.finding_repository.get_seen_post_ids(config.user_niche_id, post_ids)
+    if not seen:
+        return posts
+    return [p for p in posts if p.id not in seen]
 
 
 def _finding_metadata(post: RawPost | None) -> dict[str, object]:

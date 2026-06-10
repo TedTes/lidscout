@@ -97,6 +97,14 @@ class FakeFindingRepository:
         self.findings.extend(findings)
         return len(findings)
 
+    def get_seen_post_ids(
+        self,
+        user_niche_id: str,
+        post_ids: list[str],
+    ) -> set[str]:
+        seen = {f.post_id for f in self.findings if f.user_niche_id == user_niche_id}
+        return {pid for pid in post_ids if pid in seen}
+
     def list_findings(
         self,
         *,

@@ -123,6 +123,14 @@ class FindingRepository(Protocol):
         """Persist findings and return the number saved or updated."""
         ...
 
+    def get_seen_post_ids(
+        self,
+        user_niche_id: str,
+        post_ids: list[str],
+    ) -> set[str]:
+        """Return the subset of post_ids that already have a finding for this niche."""
+        ...
+
     def list_findings(
         self,
         *,
