@@ -135,6 +135,7 @@ class MarketRequest(BaseModel):
     description: str | None = None
     target_user: str | None = None
     idea_prompt: str | None = None
+    source_count: int = Field(default=4, ge=1, le=10)
 
 
 class MarketUpdateRequest(BaseModel):
@@ -460,7 +461,7 @@ async def list_templates(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
     """Return operator-curated niche templates from the catalog."""
-    niches = dependencies.niche_repository.list_niches()
+    niches = dependencies.niche_repository.list_niches(is_custom=False)
     templates = []
     for niche in niches:
         companies = dependencies.niche_company_repository.list_niche_companies(niche.id)
@@ -539,12 +540,35 @@ async def create_market(
     if existing is not None:
         return _serialize_market(existing)
 
+    # Create the backing Niche record first so sources can reference its id.
+    niche = Niche.create(
+        job=request.name,
+        buyer=buyer,
+        category=category,
+        description=request.description,
+        is_custom=True,
+        status="sourced",
+    )
+
+    # Single LLM call: validates the niche AND generates relevant sources.
+    validation_error, auto_sources = _validate_and_generate_sources(
+        niche.id, request.name, buyer, dependencies.llm_client,
+        source_count=request.source_count,
+    )
+    if validation_error:
+        raise HTTPException(status_code=400, detail=validation_error)
+
+    dependencies.niche_repository.save_niches([niche])
+    if auto_sources:
+        dependencies.niche_source_repository.save_niche_sources(auto_sources)
+
     try:
         user_niche = UserNiche.create(
             user_id=user_id,
             job=request.name,
             buyer=buyer,
             category=category,
+            template_niche_id=niche.id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2379,6 +2403,141 @@ def _serialize_finding_evidence_item(
         "confidence": finding.confidence,
         "detected_at": finding.detected_at.isoformat() if finding.detected_at else None,
     }
+
+
+_MARKET_VALIDATION_PROMPT = """
+Decide whether the user's input describes a REAL, researchable market —
+a genuine job-to-be-done or problem space that actual users face.
+
+Reject: nonsense, gibberish, test inputs, random characters, filler phrases
+        ("asdf", "this is test", "hello world", "asdfasdf asdfasdfa", "stuff").
+Accept: any real market regardless of length
+        ("SaaS billing", "podcast hosting", "manage customer support for SaaS").
+
+Return JSON only:
+- valid: boolean
+- reason: one sentence shown to the user if invalid, null if valid
+""".strip()
+
+_MARKET_VALIDATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["valid", "reason"],
+    "properties": {
+        "valid": {"type": "boolean"},
+        "reason": {"type": ["string", "null"]},
+    },
+}
+
+_MARKET_SOURCES_PROMPT = """
+Given a market niche and buyer, suggest {count} online communities or sources where
+this buyer discusses their problems and frustrations. Think about where HIGH-SIGNAL
+conversations actually happen — Reddit communities, Discourse forums, GitHub issue
+trackers, Indie Hackers, review platforms, niche community sites, etc.
+Do not default to the same platforms for every niche.
+
+For each source return:
+- locator: the actual fetchable URL
+- source_type: platform identifier (reddit, hackernews, github_issues, stackoverflow, discourse, producthunt, indiehackers, web)
+- source_family: one of technical_forum, social, reviews, community
+- is_gate_free: true if publicly accessible without login
+
+Return JSON only: {{"sources": [...]}}
+""".strip()
+
+_MARKET_SOURCES_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["sources"],
+    "properties": {
+        "sources": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["locator", "source_type", "source_family", "is_gate_free"],
+                "properties": {
+                    "locator": {"type": "string"},
+                    "source_type": {"type": "string"},
+                    "source_family": {"type": "string"},
+                    "is_gate_free": {"type": "boolean"},
+                },
+            },
+        },
+    },
+}
+
+
+def _validate_and_generate_sources(
+    niche_id: str,
+    job: str,
+    buyer: str,
+    llm_client: "LLMClient | None",
+    *,
+    source_count: int = 4,
+) -> tuple[str | None, list[NicheSource]]:
+    """Two LLM calls: validate the niche then generate sources if valid.
+
+    Keeps validation schema minimal (two fields) so it never fails structurally.
+    Source generation is separate and its failure only means zero sources, not
+    a rejected market.
+    """
+    import json as _json
+
+    if llm_client is None:
+        return None, []
+
+    # ── Call 1: validate (minimal schema — very unlikely to fail) ──────────────
+    try:
+        raw = llm_client.generate_structured_response(
+            _MARKET_VALIDATION_PROMPT,
+            job,
+            _MARKET_VALIDATION_SCHEMA,
+        )
+        validation = _json.loads(raw)
+        if not validation.get("valid", True):
+            reason = str(validation.get("reason") or "").strip()
+            return reason or "That doesn't look like a real market research topic.", []
+    except Exception as exc:
+        logger.warning("market_validation_failed job=%r error=%s", job, exc)
+        return "Something went wrong, please try again.", []
+
+    # ── Call 2: source generation (failure only means zero sources) ────────────
+    sources: list[NicheSource] = []
+    try:
+        prompt = _MARKET_SOURCES_PROMPT.format(count=source_count)
+        raw = llm_client.generate_structured_response(
+            prompt,
+            f"Niche: {job}\nBuyer: {buyer}",
+            _MARKET_SOURCES_SCHEMA,
+        )
+        payload = _json.loads(raw)
+        for raw_source in payload.get("sources") or []:
+            locator = str(raw_source.get("locator") or "").strip()
+            source_type = str(raw_source.get("source_type") or "web").strip()
+            source_family = str(raw_source.get("source_family") or "community").strip()
+            is_gate_free = bool(raw_source.get("is_gate_free", True))
+            if not locator:
+                continue
+            try:
+                sources.append(
+                    NicheSource.create(
+                        niche_id=niche_id,
+                        locator=locator,
+                        source_type=source_type,
+                        source_family=source_family,
+                        is_gate_free=is_gate_free,
+                        options={"source_type": source_type},
+                    )
+                )
+            except Exception:
+                continue
+    except Exception as exc:
+        logger.warning("market_source_generation_failed job=%r error=%s", job, exc)
+
+    return None, sources
+
+
 
 
 def _market_report_title(
