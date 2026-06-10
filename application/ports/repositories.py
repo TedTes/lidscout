@@ -170,6 +170,21 @@ class ThemeRepository(Protocol):
         """Load themes changed since a run timestamp."""
         ...
 
+    def find_similar_themes(
+        self,
+        user_niche_id: str,
+        embedding: list[float],
+        *,
+        top_k: int = 5,
+        min_similarity: float = 0.70,
+    ) -> list[Theme]:
+        """Return the top-k themes whose centroid is within min_similarity of embedding.
+
+        Results are ordered by cosine similarity descending. Uses the HNSW index
+        on centroid_embedding for fast approximate nearest-neighbour search.
+        """
+        ...
+
     def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
         """Load findings assigned to one theme."""
         ...

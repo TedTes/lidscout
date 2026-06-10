@@ -1196,21 +1196,28 @@ def _assign_accumulated_findings_to_themes(
         or not findings
     ):
         return []
-    themes = config.theme_repository.list_themes(user_niche_id=config.user_niche_id)
     assignment_service = ThemeAssignmentService(llm_client=config.llm_client)
 
-    # Pass 1: assign each finding to an existing theme. Findings that don't
-    # match any theme are collected for inter-finding clustering (pass 2).
+    # Pass 1: for each finding query the DB for the top-k most similar themes
+    # using pgvector's HNSW index. Findings below the similarity floor are
+    # collected for inter-finding clustering (pass 2).
     assignments = []
-    new_themes = []
+    new_themes: list[Theme] = []
     unassigned: list[Finding] = []
     for finding in findings:
-        result = assignment_service.assign(finding, themes, create_seed=False)
+        candidates = (
+            config.theme_repository.find_similar_themes(
+                config.user_niche_id,
+                finding.embedding,
+                top_k=5,
+                min_similarity=assignment_service.borderline_threshold,
+            )
+            if finding.embedding
+            else []
+        )
+        result = assignment_service.assign(finding, candidates, create_seed=False)
         if result.is_assigned:
             assignments.append(result.assignment)
-            if result.created_theme and result.theme is not None:
-                new_themes.append(result.theme)
-                themes.append(result.theme)
         else:
             unassigned.append(finding)
 

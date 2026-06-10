@@ -190,6 +190,32 @@ class FakeThemeRepository:
     def list_changed_themes(self, *, user_niche_id: str, since: object) -> list[Theme]:
         return [theme for theme in self.themes if theme.user_niche_id == user_niche_id]
 
+    def find_similar_themes(
+        self,
+        user_niche_id: str,
+        embedding: list[float],
+        *,
+        top_k: int = 5,
+        min_similarity: float = 0.70,
+    ) -> list[Theme]:
+        import math
+
+        def cosine_sim(a: list[float], b: list[float]) -> float:
+            dot = sum(x * y for x, y in zip(a, b))
+            na = math.sqrt(sum(x * x for x in a))
+            nb = math.sqrt(sum(x * x for x in b))
+            return dot / (na * nb) if na and nb else 0.0
+
+        candidates = [
+            (t, cosine_sim(embedding, t.centroid_embedding))
+            for t in self.themes
+            if t.user_niche_id == user_niche_id and t.centroid_embedding
+        ]
+        return [
+            t for t, sim in sorted(candidates, key=lambda x: -x[1])
+            if sim >= min_similarity
+        ][:top_k]
+
     def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
         return self.findings_by_theme_id.get(theme_id, [])
 

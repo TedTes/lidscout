@@ -2059,6 +2059,34 @@ class PostgresThemeRepository(_PostgresRepository, ThemeRepository):
         ).fetchall()
         return [_theme_from_row(row) for row in rows]
 
+    def find_similar_themes(
+        self,
+        user_niche_id: str,
+        embedding: list[float],
+        *,
+        top_k: int = 5,
+        min_similarity: float = 0.70,
+    ) -> list[Theme]:
+        # pgvector <=> is cosine DISTANCE (0 = identical). Convert similarity
+        # threshold to distance threshold: distance = 1 - similarity.
+        max_distance = round(1.0 - min_similarity, 6)
+        vec = _to_pgvector(embedding)
+        if vec is None:
+            return []
+        rows = self.connection.execute(
+            """
+            SELECT *
+            FROM themes
+            WHERE user_niche_id = %s::uuid
+              AND centroid_embedding IS NOT NULL
+              AND (centroid_embedding <=> %s::extensions.vector) <= %s
+            ORDER BY centroid_embedding <=> %s::extensions.vector ASC
+            LIMIT %s
+            """,
+            (user_niche_id, vec, max_distance, vec, top_k),
+        ).fetchall()
+        return [_theme_from_row(row) for row in rows]
+
     def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
         rows = self.connection.execute(
             """
