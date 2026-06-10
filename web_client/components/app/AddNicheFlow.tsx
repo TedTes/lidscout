@@ -363,9 +363,11 @@ function plural(n: number, singular: string, pluralForm = `${singular}s`) {
 function CustomStep({
   onCreated,
   onBack,
+  onClose,
 }: {
   onCreated: (market: Market) => void;
   onBack: () => void;
+  onClose: () => void;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -394,8 +396,9 @@ function CustomStep({
       });
       onCreated(market);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create market');
+      setError(err instanceof Error ? err.message : 'Something went wrong, please try again.');
       setSaving(false);
+      setTimeout(() => onClose(), 1500);
     }
   };
 
@@ -410,7 +413,7 @@ function CustomStep({
             required
             value={name}
             onChange={event => setName(event.target.value)}
-            placeholder="e.g. Developer tools"
+            placeholder="e.g. Manage customer support for a SaaS product"
             className={inputCls}
             autoComplete="off"
           />
@@ -597,6 +600,7 @@ export function AddNicheFlow({
           <CustomStep
             onCreated={onCreated}
             onBack={() => setStep('pick')}
+            onClose={onClose}
           />
         )}
       </div>
