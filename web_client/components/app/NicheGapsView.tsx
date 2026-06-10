@@ -113,6 +113,8 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [trainingFeedbackMap, setTrainingFeedbackMap] = useState<Map<string, TrainingFeedbackAction>>(new Map());
   const [recencyFilter, setRecencyFilter] = useState<RecencyFilter>(null);
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>('all');
+  const [scanTriggering, setScanTriggering] = useState(false);
+  const [scanQueued, setScanQueued] = useState(false);
 
   const fetchOpportunities = async (days: RecencyFilter) => {
     try {
@@ -220,6 +222,7 @@ export default function NicheWorkspacePage({ params }: Props) {
         prevPipelineStatusRef.current = res.status;
         setPipelineStatus(res.status);
         if (res.last_event_at) setLastEventAt(res.last_event_at);
+        if (res.status === 'running' || res.status === 'done') setScanQueued(false);
         if (prev === 'running' && res.status === 'done') {
           refreshData();
           setProgressActivity([]);
@@ -239,7 +242,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   }, [marketId]);
 
   useEffect(() => {
-    if (pipelineStatus !== 'running') {
+    if (pipelineStatus !== 'running' && !scanQueued) {
       clearInterval(activityIntervalRef.current ?? undefined);
       return;
     }
@@ -257,7 +260,7 @@ export default function NicheWorkspacePage({ params }: Props) {
       clearInterval(activityIntervalRef.current ?? undefined);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipelineStatus, marketId]);
+  }, [pipelineStatus, scanQueued, marketId]);
 
   useEffect(() => {
     if (pipelineStatus !== 'running') {
@@ -343,7 +346,13 @@ export default function NicheWorkspacePage({ params }: Props) {
   };
 
   const handleRunScan = async () => {
-    signalApi.triggerMarketPipeline(marketId).catch(() => {});
+    if (scanTriggering) return;
+    setScanTriggering(true);
+    try {
+      await signalApi.triggerMarketPipeline(marketId);
+      setScanQueued(true);
+    } catch { /* ignore */ }
+    setScanTriggering(false);
   };
 
   const needsSetup = coldStart?.status === 'setup_needed' && opportunities.length === 0;
@@ -360,7 +369,7 @@ export default function NicheWorkspacePage({ params }: Props) {
         <div className="animate-fade-in">
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
-          ) : isRunningFirstScan ? (
+          ) : isRunningFirstScan || (scanQueued && opportunities.length === 0) || (scanTriggering && opportunities.length === 0) ? (
             <div className="flex min-h-[420px] items-center justify-center py-6 sm:min-h-[520px]">
               <CenteredScanProgress
                 progressActivity={progressActivity}
@@ -369,16 +378,58 @@ export default function NicheWorkspacePage({ params }: Props) {
                 marketId={marketId}
               />
             </div>
+          ) : opportunities.length === 0 ? (
+            /* ── Empty idle state: centered run scan ── */
+            <div className="flex min-h-[420px] flex-col items-center justify-center gap-6 py-6 sm:min-h-[520px]">
+              <div className="text-center">
+                <p className="text-base font-semibold text-slate-300">No candidates surfaced yet</p>
+                <p className="mt-1 text-sm text-slate-500">Run a scan to start finding opportunities.</p>
+              </div>
+              <button
+                onClick={handleRunScan}
+                className="rounded-xl border border-violet-500/30 bg-violet-500/15 px-8 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/20"
+              >
+                Run scan
+              </button>
+              <Link
+                href={`/markets/${encodeURIComponent(marketId)}/activity`}
+                className="text-xs text-slate-600 transition hover:text-slate-400"
+              >
+                View scan activity →
+              </Link>
+            </div>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-[1fr_272px] xl:items-start">
+            /* ── Has data: opportunities + optional running panel ── */
+            <div className={`grid gap-5 ${pipelineStatus === 'running' ? 'xl:grid-cols-[1fr_272px] xl:items-start' : ''}`}>
 
-              {/* ── Left: opportunities list ── */}
+              {/* ── Opportunities list ── */}
               <div className="space-y-3">
-                <OpportunitiesStatsBar
-                  count={visibleOpportunities.length}
-                  lastEventAt={lastEventAt}
-                  isRunning={pipelineStatus === 'running'}
-                />
+                <div className="flex items-center justify-between">
+                  <OpportunitiesStatsBar
+                    count={visibleOpportunities.length}
+                    lastEventAt={lastEventAt}
+                    isRunning={pipelineStatus === 'running'}
+                  />
+                  {pipelineStatus !== 'running' && (
+                    scanTriggering ? (
+                      <button disabled className="rounded-lg border border-slate-700/50 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                        Starting…
+                      </button>
+                    ) : scanQueued ? (
+                      <button disabled className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-400/60">
+                        <span className="h-1 w-1 animate-pulse rounded-full bg-violet-400" />
+                        Queued
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleRunScan}
+                        className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+                      >
+                        Run scan
+                      </button>
+                    )
+                  )}
+                </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1 rounded-lg border border-slate-800/70 bg-slate-900/40 p-1">
@@ -415,61 +466,42 @@ export default function NicheWorkspacePage({ params }: Props) {
 
                 {feedbackError && <p className="text-xs text-rose-400">{feedbackError}</p>}
 
-                {visibleOpportunities.length === 0 ? (
-                  <div className="space-y-3">
-                    <EmptyPanel
-                      title="No candidates surfaced yet"
-                      detail="The agent hasn't found enough evidence yet."
-                    />
-                    <div className="flex justify-center gap-2">
-                      <button
-                        onClick={handleRunScan}
-                        className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-4 py-2 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15"
-                      >
-                        Run scan
-                      </button>
-                      <Link
-                        href={`/markets/${encodeURIComponent(marketId)}/activity`}
-                        className="rounded-lg border border-slate-700/60 px-4 py-2 text-xs font-medium text-slate-400 transition hover:text-slate-200"
-                      >
-                        Review scan activity →
-                      </Link>
-                    </div>
-                  </div>
-                ) : (
-                  visibleOpportunities.map((opportunity, index) => (
-                    <GapCard
-                      key={opportunity.id}
-                      rank={index + 1}
-                      opportunity={opportunity}
-                      marketId={marketId}
-                      theme={
-                        opportunity.source_theme_id
-                          ? themeById.get(opportunity.source_theme_id)
-                          : opportunity.cluster_id
-                          ? themeById.get(opportunity.cluster_id)
-                          : undefined
-                      }
-                      meta={STRENGTH_META[evidenceStrength(opportunity)]}
-                      itemAction={itemFeedbackMap.get(opportunity.id) ?? null}
-                      trainingAction={trainingFeedbackMap.get(opportunity.id) ?? null}
-                      onItemFeedback={action => handleItemFeedback(opportunity.id, action)}
-                      onTrainingFeedback={action => handleTrainingFeedback(opportunity.id, action)}
-                    />
-                  ))
-                )}
+                {visibleOpportunities.map((opportunity, index) => (
+                  <GapCard
+                    key={opportunity.id}
+                    rank={index + 1}
+                    opportunity={opportunity}
+                    marketId={marketId}
+                    theme={
+                      opportunity.source_theme_id
+                        ? themeById.get(opportunity.source_theme_id)
+                        : opportunity.cluster_id
+                        ? themeById.get(opportunity.cluster_id)
+                        : undefined
+                    }
+                    meta={STRENGTH_META[evidenceStrength(opportunity)]}
+                    itemAction={itemFeedbackMap.get(opportunity.id) ?? null}
+                    trainingAction={trainingFeedbackMap.get(opportunity.id) ?? null}
+                    onItemFeedback={action => handleItemFeedback(opportunity.id, action)}
+                    onTrainingFeedback={action => handleTrainingFeedback(opportunity.id, action)}
+                  />
+                ))}
               </div>
 
-              {/* ── Right: live agent panel ── */}
-              <LiveAgentPanel
-                pipelineStatus={pipelineStatus}
-                progressActivity={progressActivity}
-                liveFeed={liveFeed}
-                runStartedAt={runStartedEvent?.created_at}
-                lastEventAt={lastEventAt}
-                marketId={marketId}
-                onRunScan={handleRunScan}
-              />
+              {/* ── Right: scan progress panel (only while running) ── */}
+              {pipelineStatus === 'running' && (
+                <LiveAgentPanel
+                  pipelineStatus={pipelineStatus}
+                  progressActivity={progressActivity}
+                  liveFeed={liveFeed}
+                  runStartedAt={runStartedEvent?.created_at}
+                  lastEventAt={lastEventAt}
+                  marketId={marketId}
+                  onRunScan={handleRunScan}
+                  scanTriggering={scanTriggering}
+                  scanQueued={scanQueued}
+                />
+              )}
             </div>
           )}
         </div>
@@ -656,6 +688,8 @@ function LiveAgentPanel({
   lastEventAt,
   marketId,
   onRunScan,
+  scanTriggering = false,
+  scanQueued = false,
 }: {
   pipelineStatus: string | null;
   progressActivity: AgentActivity[];
@@ -664,6 +698,8 @@ function LiveAgentPanel({
   lastEventAt: string | null;
   marketId: string;
   onRunScan: () => void;
+  scanTriggering?: boolean;
+  scanQueued?: boolean;
 }) {
   const isRunning = pipelineStatus === 'running';
 
@@ -766,12 +802,21 @@ function LiveAgentPanel({
           <button disabled className="w-full cursor-default rounded-lg border border-slate-700/50 py-2 text-sm font-semibold text-slate-500">
             Scanning…
           </button>
+        ) : scanTriggering ? (
+          <button disabled className="w-full cursor-default rounded-lg border border-violet-500/20 bg-violet-500/[0.06] py-2 text-sm font-semibold text-violet-400/60">
+            Starting…
+          </button>
+        ) : scanQueued ? (
+          <button disabled className="flex w-full items-center justify-center gap-2 cursor-default rounded-lg border border-violet-500/20 bg-violet-500/[0.06] py-2 text-sm font-semibold text-violet-400/60">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+            Queued
+          </button>
         ) : (
           <button
             onClick={onRunScan}
             className="w-full rounded-lg border border-violet-500/25 bg-violet-500/10 py-2 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/15"
           >
-            Run Deep Scan
+            Run scan
           </button>
         )}
         <Link
