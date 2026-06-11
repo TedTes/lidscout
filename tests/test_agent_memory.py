@@ -42,6 +42,8 @@ class AgentMemorySummaryTests(unittest.TestCase):
                     user_niche_id="devtools",
                     opportunity_id="opportunity-2",
                     action="dismiss",
+                    reason="Evidence too thin",
+                    comment="Only one weak quote supports this.",
                 ),
             ],
             sources=[source],
@@ -53,6 +55,14 @@ class AgentMemorySummaryTests(unittest.TestCase):
         self.assertIn("Avoid themes: pricing.", summary.learned_preferences)
         self.assertIn("1 monitored source(s), 1 recently healthy.", summary.source_notes)
         self.assertIn("1 saved gap(s), 1 dismissed gap(s).", summary.feedback_notes)
+        self.assertIn(
+            "Top dismiss reason(s): Evidence too thin (1).",
+            summary.feedback_notes,
+        )
+        self.assertIn(
+            "Recent note: Only one weak quote supports this.",
+            summary.feedback_notes,
+        )
 
 
 if __name__ == "__main__":

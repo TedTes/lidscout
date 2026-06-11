@@ -1,4 +1,5 @@
 """Computed memory summaries for niche research agents."""
+from collections import Counter
 from dataclasses import dataclass
 
 from domain.agent import AgentFeedback, AgentPreferences
@@ -67,6 +68,28 @@ def build_agent_memory_summary(
         feedback_notes.append(
             f"{saved_count} saved gap(s), {dismissed_count} dismissed gap(s)."
         )
+    dismiss_reasons = Counter(
+        item.reason
+        for item in feedback
+        if item.action == "dismiss" and item.reason
+    )
+    if dismiss_reasons:
+        top_reasons = ", ".join(
+            f"{reason} ({count})"
+            for reason, count in dismiss_reasons.most_common(3)
+        )
+        feedback_notes.append(f"Top dismiss reason(s): {top_reasons}.")
+    recent_comments = [
+        item.comment
+        for item in sorted(
+            feedback,
+            key=lambda item: item.updated_at or item.created_at,
+            reverse=True,
+        )
+        if item.comment
+    ][:3]
+    for comment in recent_comments:
+        feedback_notes.append(f"Recent note: {comment}")
     more_like_count = sum(1 for item in feedback if item.action == "more_like_this")
     less_like_count = sum(1 for item in feedback if item.action == "less_like_this")
     if more_like_count or less_like_count:
