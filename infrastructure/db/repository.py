@@ -268,6 +268,25 @@ class InMemoryAgentFeedbackRepository(AgentFeedbackRepository):
             feedback = [item for item in feedback if item.action == action]
         return sorted(feedback, key=lambda item: item.created_at or datetime.min)
 
+    def delete_agent_feedback(
+        self,
+        *,
+        user_niche_id: str,
+        opportunity_id: str,
+        action: str,
+    ) -> bool:
+        deleted = False
+        normalized_action = action.strip().lower()
+        for item_id, item in list(self.feedback_by_id.items()):
+            if (
+                item.user_niche_id == user_niche_id
+                and item.opportunity_id == opportunity_id
+                and item.action == normalized_action
+            ):
+                del self.feedback_by_id[item_id]
+                deleted = True
+        return deleted
+
     def _delete_conflicting_feedback(self, feedback: AgentFeedback) -> None:
         conflicting_actions = _conflicting_feedback_actions(feedback.action)
         for item_id, item in list(self.feedback_by_id.items()):
@@ -1146,6 +1165,25 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
         query += " ORDER BY created_at"
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_feedback_from_row(row) for row in rows]
+
+    def delete_agent_feedback(
+        self,
+        *,
+        user_niche_id: str,
+        opportunity_id: str,
+        action: str,
+    ) -> bool:
+        cursor = self.connection.execute(
+            """
+            DELETE FROM agent_feedback
+            WHERE user_niche_id = ?
+              AND opportunity_id = ?
+              AND action = ?
+            """,
+            (user_niche_id, opportunity_id, action.strip().lower()),
+        )
+        self.connection.commit()
+        return cursor.rowcount > 0
 
     def _delete_conflicting_feedback(self, feedback: AgentFeedback) -> None:
         conflicting_actions = _conflicting_feedback_actions(feedback.action)
@@ -2266,6 +2304,25 @@ class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackReposito
         query += " ORDER BY created_at"
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_feedback_from_row(row) for row in rows]
+
+    def delete_agent_feedback(
+        self,
+        *,
+        user_niche_id: str,
+        opportunity_id: str,
+        action: str,
+    ) -> bool:
+        cursor = self.connection.execute(
+            """
+            DELETE FROM agent_feedback
+            WHERE user_niche_id = %s
+              AND opportunity_id = %s
+              AND action = %s
+            """,
+            (user_niche_id, opportunity_id, action.strip().lower()),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
 
     def _delete_conflicting_feedback(self, feedback: AgentFeedback) -> None:
         conflicting_actions = _conflicting_feedback_actions(feedback.action)

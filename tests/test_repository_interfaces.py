@@ -170,6 +170,17 @@ class RepositoryInterfaceTests(unittest.TestCase):
             repository.list_agent_feedback(action="save"),
             [],
         )
+        self.assertTrue(
+            repository.delete_agent_feedback(
+                user_niche_id="workspace-tools",
+                opportunity_id="opportunity-1",
+                action="dismiss",
+            )
+        )
+        self.assertEqual(
+            repository.list_agent_feedback(user_niche_id="workspace-tools"),
+            [],
+        )
 
     def test_agent_activity_repository_persists_activity(self):
         repository = InMemoryAgentActivityRepository()

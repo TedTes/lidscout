@@ -227,6 +227,16 @@ class AgentFeedbackRepository(Protocol):
         """Load feedback events, optionally filtered by scope."""
         ...
 
+    def delete_agent_feedback(
+        self,
+        *,
+        user_niche_id: str,
+        opportunity_id: str,
+        action: str,
+    ) -> bool:
+        """Delete one feedback action and return whether anything changed."""
+        ...
+
 
 class AgentActivityRepository(Protocol):
     """Persistence boundary for user-visible agent activity events."""

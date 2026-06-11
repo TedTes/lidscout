@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from api.routes.auth import get_current_user
 from pydantic import BaseModel, Field
 
@@ -1321,6 +1321,48 @@ async def create_opportunity_feedback(
         },
     )
     return _serialize_agent_feedback(feedback)
+
+
+@router.delete("/opportunities/{opportunity_id}/feedback")
+async def delete_opportunity_feedback(
+    opportunity_id: str,
+    market_id: str = Query(min_length=1),
+    action: str = Query(min_length=1),
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Remove one user feedback action from a synthesized gap."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    opportunity = dependencies.opportunity_repository.get_opportunity(opportunity_id)
+    if opportunity is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    normalized_action = action.strip().lower()
+    if normalized_action not in {
+        "save",
+        "dismiss",
+        "more_like_this",
+        "less_like_this",
+    }:
+        raise HTTPException(status_code=400, detail="unsupported feedback action")
+    deleted = dependencies.agent_feedback_repository.delete_agent_feedback(
+        user_niche_id=market_id,
+        opportunity_id=opportunity_id,
+        action=normalized_action,
+    )
+    if deleted:
+        _record_agent_activity(
+            dependencies,
+            user_niche_id=market_id,
+            event_type="feedback_recorded",
+            title="Gap feedback removed",
+            detail=f"Removed {normalized_action} feedback from this gap.",
+            metadata={
+                "opportunity_id": opportunity_id,
+                "action": normalized_action,
+                "removed": True,
+            },
+        )
+    return {"deleted": deleted}
 
 
 @router.get("/markets/{market_id}/agent/activity")
