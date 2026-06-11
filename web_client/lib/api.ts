@@ -17,6 +17,7 @@ import {
   PipelineLiveFeedResponse,
   AgentColdStartPlan,
   AgentFeedback,
+  AgentFeedbackAction,
   AgentFeedbackRequest,
   AgentFeedbackResponse,
   AgentMemorySummary,
@@ -265,6 +266,24 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to record feedback');
+      }
+      throw error;
+    }
+  }
+
+  async deleteOpportunityFeedback(
+    opportunityId: string,
+    params: { market_id: string; action: AgentFeedbackAction }
+  ): Promise<{ deleted: boolean }> {
+    try {
+      const response = await api.delete<{ deleted: boolean }>(
+        `/opportunities/${opportunityId}/feedback`,
+        { params }
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to remove feedback');
       }
       throw error;
     }
