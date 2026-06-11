@@ -14,6 +14,7 @@ from application.agent import (
     AgentActionExecutor,
     AgentPlannerInput,
     AgentPlannerService,
+    build_agent_feedback_summary,
     build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
@@ -1232,6 +1233,47 @@ async def list_market_agent_feedback(
         user_niche_id=market_id,
     )
     return {"feedback": [_serialize_agent_feedback(item) for item in feedback]}
+
+
+@router.get("/markets/{market_id}/agent/feedback/summary")
+async def get_market_agent_feedback_summary(
+    market_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return aggregate feedback diagnostics for one niche research agent."""
+    _get_owned_user_niche(market_id, dependencies, current_user)
+    feedback = dependencies.agent_feedback_repository.list_agent_feedback(
+        user_niche_id=market_id,
+    )
+    summary = build_agent_feedback_summary(
+        market_id=market_id,
+        feedback=feedback,
+    )
+    return {
+        "market_id": summary.market_id,
+        "feedback_count": summary.feedback_count,
+        "saved_count": summary.saved_count,
+        "dismissed_count": summary.dismissed_count,
+        "positive_training_count": summary.positive_training_count,
+        "negative_training_count": summary.negative_training_count,
+        "actioned_opportunity_count": summary.actioned_opportunity_count,
+        "dismiss_rate": summary.dismiss_rate,
+        "dismiss_reasons": [
+            {"reason": item.reason, "count": item.count}
+            for item in summary.dismiss_reasons
+        ],
+        "recent_comments": [
+            {
+                "opportunity_id": item.opportunity_id,
+                "action": item.action,
+                "comment": item.comment,
+                "reason": item.reason,
+                "created_at": item.created_at,
+            }
+            for item in summary.recent_comments
+        ],
+    }
 
 
 @router.post("/opportunities/{opportunity_id}/feedback")
