@@ -172,7 +172,8 @@ class AgentFeedbackRequest(BaseModel):
 
     market_id: str = Field(min_length=1)
     action: str = Field(min_length=1)
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=80)
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class AgentFollowUpRequest(BaseModel):
@@ -1246,6 +1247,7 @@ async def create_opportunity_feedback(
             opportunity_id=opportunity_id,
             action=request.action,
             reason=request.reason,
+            comment=request.comment,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1267,6 +1269,7 @@ async def create_opportunity_feedback(
             "opportunity_id": opportunity_id,
             "action": feedback.action,
             "reason": feedback.reason,
+            "has_comment": feedback.comment is not None,
         },
     )
     return _serialize_agent_feedback(feedback)
@@ -2950,7 +2953,9 @@ def _serialize_agent_feedback(feedback: AgentFeedback) -> dict[str, Any]:
         "opportunity_id": feedback.opportunity_id,
         "action": feedback.action,
         "reason": feedback.reason,
+        "comment": feedback.comment,
         "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
+        "updated_at": feedback.updated_at.isoformat() if feedback.updated_at else None,
     }
 
 

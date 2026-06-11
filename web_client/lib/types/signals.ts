@@ -186,13 +186,16 @@ export type AgentFeedback = {
   opportunity_id: string;
   action: AgentFeedbackAction;
   reason: string | null;
+  comment: string | null;
   created_at: string | null;
+  updated_at: string | null;
 };
 
 export type AgentFeedbackRequest = {
   market_id: string;
   action: AgentFeedbackAction;
   reason?: string | null;
+  comment?: string | null;
 };
 
 export type AgentFeedbackResponse = {

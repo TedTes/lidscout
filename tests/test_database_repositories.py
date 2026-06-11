@@ -247,20 +247,35 @@ class DatabaseRepositoryTests(unittest.TestCase):
                 user_niche_id="workspace-tools",
                 opportunity_id="opportunity-1",
                 action="save",
+                reason="Useful",
+                comment="Track this.",
                 created_at=datetime(2026, 5, 25, 16, 10, tzinfo=UTC),
+            )
+            dismissed = AgentFeedback.create(
+                id="feedback-2",
+                user_niche_id="workspace-tools",
+                opportunity_id="opportunity-1",
+                action="dismiss",
+                reason="Evidence too thin",
+                comment="Needs more sources.",
+                created_at=datetime(2026, 5, 25, 16, 15, tzinfo=UTC),
             )
 
             self.assertTrue(repository.save_agent_feedback(feedback))
-            self.assertFalse(repository.save_agent_feedback(feedback))
+            self.assertTrue(repository.save_agent_feedback(dismissed))
             repository.close()
 
             repository = SQLiteAgentFeedbackRepository(database_path)
             self.assertEqual(
                 repository.list_agent_feedback(user_niche_id="workspace-tools"),
-                [feedback],
+                [dismissed],
             )
             self.assertEqual(
-                repository.list_agent_feedback(action="dismiss"),
+                repository.list_agent_feedback(user_niche_id="workspace-tools")[0].comment,
+                "Needs more sources.",
+            )
+            self.assertEqual(
+                repository.list_agent_feedback(action="save"),
                 [],
             )
             repository.close()

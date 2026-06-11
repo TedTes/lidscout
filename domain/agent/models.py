@@ -187,7 +187,9 @@ class AgentFeedback:
     opportunity_id: str
     action: AgentFeedbackAction
     reason: str | None = None
+    comment: str | None = None
     created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @classmethod
     def create(
@@ -198,13 +200,18 @@ class AgentFeedback:
         action: str,
         id: str | None = None,
         reason: str | None = None,
+        comment: str | None = None,
         created_at: datetime | None = None,
+        updated_at: datetime | None = None,
     ) -> "AgentFeedback":
         """Create validated agent feedback."""
         feedback_id = (id or f"agent-feedback-{uuid4().hex}").strip()
         normalized_user_niche_id = user_niche_id.strip()
         normalized_opportunity_id = opportunity_id.strip()
         normalized_action = action.strip().lower()
+        normalized_reason = _clean_optional(reason)
+        normalized_comment = _clean_optional(comment)
+        created = created_at or datetime.now(tz=UTC)
 
         if not feedback_id:
             raise ValueError("id is required")
@@ -219,14 +226,20 @@ class AgentFeedback:
             "less_like_this",
         }:
             raise ValueError("unsupported feedback action")
+        if normalized_reason is not None and len(normalized_reason) > 80:
+            raise ValueError("reason must be 80 characters or fewer")
+        if normalized_comment is not None and len(normalized_comment) > 1000:
+            raise ValueError("comment must be 1000 characters or fewer")
 
         return cls(
             id=feedback_id,
             user_niche_id=normalized_user_niche_id,
             opportunity_id=normalized_opportunity_id,
             action=normalized_action,  # type: ignore[arg-type]
-            reason=_clean_optional(reason),
-            created_at=created_at or datetime.now(tz=UTC),
+            reason=normalized_reason,
+            comment=normalized_comment,
+            created_at=created,
+            updated_at=updated_at or created,
         )
 
 

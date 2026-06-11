@@ -1,4 +1,4 @@
-from domain.agent import AgentAction
+from domain.agent import AgentAction, AgentFeedback
 
 
 def test_agent_action_create_normalizes_fields() -> None:
@@ -47,3 +47,31 @@ def test_agent_action_rejects_unsupported_values() -> None:
         assert str(exc) == "unsupported status"
     else:
         raise AssertionError("Expected unsupported status to fail")
+
+
+def test_agent_feedback_accepts_reason_comment_and_updated_at() -> None:
+    feedback = AgentFeedback.create(
+        user_niche_id="market-1",
+        opportunity_id="opportunity-1",
+        action="dismiss",
+        reason="Evidence too thin",
+        comment="Only one weak quote supports this.",
+    )
+
+    assert feedback.reason == "Evidence too thin"
+    assert feedback.comment == "Only one weak quote supports this."
+    assert feedback.updated_at == feedback.created_at
+
+
+def test_agent_feedback_rejects_oversized_comment() -> None:
+    try:
+        AgentFeedback.create(
+            user_niche_id="market-1",
+            opportunity_id="opportunity-1",
+            action="dismiss",
+            comment="x" * 1001,
+        )
+    except ValueError as exc:
+        assert str(exc) == "comment must be 1000 characters or fewer"
+    else:
+        raise AssertionError("Expected oversized comment to fail")

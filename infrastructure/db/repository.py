@@ -246,6 +246,7 @@ class InMemoryAgentFeedbackRepository(AgentFeedbackRepository):
     feedback_by_id: dict[str, AgentFeedback] = field(default_factory=dict)
 
     def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        self._delete_conflicting_feedback(feedback)
         self.feedback_by_id[feedback.id] = feedback
         return True
 
@@ -266,6 +267,16 @@ class InMemoryAgentFeedbackRepository(AgentFeedbackRepository):
         if action is not None:
             feedback = [item for item in feedback if item.action == action]
         return sorted(feedback, key=lambda item: item.created_at or datetime.min)
+
+    def _delete_conflicting_feedback(self, feedback: AgentFeedback) -> None:
+        conflicting_actions = _conflicting_feedback_actions(feedback.action)
+        for item_id, item in list(self.feedback_by_id.items()):
+            if (
+                item.user_niche_id == feedback.user_niche_id
+                and item.opportunity_id == feedback.opportunity_id
+                and item.action in conflicting_actions
+            ):
+                del self.feedback_by_id[item_id]
 
 
 @dataclass
@@ -1079,18 +1090,32 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
                 opportunity_id TEXT NOT NULL,
                 action TEXT NOT NULL,
                 reason TEXT,
-                created_at TEXT NOT NULL
+                comment TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
+            """
+        )
+        self.connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS agent_feedback_scope_action_idx
+            ON agent_feedback (user_niche_id, opportunity_id, action)
             """
         )
         self.connection.commit()
 
     def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        self._delete_conflicting_feedback(feedback)
         cursor = self.connection.execute(
             """
-            INSERT OR IGNORE INTO agent_feedback (
-                id, user_niche_id, opportunity_id, action, reason, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO agent_feedback (
+                id, user_niche_id, opportunity_id, action, reason, comment,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_niche_id, opportunity_id, action) DO UPDATE SET
+                reason = excluded.reason,
+                comment = excluded.comment,
+                updated_at = excluded.updated_at
             """,
             _agent_feedback_values(feedback, sqlite=True),
         )
@@ -1121,6 +1146,21 @@ class SQLiteAgentFeedbackRepository(_SQLiteRepository, AgentFeedbackRepository):
         query += " ORDER BY created_at"
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_feedback_from_row(row) for row in rows]
+
+    def _delete_conflicting_feedback(self, feedback: AgentFeedback) -> None:
+        conflicting_actions = _conflicting_feedback_actions(feedback.action)
+        if not conflicting_actions:
+            return
+        placeholders = ", ".join("?" for _ in conflicting_actions)
+        self.connection.execute(
+            f"""
+            DELETE FROM agent_feedback
+            WHERE user_niche_id = ?
+              AND opportunity_id = ?
+              AND action IN ({placeholders})
+            """,
+            (feedback.user_niche_id, feedback.opportunity_id, *conflicting_actions),
+        )
 
 
 class SQLiteAgentActivityRepository(_SQLiteRepository, AgentActivityRepository):
@@ -2185,12 +2225,17 @@ class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackReposito
     """Postgres-backed agent feedback repository."""
 
     def save_agent_feedback(self, feedback: AgentFeedback) -> bool:
+        self._delete_conflicting_feedback(feedback)
         cursor = self.connection.execute(
             """
             INSERT INTO agent_feedback (
-                id, user_niche_id, opportunity_id, action, reason, created_at
-            ) VALUES (%s, %s::uuid, %s, %s, %s, %s)
-            ON CONFLICT (id) DO NOTHING
+                id, user_niche_id, opportunity_id, action, reason, comment,
+                created_at, updated_at
+            ) VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_niche_id, opportunity_id, action) DO UPDATE SET
+                reason = EXCLUDED.reason,
+                comment = EXCLUDED.comment,
+                updated_at = EXCLUDED.updated_at
             """,
             _agent_feedback_values(feedback, sqlite=False),
         )
@@ -2221,6 +2266,20 @@ class PostgresAgentFeedbackRepository(_PostgresRepository, AgentFeedbackReposito
         query += " ORDER BY created_at"
         rows = self.connection.execute(query, tuple(params)).fetchall()
         return [_agent_feedback_from_row(row) for row in rows]
+
+    def _delete_conflicting_feedback(self, feedback: AgentFeedback) -> None:
+        conflicting_actions = _conflicting_feedback_actions(feedback.action)
+        if not conflicting_actions:
+            return
+        self.connection.execute(
+            """
+            DELETE FROM agent_feedback
+            WHERE user_niche_id = %s
+              AND opportunity_id = %s
+              AND action = ANY(%s)
+            """,
+            (feedback.user_niche_id, feedback.opportunity_id, list(conflicting_actions)),
+        )
 
 
 class PostgresAgentActivityRepository(_PostgresRepository, AgentActivityRepository):
@@ -2922,7 +2981,9 @@ def _agent_feedback_values(feedback: AgentFeedback, *, sqlite: bool) -> tuple:
         feedback.opportunity_id,
         feedback.action,
         feedback.reason,
+        feedback.comment,
         _datetime_to_text(feedback.created_at) if sqlite else feedback.created_at,
+        _datetime_to_text(feedback.updated_at) if sqlite else feedback.updated_at,
     )
 
 
@@ -2933,8 +2994,22 @@ def _agent_feedback_from_row(row: sqlite3.Row) -> AgentFeedback:
         opportunity_id=str(row["opportunity_id"]) if row["opportunity_id"] else None,
         action=row["action"],
         reason=row["reason"],
+        comment=row["comment"],
         created_at=_datetime_from_text(row["created_at"]),
+        updated_at=_datetime_from_text(row["updated_at"]),
     )
+
+
+def _conflicting_feedback_actions(action: str) -> set[str]:
+    if action == "save":
+        return {"save", "dismiss"}
+    if action == "dismiss":
+        return {"save", "dismiss"}
+    if action == "more_like_this":
+        return {"more_like_this", "less_like_this"}
+    if action == "less_like_this":
+        return {"more_like_this", "less_like_this"}
+    return {action}
 
 
 def _agent_activity_values(activity: AgentActivity, *, sqlite: bool) -> tuple:

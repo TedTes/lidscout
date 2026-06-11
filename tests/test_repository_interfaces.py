@@ -147,15 +147,27 @@ class RepositoryInterfaceTests(unittest.TestCase):
             user_niche_id="workspace-tools",
             opportunity_id="opportunity-1",
             action="save",
+            reason="Useful",
+            comment="Track this for roadmap planning.",
+        )
+        dismissed = AgentFeedback.create(
+            id="feedback-2",
+            user_niche_id="workspace-tools",
+            opportunity_id="opportunity-1",
+            action="dismiss",
+            reason="Evidence too thin",
+            comment="Needs more sources.",
         )
 
         self.assertTrue(repository.save_agent_feedback(feedback))
+        self.assertTrue(repository.save_agent_feedback(dismissed))
         self.assertEqual(
             repository.list_agent_feedback(user_niche_id="workspace-tools"),
-            [feedback],
+            [dismissed],
         )
+        self.assertEqual(dismissed.comment, "Needs more sources.")
         self.assertEqual(
-            repository.list_agent_feedback(action="dismiss"),
+            repository.list_agent_feedback(action="save"),
             [],
         )
 

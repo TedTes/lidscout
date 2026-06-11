@@ -671,6 +671,7 @@ class SignalApiRouteTests(unittest.TestCase):
                     market_id="devtools",
                     action="save",
                     reason="Relevant to current roadmap.",
+                    comment="This matches two customer calls.",
                 ),
                 dependencies,
             )
@@ -679,9 +680,29 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(created["action"], "save")
         self.assertEqual(created["opportunity_id"], "opportunity-1")
+        self.assertEqual(created["comment"], "This matches two customer calls.")
+        self.assertIsNotNone(created["updated_at"])
         self.assertEqual(listed["feedback"][0]["reason"], "Relevant to current roadmap.")
+        self.assertEqual(listed["feedback"][0]["comment"], "This matches two customer calls.")
         activity = asyncio.run(list_market_agent_activity("devtools", dependencies))
         self.assertEqual(activity["activity"][0]["event_type"], "feedback_recorded")
+
+        dismissed = asyncio.run(
+            create_opportunity_feedback(
+                "opportunity-1",
+                AgentFeedbackRequest(
+                    market_id="devtools",
+                    action="dismiss",
+                    reason="Evidence too thin",
+                ),
+                dependencies,
+            )
+        )
+        listed = asyncio.run(list_market_agent_feedback("devtools", dependencies))
+
+        self.assertEqual(dismissed["action"], "dismiss")
+        self.assertEqual(len(listed["feedback"]), 1)
+        self.assertEqual(listed["feedback"][0]["action"], "dismiss")
 
     def test_gets_market_agent_memory(self):
         market_repository = InMemoryMarketRepository()
