@@ -384,7 +384,7 @@ async def list_opportunities(
     recency_days: if set (7/30/90), only include opps whose source theme has
         a latest_finding_at within the last N days.
     feedback_filter: "saved" | "dismissed" — filter to user-actioned opps only.
-        Omit or pass "all" to show everything.
+        Omit or pass "all" to show non-dismissed opportunities.
     """
     opportunities = dependencies.opportunity_repository.list_opportunities()
     all_signals = dependencies.signal_repository.list_signals()
@@ -438,11 +438,17 @@ async def list_opportunities(
         else []
     )
 
-    if feedback_filter in ("saved", "dismissed"):
-        actioned_ids = {
-            f.opportunity_id for f in market_feedback if f.action == feedback_filter
-        }
-        opportunities = [o for o in opportunities if o.id in actioned_ids]
+    saved_ids = {f.opportunity_id for f in market_feedback if f.action == "save"}
+    dismissed_ids = {
+        f.opportunity_id for f in market_feedback if f.action == "dismiss"
+    }
+
+    if feedback_filter == "saved":
+        opportunities = [o for o in opportunities if o.id in saved_ids]
+    elif feedback_filter == "dismissed":
+        opportunities = [o for o in opportunities if o.id in dismissed_ids]
+    else:
+        opportunities = [o for o in opportunities if o.id not in dismissed_ids]
 
     opportunities = merge_near_duplicate_opportunities(opportunities)
     if market_id is not None:

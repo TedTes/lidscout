@@ -495,6 +495,94 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(response["opportunities"][0]["id"], "opportunity-saved")
 
+    def test_market_opportunities_hide_dismissed_by_default(self):
+        signal_repository = InMemorySignalRepository()
+        signal_repository.save_signals(
+            [
+                Signal.create(
+                    id="signal-kept",
+                    post_id="reddit:kept",
+                    pain="Setup takes too long",
+                    market_id="workspace-tools",
+                ),
+                Signal.create(
+                    id="signal-dismissed",
+                    post_id="reddit:dismissed",
+                    pain="Dark mode is missing",
+                    market_id="workspace-tools",
+                ),
+            ]
+        )
+        opportunity_repository = InMemoryOpportunityRepository()
+        opportunity_repository.save_opportunities(
+            [
+                Opportunity.create(
+                    id="opportunity-kept",
+                    cluster_id="cluster-kept",
+                    title="Improve setup",
+                    target_user="admins",
+                    pain_summary="Setup takes too long.",
+                    why_it_matters="It slows activation.",
+                    suggested_wedge="Build guided migration.",
+                    evidence_count=2,
+                    confidence=0.8,
+                    evidence_signal_ids=["signal-kept"],
+                ),
+                Opportunity.create(
+                    id="opportunity-dismissed",
+                    cluster_id="cluster-dismissed",
+                    title="Add dark mode",
+                    target_user="admins",
+                    pain_summary="Dark mode is missing.",
+                    why_it_matters="It affects preference.",
+                    suggested_wedge="Build theme settings.",
+                    evidence_count=2,
+                    confidence=0.8,
+                    evidence_signal_ids=["signal-dismissed"],
+                ),
+            ]
+        )
+        market_repository = InMemoryMarketRepository()
+        market_repository.save_markets(
+            [Market.create(id="workspace-tools", name="Workspace tools")]
+        )
+        dependencies = self._dependencies(
+            market_repository=market_repository,
+            signal_repository=signal_repository,
+            opportunity_repository=opportunity_repository,
+        )
+        asyncio.run(
+            create_opportunity_feedback(
+                "opportunity-dismissed",
+                AgentFeedbackRequest(
+                    market_id="workspace-tools",
+                    action="dismiss",
+                    reason="Not relevant",
+                ),
+                dependencies,
+            )
+        )
+
+        default_response = asyncio.run(
+            list_opportunities(dependencies, market_id="workspace-tools")
+        )
+        dismissed_response = asyncio.run(
+            list_opportunities(
+                dependencies,
+                market_id="workspace-tools",
+                feedback_filter="dismissed",
+            )
+        )
+
+        self.assertEqual(
+            [item["id"] for item in default_response["opportunities"]],
+            ["opportunity-kept"],
+        )
+        self.assertEqual(
+            [item["id"] for item in dismissed_response["opportunities"]],
+            ["opportunity-dismissed"],
+        )
+
     def test_creates_and_lists_competitors(self):
         dependencies = self._dependencies()
 
