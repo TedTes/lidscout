@@ -402,7 +402,13 @@ def _raw_post_from_record(
     )
     source_id = str(record_id) if record_id else f"{_source_id(source.locator)}:{index}"
     permalink = record.get("permalink")
-    record_url = record.get("html_url") or record.get("link") or record.get("url")
+    record_url = (
+        _hacker_news_item_url(source, record)
+        or record.get("html_url")
+        or record.get("link")
+        or record.get("url")
+        or record.get("story_url")
+    )
     if isinstance(permalink, str) and permalink.startswith("/"):
         record_url = f"{parsed.scheme}://{parsed.netloc}{permalink}"
 
@@ -425,6 +431,21 @@ def _raw_post_from_record(
         ),
         metadata=_source_metadata(source, parsed.netloc),
     )
+
+
+def _hacker_news_item_url(
+    source: SourceInput,
+    record: dict[str, Any],
+) -> str | None:
+    parsed = urlparse(source.locator)
+    if parsed.netloc != "hn.algolia.com":
+        return None
+    item_id = record.get("objectID") or record.get("id") or record.get("story_id")
+    if isinstance(item_id, int):
+        return f"https://news.ycombinator.com/item?id={item_id}"
+    if isinstance(item_id, str) and item_id.strip().isdigit():
+        return f"https://news.ycombinator.com/item?id={item_id.strip()}"
+    return None
 
 
 def _source_metadata(source: SourceInput, domain: str) -> dict[str, Any]:

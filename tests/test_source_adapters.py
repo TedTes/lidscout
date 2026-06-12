@@ -114,8 +114,39 @@ class SourceAdapterTests(unittest.TestCase):
         self.assertEqual(posts[0].id, "web_json:1")
         self.assertEqual(posts[0].title, "HN story one")
         self.assertIn("Pain with SaaS pricing", posts[0].body)
+        self.assertEqual(posts[0].url, "https://news.ycombinator.com/item?id=1")
         self.assertEqual(posts[1].id, "web_json:2")
+        self.assertEqual(posts[1].url, "https://news.ycombinator.com/item?id=2")
         self.assertEqual(posts[1].metadata["market_id"], "mkt-1")
+
+    def test_hackernews_comment_json_uses_readable_item_url(self):
+        response = Mock()
+        response.headers = {"content-type": "application/json"}
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "hits": [
+                {
+                    "objectID": "45660679",
+                    "story_id": 45655161,
+                    "story_title": "Neural audio codecs",
+                    "story_url": "https://example.com/story",
+                    "comment_text": "Descript transcription breaks for accented speakers.",
+                    "author": "buyer",
+                    "created_at": "2025-10-21T19:42:19Z",
+                },
+            ],
+        }
+
+        with patch("adapters.web.client.requests.get", return_value=response):
+            adapter = JsonUrlAdapter()
+            posts = adapter.fetch_source(
+                SourceInput.create(
+                    locator="https://hn.algolia.com/api/v1/search_by_date?query=descript+podcast&tags=comment",
+                    options={"adapter": "json", "items_path": "hits"},
+                )
+            )
+
+        self.assertEqual(posts[0].url, "https://news.ycombinator.com/item?id=45660679")
 
     def test_json_adapter_can_handle_explicit_json_api_source(self):
         adapter = JsonUrlAdapter()
