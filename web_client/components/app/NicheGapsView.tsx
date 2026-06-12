@@ -8,6 +8,7 @@ import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import ResearchThread from '@/components/app/ResearchThread';
 import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
+import { readableSourceUrl } from '@/lib/sourceUrls';
 import {
   AgentActivity,
   AgentColdStartPlan,
@@ -17,6 +18,7 @@ import {
   AccumulatedTheme,
   NicheCompany,
   Market,
+  MonitoredSource,
   Opportunity,
 } from '@/lib/types/signals';
 
@@ -105,6 +107,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   const [niche, setNiche] = useState<Market | null>(null);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [themes, setThemes] = useState<AccumulatedTheme[]>([]);
+  const [scanSources, setScanSources] = useState<MonitoredSource[]>([]);
   const [coldStart, setColdStart] = useState<AgentColdStartPlan | null>(null);
   const [, setCompetitors] = useState<NicheCompany[]>([]);
   const [status, setStatus] = useState<Status>('loading');
@@ -134,24 +137,27 @@ export default function NicheWorkspacePage({ params }: Props) {
     setNiche(null);
     setColdStart(null);
     setCompetitors([]);
+    setScanSources([]);
     setItemFeedbackMap(new Map());
     setTrainingFeedbackMap(new Map());
     setPipelineStatus(null);
     setProgressActivity([]);
     try {
-      const [market, oppsRes, themesRes, coldStartRes, feedbackRes, competitorsRes] = await Promise.all([
+      const [market, oppsRes, themesRes, coldStartRes, feedbackRes, competitorsRes, sourcesRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getOpportunities({ market_id: marketId }),
         signalApi.getThemes({ market_id: marketId }),
         signalApi.getMarketAgentColdStart(marketId).catch(() => null),
         signalApi.getMarketAgentFeedback(marketId).catch(() => null),
         signalApi.getMarketCompanies(marketId).catch(() => null),
+        signalApi.getMarketSources(marketId).catch(() => null),
       ]);
       setNiche(market);
       setOpportunities(oppsRes.opportunities);
       setThemes(themesRes.themes);
       setColdStart(coldStartRes);
       setCompetitors(competitorsRes?.companies ?? []);
+      setScanSources(sourcesRes?.sources ?? []);
 
       if (feedbackRes?.feedback) {
         const sorted = [...feedbackRes.feedback].sort((a, b) =>
@@ -196,6 +202,10 @@ export default function NicheWorkspacePage({ params }: Props) {
 
   const runStartedEvent = useMemo(
     () => currentRunEvents(progressActivity).find(a => a.event_type === 'run_started'),
+    [progressActivity]
+  );
+  const currentProgressActivity = useMemo(
+    () => currentRunEvents(progressActivity),
     [progressActivity]
   );
   const isRunningFirstScan = pipelineStatus === 'running' && opportunities.length === 0;
@@ -303,6 +313,10 @@ export default function NicheWorkspacePage({ params }: Props) {
   }, [opportunities, feedbackFilter, savedIds, dismissedIds]);
 
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
+  const searchableSources = useMemo(
+    () => scanSources.filter(source => source.enabled && source.scan_eligible !== false),
+    [scanSources]
+  );
 
   const handleItemFeedback = async (opportunityId: string, action: ItemFeedbackAction) => {
     const previousAction = itemFeedbackMap.get(opportunityId);
@@ -373,10 +387,11 @@ export default function NicheWorkspacePage({ params }: Props) {
           ) : isRunningFirstScan || (scanQueued && opportunities.length === 0) || (scanTriggering && opportunities.length === 0) ? (
             <div className="flex min-h-[420px] items-center justify-center py-6 sm:min-h-[520px]">
               <CenteredScanProgress
-                progressActivity={progressActivity}
+                progressActivity={currentProgressActivity}
                 liveFeed={liveFeed}
                 runStartedAt={runStartedEvent?.created_at}
                 marketId={marketId}
+                sources={searchableSources}
               />
             </div>
           ) : opportunities.length === 0 ? (
@@ -392,12 +407,6 @@ export default function NicheWorkspacePage({ params }: Props) {
               >
                 Run scan
               </button>
-              <Link
-                href={`/markets/${encodeURIComponent(marketId)}/activity`}
-                className="text-xs text-slate-600 transition hover:text-slate-400"
-              >
-                View scan activity →
-              </Link>
             </div>
           ) : (
             /* ── Has data: opportunities + right panel ── */
@@ -495,11 +504,12 @@ export default function NicheWorkspacePage({ params }: Props) {
                 {pipelineStatus === 'running' && (
                   <LiveAgentPanel
                     pipelineStatus={pipelineStatus}
-                    progressActivity={progressActivity}
+                    progressActivity={currentProgressActivity}
                     liveFeed={liveFeed}
                     runStartedAt={runStartedEvent?.created_at}
                     lastEventAt={lastEventAt}
                     marketId={marketId}
+                    sources={searchableSources}
                     onRunScan={handleRunScan}
                     scanTriggering={scanTriggering}
                     scanQueued={scanQueued}
@@ -556,9 +566,6 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
         </ul>
       )}
       <div className="flex flex-wrap gap-2">
-        <Link href={`/markets/${encodeURIComponent(marketId)}/activity`} className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-semibold text-violet-300 transition hover:bg-violet-500/15">
-          Review activity
-        </Link>
         <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200">
           Research coverage
         </Link>
@@ -601,11 +608,13 @@ function CenteredScanProgress({
   liveFeed,
   runStartedAt,
   marketId,
+  sources,
 }: {
   progressActivity: AgentActivity[];
   liveFeed: PipelineLiveFeedResponse;
   runStartedAt: string | null | undefined;
   marketId: string;
+  sources: MonitoredSource[];
 }) {
   const stepEvents = SCAN_STEPS.map(s => ({
     ...s,
@@ -672,12 +681,8 @@ function CenteredScanProgress({
         </p>
       )}
 
-      <Link
-        href={`/markets/${encodeURIComponent(marketId)}/activity`}
-        className="mt-5 block text-center text-[11px] text-slate-600 transition hover:text-slate-400"
-      >
-        View full activity →
-      </Link>
+      <ScanSourceList sources={sources} />
+
     </div>
   );
 }
@@ -691,6 +696,7 @@ function LiveAgentPanel({
   runStartedAt,
   lastEventAt,
   marketId,
+  sources,
   onRunScan,
   scanTriggering = false,
   scanQueued = false,
@@ -701,6 +707,7 @@ function LiveAgentPanel({
   runStartedAt: string | null | undefined;
   lastEventAt: string | null;
   marketId: string;
+  sources: MonitoredSource[];
   onRunScan: () => void;
   scanTriggering?: boolean;
   scanQueued?: boolean;
@@ -800,6 +807,12 @@ function LiveAgentPanel({
         </div>
       )}
 
+      {isRunning && (
+        <div className="border-t border-white/[0.04] px-4 py-3">
+          <ScanSourceList sources={sources} compact />
+        </div>
+      )}
+
       {/* Footer */}
       <div className="space-y-2 border-t border-white/[0.06] px-4 py-3">
         {isRunning ? (
@@ -823,13 +836,50 @@ function LiveAgentPanel({
             Run scan
           </button>
         )}
-        <Link
-          href={`/markets/${encodeURIComponent(marketId)}/activity`}
-          className="block text-center text-[11px] text-slate-600 transition hover:text-slate-400"
-        >
-          View full activity →
-        </Link>
       </div>
+    </div>
+  );
+}
+
+function ScanSourceList({ sources, compact = false }: { sources: MonitoredSource[]; compact?: boolean }) {
+  const visible = sources.slice(0, compact ? 4 : 6);
+
+  if (sources.length === 0) {
+    return (
+      <div className={`${compact ? '' : 'mt-4'} rounded-lg border border-slate-800/60 bg-slate-950/25 px-3 py-2`}>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Searching</p>
+        <p className="mt-1 text-xs text-slate-500">No enabled scan-ready source URLs are available.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${compact ? '' : 'mt-4'} rounded-lg border border-slate-800/60 bg-slate-950/25 px-3 py-2`}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">Searching</p>
+        <span className="text-[10px] text-slate-700">
+          {plural(sources.length, 'URL')}
+        </span>
+      </div>
+      <div className="space-y-1">
+        {visible.map(source => (
+          <a
+            key={source.id}
+            href={source.locator}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="block truncate rounded px-1 py-0.5 text-[11px] text-slate-500 transition hover:bg-slate-900 hover:text-violet-300"
+            title={source.locator}
+          >
+            {source.locator}
+          </a>
+        ))}
+      </div>
+      {sources.length > visible.length && (
+        <p className="mt-1.5 text-[10px] text-slate-700">
+          +{sources.length - visible.length} more source {sources.length - visible.length === 1 ? 'URL' : 'URLs'}
+        </p>
+      )}
     </div>
   );
 }
@@ -855,6 +905,7 @@ function EvidenceItemRow({ item }: { item: EvidenceItem }) {
     item.source_family && !item.source_label ? familyLabel(item.source_family) : null,
     item.company_name,
   ].filter(Boolean).join(' · ');
+  const sourceUrl = readableSourceUrl(item.url, item.post_id);
 
   return (
     <div className="rounded-lg bg-slate-950/40 p-3">
@@ -866,9 +917,9 @@ function EvidenceItemRow({ item }: { item: EvidenceItem }) {
       <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-600">
         {meta && <span className="font-medium text-slate-500">{meta}</span>}
         {item.detected_at && <span className="shrink-0">{relativeTime(item.detected_at)}</span>}
-        {item.url && (
+        {sourceUrl && (
           <a
-            href={item.url}
+            href={sourceUrl}
             target="_blank"
             rel="noreferrer"
             className="ml-auto shrink-0 font-medium text-violet-400/70 transition hover:text-violet-400"
