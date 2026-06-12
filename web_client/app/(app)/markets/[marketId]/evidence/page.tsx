@@ -1,13 +1,13 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel, ScoreBadge, UrgencyBadge } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { AccumulatedTheme, EvidenceItem, Market, Signal } from '@/lib/types/signals';
+import { readableSourceUrl } from '@/lib/sourceUrls';
+import { AccumulatedTheme, EvidenceItem, Market } from '@/lib/types/signals';
 
 const FAMILY_LABELS: Record<string, string> = {
   technical_forum:  'Technical forums',
@@ -47,7 +47,7 @@ export default function EvidencePage({ params }: Props) {
 
   const [niche, setNiche] = useState<Market | null>(null);
   const [patterns, setPatterns] = useState<AccumulatedTheme[]>([]);
-  const [findings, setFindings] = useState<Signal[]>([]);
+  const [findings, setFindings] = useState<EvidenceItem[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
 
@@ -55,14 +55,13 @@ export default function EvidencePage({ params }: Props) {
     setStatus('loading');
     setError(null);
     try {
-      const [market, themesRes, signalsRes] = await Promise.all([
+      const [market, themesRes] = await Promise.all([
         signalApi.getMarket(marketId),
         signalApi.getThemes({ market_id: marketId }),
-        signalApi.getSignals({ market_id: marketId }),
       ]);
       setNiche(market);
       setPatterns(themesRes.themes);
-      setFindings(signalsRes.signals);
+      setFindings(evidenceItemsFromThemes(themesRes.themes));
       setStatus('ready');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load evidence');
@@ -77,7 +76,10 @@ export default function EvidencePage({ params }: Props) {
 
   const patternByFindingId = useMemo(() => {
     const map = new Map<string, AccumulatedTheme>();
-    patterns.forEach(p => (p.finding_ids ?? p.signal_ids).forEach(id => map.set(id, p)));
+    patterns.forEach(pattern => {
+      (pattern.finding_ids ?? pattern.signal_ids).forEach(id => map.set(id, pattern));
+      (pattern.evidence_items ?? []).forEach(item => map.set(item.id, pattern));
+    });
     return map;
   }, [patterns]);
 
@@ -90,39 +92,9 @@ export default function EvidencePage({ params }: Props) {
   return (
     <DashboardShell
       title={title}
-      actions={<NicheViewSwitcher marketId={marketId} active="evidence" />}
+      actions={<NicheViewSwitcher marketId={marketId} active={view === 'patterns' ? 'patterns' : 'evidence'} />}
     >
-      {/* Segmented control */}
-      <div className="mb-5 flex w-fit items-center gap-1 rounded-lg border border-slate-800/70 bg-slate-900/40 p-1">
-        <button
-          onClick={() => switchView('patterns')}
-          className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
-            view === 'patterns'
-              ? 'bg-slate-800 text-slate-100 shadow-sm'
-              : 'text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          Patterns
-          {status === 'ready' && patterns.length > 0 && (
-            <span className="ml-1.5 rounded bg-slate-700/60 px-1.5 text-[10px] text-slate-400">{patterns.length}</span>
-          )}
-        </button>
-        <button
-          onClick={() => switchView('findings')}
-          className={`rounded-md px-4 py-1.5 text-xs font-semibold transition ${
-            view === 'findings'
-              ? 'bg-slate-800 text-slate-100 shadow-sm'
-              : 'text-slate-500 hover:text-slate-300'
-          }`}
-        >
-          Findings
-          {status === 'ready' && findings.length > 0 && (
-            <span className="ml-1.5 rounded bg-slate-700/60 px-1.5 text-[10px] text-slate-400">{findings.length}</span>
-          )}
-        </button>
-      </div>
-
-      {status === 'loading' && <LoadingPanel label={view === 'patterns' ? 'Loading patterns' : 'Loading findings'} />}
+      {status === 'loading' && <LoadingPanel label={view === 'patterns' ? 'Loading patterns' : 'Loading evidence'} />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
       {/* ── Patterns view ── */}
@@ -141,20 +113,19 @@ export default function EvidencePage({ params }: Props) {
                 <PatternCard
                   key={pattern.id}
                   pattern={pattern}
-                  marketId={marketId}
                 />
               ))
           )}
         </div>
       )}
 
-      {/* ── Findings view ── */}
+      {/* ── Evidence view ── */}
       {status === 'ready' && view === 'findings' && (
         <div className="space-y-3 animate-fade-in">
           {findings.length === 0 ? (
             <EmptyPanel
-              title="No findings yet"
-              detail="Findings appear after the agent extracts evidence from monitored sources."
+              title="No evidence yet"
+              detail="Evidence appears after the agent extracts useful source-backed findings."
             />
           ) : (
             findings.map(finding => {
@@ -175,8 +146,26 @@ export default function EvidencePage({ params }: Props) {
   );
 }
 
-function PatternCard({ pattern, marketId }: { pattern: AccumulatedTheme; marketId: string }) {
-  const themeHref = `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(pattern.id)}`;
+function evidenceItemsFromThemes(themes: AccumulatedTheme[]): EvidenceItem[] {
+  const seen = new Set<string>();
+  const items: EvidenceItem[] = [];
+
+  themes.forEach(theme => {
+    (theme.evidence_items ?? []).forEach(item => {
+      if (seen.has(item.id)) return;
+      seen.add(item.id);
+      items.push(item);
+    });
+  });
+
+  return items.sort((a, b) => {
+    const bTime = b.detected_at ? Date.parse(b.detected_at) : 0;
+    const aTime = a.detected_at ? Date.parse(a.detected_at) : 0;
+    return bTime - aTime;
+  });
+}
+
+function PatternCard({ pattern }: { pattern: AccumulatedTheme }) {
   const evidenceItems = pattern.evidence_items?.length
     ? pattern.evidence_items.slice(0, 3)
     : null;
@@ -186,14 +175,7 @@ function PatternCard({ pattern, marketId }: { pattern: AccumulatedTheme; marketI
     <article className="rounded-xl border border-slate-800/70 bg-slate-900/40 p-5 transition hover:border-slate-700/80 hover:bg-slate-900/60">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <Link
-            href={themeHref}
-            className="group inline-block"
-          >
-            <h2 className="font-semibold text-slate-100 transition group-hover:text-violet-300">
-              {pattern.theme}
-            </h2>
-          </Link>
+          <h2 className="font-semibold text-slate-100">{pattern.theme}</h2>
           {pattern.summary && (
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-500">{pattern.summary}</p>
           )}
@@ -207,13 +189,6 @@ function PatternCard({ pattern, marketId }: { pattern: AccumulatedTheme; marketI
           <span className="rounded-md bg-slate-800/70 px-2 py-0.5 text-xs text-slate-500">
             {pattern.frequency} {pattern.frequency === 1 ? 'finding' : 'findings'}
           </span>
-          <ScoreBadge value={pattern.average_score} />
-          <Link
-            href={themeHref}
-            className="text-[11px] font-medium text-violet-400 transition hover:text-violet-300"
-          >
-            View →
-          </Link>
         </div>
       </div>
 
@@ -262,6 +237,7 @@ function EvidenceRow({ item }: { item: EvidenceItem }) {
   const rawText = item.pain || item.quote;
   const text = cleanText(rawText);
   const isLong = text.length > 160;
+  const sourceUrl = readableSourceUrl(item.url, item.post_id);
 
   return (
     <div className="flex items-start gap-3 rounded-lg bg-slate-950/30 px-3 py-2">
@@ -287,9 +263,9 @@ function EvidenceRow({ item }: { item: EvidenceItem }) {
           </div>
         )}
       </div>
-      {item.url && (
+      {sourceUrl && (
         <a
-          href={item.url}
+          href={sourceUrl}
           target="_blank"
           rel="noreferrer noopener"
           aria-label="Open source in new tab"
@@ -307,26 +283,25 @@ function FindingCard({
   pattern,
   onViewPattern,
 }: {
-  finding: Signal;
+  finding: EvidenceItem;
   pattern: AccumulatedTheme | undefined;
   onViewPattern: () => void;
 }) {
   const [quoteExpanded, setQuoteExpanded] = useState(false);
-  const quoteText = cleanText(finding.evidence_text);
+  const quoteText = cleanText(finding.quote || finding.pain);
   const quoteLong = quoteText.length > 200;
+  const sourceUrl = readableSourceUrl(finding.url, finding.post_id);
+  const title = cleanText(finding.pain) || cleanText(finding.quote) || 'Evidence item';
 
   return (
     <article className="rounded-xl border border-slate-800/70 bg-slate-900/40 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-semibold leading-snug text-slate-100">{finding.pain}</h2>
-          {finding.job_to_be_done && (
-            <p className="mt-1 text-sm text-slate-500">{finding.job_to_be_done}</p>
-          )}
+          <h2 className="font-semibold leading-snug text-slate-100">{title}</h2>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <UrgencyBadge urgency={finding.urgency} />
-          <ScoreBadge value={finding.confidence} />
+          {finding.urgency && <UrgencyBadge urgency={finding.urgency} />}
+          {finding.confidence != null && <ScoreBadge value={finding.confidence} />}
         </div>
       </div>
 
@@ -354,14 +329,7 @@ function FindingCard({
         )}
         {finding.company_name && <Chip label={finding.company_name} />}
         {finding.category && <Chip label={finding.category} />}
-        {finding.user_type && <Chip label={finding.user_type} />}
       </div>
-
-      {finding.current_workaround && (
-        <p className="mt-3 text-xs text-slate-500">
-          Workaround: <span className="text-slate-400">{finding.current_workaround}</span>
-        </p>
-      )}
 
       {quoteText && (
         <div className="mt-3 rounded-lg bg-slate-950/35 px-3 py-2">
@@ -380,9 +348,9 @@ function FindingCard({
         </div>
       )}
 
-      {finding.evidence_url && (
+      {sourceUrl && (
         <a
-          href={finding.evidence_url}
+          href={sourceUrl}
           target="_blank"
           rel="noreferrer noopener"
           aria-label="Open source in new tab"

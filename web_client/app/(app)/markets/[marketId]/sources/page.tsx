@@ -144,7 +144,6 @@ export default function NicheSourcesPage({ params }: Props) {
       actions={
         <NicheViewSwitcher
           marketId={marketId}
-          active="activity"
         />
       }
     >

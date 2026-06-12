@@ -277,7 +277,7 @@ export default function NicheActivityPage({ params }: Props) {
     <DashboardShell
       title="Activity"
       subtitle={`${niche?.name ?? 'This niche'} agent run history and events.`}
-      actions={<NicheViewSwitcher marketId={marketId} active="activity" />}
+      actions={<NicheViewSwitcher marketId={marketId} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading activity" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
