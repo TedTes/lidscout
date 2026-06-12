@@ -956,6 +956,7 @@ def _configured_sources(
                     for s in _prioritize_niche_sources(
                         filtered,
                         niche_source_repository,
+                        preferences=preferences,
                         allow_proxy_sources=allow_proxy_sources,
                         allow_auth_sources=allow_auth_sources,
                     )
@@ -967,6 +968,7 @@ def _prioritize_niche_sources(
     sources: list[NicheSource],
     niche_source_repository: NicheSourceRepository,
     *,
+    preferences: object | None = None,
     allow_proxy_sources: bool = False,
     allow_auth_sources: bool = False,
 ) -> list[NicheSource]:
@@ -991,7 +993,11 @@ def _prioritize_niche_sources(
     return sorted(
         eligible_sources,
         key=lambda source: (
-            -_niche_source_priority_score(source, stats_by_source.get(source.id)),
+            -_niche_source_priority_score(
+                source,
+                stats_by_source.get(source.id),
+                preferences,
+            ),
             source.id,
         ),
     )
@@ -1000,10 +1006,14 @@ def _prioritize_niche_sources(
 def _niche_source_priority_score(
     source: NicheSource,
     stats: NicheSourceRunStats | None,
+    preferences: object | None = None,
 ) -> float:
     quality = source.signal_quality_score if source.signal_quality_score is not None else 0.5
     if stats is not None and stats.total_runs > 0:
         quality = (0.7 * quality) + (0.3 * source_observed_quality_score(stats))
+
+    if _is_preferred_source_family(source, preferences):
+        quality += 0.12
 
     if source.tier is not None:
         quality += max(0, 7 - source.tier) * 0.01
@@ -1054,9 +1064,30 @@ def _niche_source_input(
         options["items_path"] = items_path
     return SourceInput.create(
         locator=source.locator,
-        limit=source.limit,
+        limit=_source_scan_limit(source, preferences),
         options=options,
     )
+
+
+def _source_scan_limit(
+    source: NicheSource,
+    preferences: object | None,
+) -> int | None:
+    if not _is_preferred_source_family(source, preferences):
+        return source.limit
+    base_limit = source.limit or 25
+    return min(max(base_limit, 1) * 2, 100)
+
+
+def _is_preferred_source_family(
+    source: NicheSource,
+    preferences: object | None,
+) -> bool:
+    preferred = getattr(preferences, "preferred_source_families", None)
+    if not preferred:
+        return False
+    source_family = source.source_family.strip().lower()
+    return source_family in {str(family).strip().lower() for family in preferred}
 
 
 def _apply_agent_source_preferences(

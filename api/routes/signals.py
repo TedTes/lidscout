@@ -1350,6 +1350,12 @@ async def delete_opportunity_feedback(
         action=normalized_action,
     )
     if deleted:
+        _remove_feedback_from_agent_preferences(
+            dependencies,
+            market_id=market_id,
+            opportunity=opportunity,
+            action=normalized_action,
+        )
         _record_agent_activity(
             dependencies,
             user_niche_id=market_id,
@@ -3058,10 +3064,11 @@ def _apply_feedback_to_agent_preferences(
 ) -> None:
     if action not in {"save", "dismiss", "more_like_this", "less_like_this"}:
         return
-    cluster = dependencies.cluster_repository.get_cluster(opportunity.cluster_id)
-    theme = cluster.theme if cluster is not None else None
-    category = opportunity.unmet_need_type
-    source_families = _source_families_for_opportunity(dependencies, opportunity)
+    theme, category, source_families = _feedback_preference_context(
+        dependencies,
+        market_id=market_id,
+        opportunity=opportunity,
+    )
     if theme is None and category is None and not source_families:
         return
 
@@ -3097,6 +3104,180 @@ def _apply_feedback_to_agent_preferences(
     dependencies.agent_preferences_repository.save_agent_preferences(
         updated_preferences,
     )
+
+
+def _remove_feedback_from_agent_preferences(
+    dependencies: SignalApiDependencies,
+    *,
+    market_id: str,
+    opportunity: Opportunity,
+    action: str,
+) -> None:
+    if action not in {"save", "dismiss", "more_like_this", "less_like_this"}:
+        return
+    preferences = dependencies.agent_preferences_repository.get_agent_preferences(
+        market_id,
+    )
+    if preferences is None:
+        return
+
+    theme, category, source_families = _feedback_preference_context(
+        dependencies,
+        market_id=market_id,
+        opportunity=opportunity,
+    )
+    remaining_feedback = dependencies.agent_feedback_repository.list_agent_feedback(
+        user_niche_id=market_id,
+    )
+
+    preferred_source_families = set(preferences.preferred_source_families)
+    ignored_themes = set(preferences.ignored_themes)
+    ignored_categories = set(preferences.ignored_categories)
+
+    if action in {"dismiss", "less_like_this"}:
+        if theme and not _feedback_context_still_supported(
+            dependencies,
+            market_id=market_id,
+            feedback=remaining_feedback,
+            target_value=theme,
+            target_kind="theme",
+            actions={"dismiss", "less_like_this"},
+        ):
+            ignored_themes.discard(theme)
+        if category and not _feedback_context_still_supported(
+            dependencies,
+            market_id=market_id,
+            feedback=remaining_feedback,
+            target_value=category,
+            target_kind="category",
+            actions={"dismiss", "less_like_this"},
+        ):
+            ignored_categories.discard(category)
+    else:
+        for source_family in source_families:
+            if not _feedback_context_still_supported(
+                dependencies,
+                market_id=market_id,
+                feedback=remaining_feedback,
+                target_value=source_family,
+                target_kind="source_family",
+                actions={"save", "more_like_this"},
+            ):
+                preferred_source_families.discard(source_family)
+
+    updated_preferences = AgentPreferences.create(
+        user_niche_id=market_id,
+        preferred_source_families=sorted(preferred_source_families),
+        ignored_themes=sorted(ignored_themes),
+        ignored_categories=sorted(ignored_categories),
+        muted_source_ids=preferences.muted_source_ids,
+        extra_instructions=preferences.extra_instructions,
+        created_at=preferences.created_at,
+    )
+    dependencies.agent_preferences_repository.save_agent_preferences(
+        updated_preferences,
+    )
+
+
+def _feedback_context_still_supported(
+    dependencies: SignalApiDependencies,
+    *,
+    market_id: str,
+    feedback: list[AgentFeedback],
+    target_value: str,
+    target_kind: str,
+    actions: set[str],
+) -> bool:
+    for item in feedback:
+        if item.action not in actions:
+            continue
+        opportunity = dependencies.opportunity_repository.get_opportunity(
+            item.opportunity_id,
+        )
+        if opportunity is None:
+            continue
+        theme, category, source_families = _feedback_preference_context(
+            dependencies,
+            market_id=market_id,
+            opportunity=opportunity,
+        )
+        if target_kind == "theme" and theme == target_value:
+            return True
+        if target_kind == "category" and category == target_value:
+            return True
+        if target_kind == "source_family" and target_value in source_families:
+            return True
+    return False
+
+
+def _feedback_preference_context(
+    dependencies: SignalApiDependencies,
+    *,
+    market_id: str,
+    opportunity: Opportunity,
+) -> tuple[str | None, str | None, set[str]]:
+    """Return preference signals that feedback on one opportunity should teach."""
+    if opportunity.source_theme_id and dependencies.theme_repository is not None:
+        theme = _theme_for_opportunity(dependencies, market_id, opportunity)
+        findings = dependencies.theme_repository.list_findings_for_theme(
+            opportunity.source_theme_id,
+        )
+        source_families = {
+            family
+            for finding in findings
+            if (family := _source_family_for_finding(finding))
+        }
+        categories = [
+            finding.category
+            for finding in findings
+            if finding.category
+        ]
+        return (
+            theme.title if theme is not None else None,
+            opportunity.unmet_need_type or _most_common_string(categories),
+            source_families,
+        )
+
+    cluster = (
+        dependencies.cluster_repository.get_cluster(opportunity.cluster_id)
+        if opportunity.cluster_id is not None
+        else None
+    )
+    return (
+        cluster.theme if cluster is not None else None,
+        opportunity.unmet_need_type,
+        _source_families_for_opportunity(dependencies, opportunity),
+    )
+
+
+def _theme_for_opportunity(
+    dependencies: SignalApiDependencies,
+    market_id: str,
+    opportunity: Opportunity,
+) -> Theme | None:
+    if opportunity.source_theme_id is None or dependencies.theme_repository is None:
+        return None
+    return next(
+        (
+            theme
+            for theme in dependencies.theme_repository.list_themes(
+                user_niche_id=market_id,
+            )
+            if theme.id == opportunity.source_theme_id
+        ),
+        None,
+    )
+
+
+def _most_common_string(values: list[str]) -> str | None:
+    counts: dict[str, int] = {}
+    for value in values:
+        cleaned = value.strip()
+        if cleaned:
+            counts[cleaned] = counts.get(cleaned, 0) + 1
+    if not counts:
+        return None
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
 
 def _source_families_for_opportunity(

@@ -1191,6 +1191,68 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ],
         )
 
+    def test_configured_sources_boosts_preferred_source_families(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        source_repository = InMemoryNicheSourceRepository()
+        source_repository.save_niche_sources(
+            [
+                NicheSource.create(
+                    id="source-social",
+                    niche_id="niche-1",
+                    locator="https://example.com/social",
+                    source_type="hackernews_search",
+                    source_family="social",
+                    is_gate_free=True,
+                    signal_quality_score=0.7,
+                    limit=10,
+                ),
+                NicheSource.create(
+                    id="source-forum",
+                    niche_id="niche-1",
+                    locator="https://example.com/forum",
+                    source_type="github_issues_search",
+                    source_family="technical_forum",
+                    is_gate_free=True,
+                    signal_quality_score=0.62,
+                    limit=10,
+                ),
+            ]
+        )
+        preferences_repository = InMemoryAgentPreferencesRepository()
+        preferences_repository.save_agent_preferences(
+            AgentPreferences.create(
+                user_niche_id="market-1",
+                preferred_source_families=["technical_forum"],
+            )
+        )
+
+        sources = _configured_sources(
+            source_repository,
+            user_niche_repository,
+            preferences_repository,
+            "market-1",
+        )
+
+        self.assertEqual(
+            [source.locator for source in sources],
+            [
+                "https://example.com/forum",
+                "https://example.com/social",
+            ],
+        )
+        self.assertEqual(sources[0].limit, 20)
+        self.assertEqual(sources[1].limit, 10)
+
     def test_configured_sources_skip_gated_sources_without_runtime_access(self):
         user_niche_repository = InMemoryUserNicheRepository()
         user_niche_repository.save_user_niche(
