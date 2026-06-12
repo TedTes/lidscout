@@ -8,6 +8,7 @@ import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
   AgentAction,
+  AgentActionsResponse,
   AgentActivityResponse,
   AgentFollowUp,
   AgentFollowUpRequest,
@@ -757,6 +758,22 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load agent plan');
+      throw error;
+    }
+  }
+
+  async getMarketAgentActions(
+    marketId: string,
+    params?: { status?: string; action_type?: string; limit?: number }
+  ): Promise<AgentActionsResponse> {
+    try {
+      const response = await api.get<AgentActionsResponse>(
+        `/markets/${marketId}/agent/actions`,
+        { params }
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load agent actions');
       throw error;
     }
   }

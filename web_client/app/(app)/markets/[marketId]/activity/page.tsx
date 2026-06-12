@@ -5,7 +5,6 @@ import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
-import AgentInbox from '@/components/app/AgentInbox';
 import { signalApi } from '@/lib/api';
 import { AgentActivity, Market } from '@/lib/types/signals';
 
@@ -285,8 +284,6 @@ export default function NicheActivityPage({ params }: Props) {
 
       {status === 'ready' && (
         <div className="space-y-4 animate-fade-in">
-          <AgentInbox marketId={marketId} />
-
           <div className="flex items-center justify-between">
             <div />
             <Link

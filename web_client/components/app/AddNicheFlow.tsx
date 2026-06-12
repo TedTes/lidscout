@@ -360,10 +360,19 @@ function plural(n: number, singular: string, pluralForm = `${singular}s`) {
   return `${n} ${n === 1 ? singular : pluralForm}`;
 }
 
+function IconAlertCircle() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  );
+}
+
 function CustomStep({
   onCreated,
   onBack,
-  onClose,
 }: {
   onCreated: (market: Market) => void;
   onBack: () => void;
@@ -380,6 +389,11 @@ function CustomStep({
     const timer = setTimeout(() => nameRef.current?.focus(), 30);
     return () => clearTimeout(timer);
   }, []);
+
+  const handleNameChange = (event: FormEvent<HTMLInputElement>) => {
+    setName((event.target as HTMLInputElement).value);
+    if (error) setError(null);
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -398,25 +412,37 @@ function CustomStep({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong, please try again.');
       setSaving(false);
-      setTimeout(() => onClose(), 1500);
+      setTimeout(() => nameRef.current?.focus(), 50);
     }
   };
+
+  const nameHasError = !!error;
 
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 pb-8 pt-2">
+
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-market-name" className={labelCls}>Name *</label>
+          <label htmlFor="custom-market-name" className={labelCls}>Market name *</label>
           <input
             ref={nameRef}
             id="custom-market-name"
             required
             value={name}
-            onChange={event => setName(event.target.value)}
+            onChange={handleNameChange}
             placeholder="e.g. Manage customer support for a SaaS product"
-            className={inputCls}
+            className={`${inputCls} ${nameHasError ? 'border-rose-500/60 focus:border-rose-500/80 focus:ring-rose-500/10' : ''}`}
             autoComplete="off"
           />
+          {!nameHasError && (
+            <p className="text-[11px] text-slate-600">Describe a real job-to-be-done or problem space — e.g. "podcast hosting for indie creators".</p>
+          )}
+          {nameHasError && (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-500/25 bg-rose-500/[0.07] px-3 py-2.5">
+              <span className="mt-px shrink-0 text-rose-400"><IconAlertCircle /></span>
+              <p className="text-sm leading-snug text-rose-300">{error}</p>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -447,16 +473,21 @@ function CustomStep({
           You can add companies and sources after creating the market.
         </p>
 
-        {error && <p className="shrink-0 text-sm text-rose-400">{error}</p>}
       </div>
 
       <div className="flex items-center gap-2 border-t border-white/10 px-8 py-5">
         <button
           type="submit"
           disabled={saving || !name.trim()}
-          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {saving ? 'Creating...' : 'Create market'}
+          {saving && (
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+          )}
+          {saving ? 'Validating market…' : 'Create market'}
         </button>
         <button
           type="button"

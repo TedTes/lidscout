@@ -427,6 +427,10 @@ export type AgentPlan = {
   actions: AgentAction[];
 };
 
+export type AgentActionsResponse = {
+  actions: AgentAction[];
+};
+
 export type AgentRunsResponse = {
   runs: AgentActivity[];
 };

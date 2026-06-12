@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
+import ResearchThread from '@/components/app/ResearchThread';
 import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import {
@@ -399,8 +400,8 @@ export default function NicheWorkspacePage({ params }: Props) {
               </Link>
             </div>
           ) : (
-            /* ── Has data: opportunities + optional running panel ── */
-            <div className={`grid gap-5 ${pipelineStatus === 'running' ? 'xl:grid-cols-[1fr_272px] xl:items-start' : ''}`}>
+            /* ── Has data: opportunities + right panel ── */
+            <div className="grid gap-5 xl:grid-cols-[1fr_272px] xl:items-start">
 
               {/* ── Opportunities list ── */}
               <div className="space-y-3">
@@ -488,20 +489,23 @@ export default function NicheWorkspacePage({ params }: Props) {
                 ))}
               </div>
 
-              {/* ── Right: scan progress panel (only while running) ── */}
-              {pipelineStatus === 'running' && (
-                <LiveAgentPanel
-                  pipelineStatus={pipelineStatus}
-                  progressActivity={progressActivity}
-                  liveFeed={liveFeed}
-                  runStartedAt={runStartedEvent?.created_at}
-                  lastEventAt={lastEventAt}
-                  marketId={marketId}
-                  onRunScan={handleRunScan}
-                  scanTriggering={scanTriggering}
-                  scanQueued={scanQueued}
-                />
-              )}
+              {/* ── Right: agent inbox + scan progress ── */}
+              <div className="space-y-4">
+                <ResearchThread marketId={marketId} />
+                {pipelineStatus === 'running' && (
+                  <LiveAgentPanel
+                    pipelineStatus={pipelineStatus}
+                    progressActivity={progressActivity}
+                    liveFeed={liveFeed}
+                    runStartedAt={runStartedEvent?.created_at}
+                    lastEventAt={lastEventAt}
+                    marketId={marketId}
+                    onRunScan={handleRunScan}
+                    scanTriggering={scanTriggering}
+                    scanQueued={scanQueued}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>
