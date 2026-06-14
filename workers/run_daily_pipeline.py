@@ -423,7 +423,13 @@ def _execute_approved_agent_actions(config: PipelineConfig) -> None:
     if (
         config.user_niche_id is None
         or config.agent_action_repository is None
-        or config.niche_source_repository is None
+        or (
+            config.niche_source_repository is None
+            and (
+                config.source_repository is None
+                or config.user_source_repository is None
+            )
+        )
     ):
         return
     result = AgentActionExecutor(
@@ -431,6 +437,8 @@ def _execute_approved_agent_actions(config: PipelineConfig) -> None:
         config.niche_source_repository,
         config.agent_follow_up_repository,
         config.agent_alert_repository,
+        source_repository=config.source_repository,
+        user_source_repository=config.user_source_repository,
     ).execute_approved_actions(config.user_niche_id)
     if result.executed_count or result.failed_count:
         _record_agent_activity(
@@ -1200,11 +1208,7 @@ def _effective_source_to_niche_source(
     if source.user_source_preference_id:
         options["user_source_preference_id"] = source.user_source_preference_id
     return NicheSource.create(
-        id=(
-            source.template_source_binding_id
-            or source.user_source_id
-            or source.source_id
-        ),
+        id=source.source_id,
         niche_id=niche_id,
         company_id=None,
         locator=source.locator,

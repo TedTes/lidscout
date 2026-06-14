@@ -1,11 +1,14 @@
 from application.agent import AgentActionExecutor
 from domain.agent import AgentAction, AgentAlert, AgentFollowUp
-from domain.niche import NicheSource
+from domain.niche import NicheSource, UserSource
+from domain.source import Source
 from infrastructure.db import (
     InMemoryAgentActionRepository,
     InMemoryAgentAlertRepository,
     InMemoryAgentFollowUpRepository,
     InMemoryNicheSourceRepository,
+    InMemorySourceRepository,
+    InMemoryUserSourceRepository,
 )
 
 
@@ -69,6 +72,57 @@ def test_executor_marks_pause_source_failed_when_source_id_missing() -> None:
     assert result.executed_count == 0
     assert result.failed_count == 1
     assert actions[0].status == "failed"
+
+
+def test_executor_pauses_user_source_binding_for_approved_action() -> None:
+    action_repository = InMemoryAgentActionRepository()
+    canonical_source_repository = InMemorySourceRepository()
+    canonical_source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://example.com/feed",
+                source_type="web",
+                source_family="forum",
+                is_gate_free=True,
+            )
+        ]
+    )
+    user_source_repository = InMemoryUserSourceRepository()
+    user_source_repository.save_user_sources(
+        [
+            UserSource.create(
+                id="user-source-1",
+                user_niche_id="market-1",
+                source_id="source-1",
+                enabled=True,
+            )
+        ]
+    )
+    action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="pause_source",
+            status="approved",
+            metadata={"source_id": "source-1"},
+        )
+    )
+
+    result = AgentActionExecutor(
+        action_repository,
+        source_repository=canonical_source_repository,
+        user_source_repository=user_source_repository,
+    ).execute_approved_actions("market-1")
+
+    user_source = user_source_repository.get_user_source("market-1", "source-1")
+    actions = action_repository.list_agent_actions(user_niche_id="market-1")
+    assert result.executed_count == 1
+    assert result.failed_count == 0
+    assert user_source is not None
+    assert user_source.enabled is False
+    assert user_source.muted is True
+    assert actions[0].status == "completed"
 
 
 def test_executor_answers_follow_up_for_approved_action() -> None:
@@ -251,6 +305,50 @@ def test_executor_adds_source_for_concrete_source_suggestion() -> None:
     assert len(sources) == 1
     assert sources[0].source_type == "hackernews_search"
     assert sources[0].options["created_by_action_id"] == "action-1"
+
+
+def test_executor_adds_user_source_for_concrete_source_suggestion() -> None:
+    action_repository = InMemoryAgentActionRepository()
+    canonical_source_repository = InMemorySourceRepository()
+    user_source_repository = InMemoryUserSourceRepository()
+    action_repository.save_agent_action(
+        AgentAction.create(
+            id="action-1",
+            user_niche_id="market-1",
+            action_type="suggest_source",
+            status="approved",
+            metadata={
+                "locator": "https://hn.algolia.com/api/v1/search_by_date?query=dbt",
+                "source_type": "hackernews_search",
+                "source_family": "technical_forum",
+                "is_gate_free": True,
+                "limit": 25,
+                "access_mode": "api",
+                "scan_frequency": "daily",
+            },
+        )
+    )
+
+    result = AgentActionExecutor(
+        action_repository,
+        source_repository=canonical_source_repository,
+        user_source_repository=user_source_repository,
+    ).execute_approved_actions("market-1")
+
+    source = canonical_source_repository.get_source_by_identity(
+        "hackernews_search",
+        "https://hn.algolia.com/api/v1/search_by_date?query=dbt",
+    )
+    actions = action_repository.list_agent_actions(user_niche_id="market-1")
+    assert source is not None
+    user_source = user_source_repository.get_user_source("market-1", source.id)
+    assert result.executed_count == 1
+    assert result.failed_count == 0
+    assert actions[0].status == "completed"
+    assert user_source is not None
+    assert user_source.limit == 25
+    assert user_source.cadence == "daily"
+    assert user_source.options["created_by_action_id"] == "action-1"
 
 
 def test_executor_marks_source_suggestion_failed_when_locator_missing() -> None:
