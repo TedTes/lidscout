@@ -1,8 +1,10 @@
 import asyncio
 
 from api.routes.signals import (
+    NicheSourceRequest,
     NicheSourceUpdateRequest,
     SignalApiDependencies,
+    create_market_source,
     delete_source,
     get_pipeline_diagnostics,
     list_market_sources,
@@ -286,6 +288,63 @@ def test_catalog_source_update_and_delete_write_user_sources() -> None:
     assert user_source is not None
     assert user_source.muted is True
     assert user_source.enabled is False
+
+
+def test_create_market_source_writes_canonical_and_user_source() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    user_source_repository = InMemoryUserSourceRepository()
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        source_repository=source_repository,
+        user_source_repository=user_source_repository,
+    )
+
+    created = asyncio.run(
+        create_market_source(
+            "market-1",
+            NicheSourceRequest(
+                locator="https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+                source_type="hackernews",
+                options={
+                    "source_family": "technical_forum",
+                    "limit": 10,
+                    "scan_frequency": "daily",
+                    "query": "vercel",
+                },
+            ),
+            dependencies,
+            current_user=user,
+        )
+    )
+
+    canonical_source = source_repository.get_source_by_identity(
+        "hackernews",
+        "https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+    )
+    assert canonical_source is not None
+    user_source = user_source_repository.get_user_source(
+        "market-1",
+        canonical_source.id,
+    )
+    assert user_source is not None
+    assert user_source.limit == 10
+    assert user_source.cadence == "daily"
+    assert user_source.options == {"query": "vercel"}
+    assert created["id"] == canonical_source.id
+    assert created["market_id"] == "template-1"
+    assert created["options"]["user_source_id"] == user_source.id
 
 
 def test_pipeline_diagnostics_returns_sanitized_runtime_warnings() -> None:

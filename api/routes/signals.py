@@ -78,7 +78,12 @@ from domain.user import User
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
-from domain.source import SourceCandidate, SourceInput, SourceReplacementSuggestion
+from domain.source import (
+    Source,
+    SourceCandidate,
+    SourceInput,
+    SourceReplacementSuggestion,
+)
 from domain.theme import Theme
 from infrastructure.db import (
     InMemoryAgentActionRepository,
@@ -789,32 +794,77 @@ async def create_market_source(
             status_code=422,
             detail="Cannot add sources to a custom market without a template",
         )
-    source_family = str(request.options.get("source_family") or request.source_type or "web")
+    source_family = str(
+        request.options.get("source_family") or request.source_type or "web",
+    )
     is_gate_free = bool(request.options.get("is_gate_free", True))
     try:
-        source = NicheSource.create(
+        canonical_source = dependencies.source_repository.get_source_by_identity(
+            request.source_type,
+            request.locator,
+        )
+        if canonical_source is None:
+            canonical_source = Source.create(
+                locator=request.locator,
+                source_type=request.source_type,
+                source_family=source_family,
+                is_gate_free=is_gate_free,
+                access_mode=str(request.options.get("access_mode") or "unknown"),
+                requires_proxy=bool(request.options.get("requires_proxy", False)),
+                requires_auth=bool(request.options.get("requires_auth", False)),
+            )
+            dependencies.source_repository.save_sources([canonical_source])
+            canonical_source = (
+                dependencies.source_repository.get_source_by_identity(
+                    canonical_source.source_type,
+                    canonical_source.locator,
+                )
+                or canonical_source
+            )
+        user_source = UserSource.create(
+            user_niche_id=user_niche.id,
+            source_id=canonical_source.id,
+            enabled=request.enabled,
+            cadence=_option_str(request.options, "scan_frequency"),
+            priority=_option_int(request.options, "user_source_priority"),
+            limit=_option_int(request.options, "limit"),
+            options=_source_user_options_override(request.options),
+        )
+        dependencies.user_source_repository.save_user_sources([user_source])
+        user_source = (
+            dependencies.user_source_repository.get_user_source(
+                user_niche.id,
+                canonical_source.id,
+            )
+            or user_source
+        )
+        display_source = NicheSource.create(
+            id=canonical_source.id,
             niche_id=niche_id,
             locator=request.locator,
-            source_type=request.source_type,
-            source_family=source_family,
-            is_gate_free=is_gate_free,
+            source_type=canonical_source.source_type,
+            source_family=canonical_source.source_family,
+            is_gate_free=canonical_source.is_gate_free,
             enabled=request.enabled,
-            limit=_option_int(request.options, "limit"),
-            scan_frequency=_option_str(request.options, "scan_frequency"),
+            limit=user_source.limit,
+            scan_frequency=user_source.cadence,
             last_error=_option_str(request.options, "last_error"),
-            options=request.options,
+            options={
+                **user_source.options,
+                "user_source_id": user_source.id,
+                "user_source_priority": user_source.priority,
+            },
             tier=_option_int(request.options, "tier"),
             signal_quality_score=_option_float(request.options, "signal_quality_score"),
-            access_mode=str(request.options.get("access_mode") or "unknown"),
-            requires_proxy=bool(request.options.get("requires_proxy", False)),
-            requires_auth=bool(request.options.get("requires_auth", False)),
+            access_mode=canonical_source.access_mode,
+            requires_proxy=canonical_source.requires_proxy,
+            requires_auth=canonical_source.requires_auth,
             recommended_cadence=_option_str(request.options, "recommended_cadence"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    dependencies.niche_source_repository.save_niche_sources([source])
-    return _serialize_niche_source(source)
+    return _serialize_niche_source(display_source)
 
 
 @router.patch("/sources/{source_id}")
@@ -2896,6 +2946,16 @@ def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:
         "user_source_id",
         "user_source_preference_id",
         "user_source_priority",
+        "access_mode",
+        "is_gate_free",
+        "last_error",
+        "limit",
+        "recommended_cadence",
+        "requires_auth",
+        "requires_proxy",
+        "scan_frequency",
+        "signal_quality_score",
+        "tier",
     }
     return {
         key: value
