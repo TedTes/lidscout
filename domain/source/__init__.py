@@ -1,6 +1,7 @@
 """Source input domain models."""
 from domain.source.models import (
     MonitoredSource,
+    Source,
     SourceCandidate,
     SourceHealth,
     SourceInput,
@@ -11,6 +12,7 @@ from domain.source.models import (
 
 __all__ = [
     "MonitoredSource",
+    "Source",
     "SourceCandidate",
     "SourceHealth",
     "SourceInput",

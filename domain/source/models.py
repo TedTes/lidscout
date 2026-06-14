@@ -1,14 +1,25 @@
 """Source input model."""
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 import hashlib
 from typing import Any
 from typing import Literal
+import uuid
 from urllib.parse import urlparse
 
 ValidationStatus = Literal["unknown", "valid", "invalid"]
 TemplateScope = Literal["company", "market"]
 SourceHealthStatus = Literal["unknown", "healthy", "failing"]
+SourceAccessMode = Literal[
+    "unknown",
+    "api",
+    "api_auth",
+    "json",
+    "rss",
+    "html",
+    "proxy_required",
+    "manual",
+]
 SourceReplacementTrigger = Literal[
     "blocked_source",
     "low_yield",
@@ -92,6 +103,76 @@ class SourceLocator:
             locator=self.locator,
             limit=self.limit,
             options=self.options,
+        )
+
+
+@dataclass(frozen=True)
+class Source:
+    """Canonical source identity shared across template and user scopes."""
+
+    id: str
+    locator: str
+    source_type: str
+    source_family: str
+    is_gate_free: bool = False
+    access_mode: SourceAccessMode = "unknown"
+    requires_proxy: bool = False
+    requires_auth: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        locator: str,
+        source_type: str,
+        source_family: str,
+        id: str | None = None,
+        is_gate_free: bool = False,
+        access_mode: str = "unknown",
+        requires_proxy: bool = False,
+        requires_auth: bool = False,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "Source":
+        """Build a normalized canonical source."""
+        source_id = (id or str(uuid.uuid4())).strip()
+        normalized_locator = locator.strip()
+        normalized_source_type = source_type.strip().lower()
+        normalized_source_family = source_family.strip().lower()
+        normalized_access_mode = access_mode.strip().lower()
+        if not source_id:
+            raise ValueError("id is required")
+        if not normalized_locator:
+            raise ValueError("locator is required")
+        if not normalized_source_type:
+            raise ValueError("source_type is required")
+        if not normalized_source_family:
+            raise ValueError("source_family is required")
+        if normalized_access_mode not in {
+            "unknown",
+            "api",
+            "api_auth",
+            "json",
+            "rss",
+            "html",
+            "proxy_required",
+            "manual",
+        }:
+            raise ValueError("unsupported access_mode")
+        now = datetime.now(tz=UTC)
+        return cls(
+            id=source_id,
+            locator=normalized_locator,
+            source_type=normalized_source_type,
+            source_family=normalized_source_family,
+            is_gate_free=is_gate_free,
+            access_mode=normalized_access_mode,  # type: ignore[arg-type]
+            requires_proxy=requires_proxy,
+            requires_auth=requires_auth,
+            created_at=created_at or now,
+            updated_at=updated_at or now,
         )
 
 

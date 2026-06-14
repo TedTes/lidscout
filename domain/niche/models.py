@@ -380,6 +380,147 @@ class NicheSourceRunStats:
         )
 
 
+@dataclass(frozen=True)
+class TemplateSourceBinding:
+    """Default monitoring behavior for a source inside a template niche."""
+
+    id: str
+    template_niche_id: str
+    source_id: str
+    company_id: str | None = None
+    default_enabled: bool = True
+    default_limit: int | None = None
+    default_scan_frequency: str | None = None
+    default_buyer_voice_verified: bool = False
+    default_options: dict[str, Any] = field(default_factory=dict)
+    tier: int | None = None
+    signal_quality_score: float | None = None
+    recommended_cadence: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        template_niche_id: str,
+        source_id: str,
+        id: str | None = None,
+        company_id: str | None = None,
+        default_enabled: bool = True,
+        default_limit: int | None = None,
+        default_scan_frequency: str | None = None,
+        default_buyer_voice_verified: bool = False,
+        default_options: dict[str, Any] | None = None,
+        tier: int | None = None,
+        signal_quality_score: float | None = None,
+        recommended_cadence: str | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "TemplateSourceBinding":
+        normalized_id = (id or str(uuid.uuid4())).strip()
+        normalized_template_niche_id = template_niche_id.strip()
+        normalized_source_id = source_id.strip()
+        if not normalized_id:
+            raise ValueError("id is required")
+        if not normalized_template_niche_id:
+            raise ValueError("template_niche_id is required")
+        if not normalized_source_id:
+            raise ValueError("source_id is required")
+        if default_limit is not None and default_limit < 1:
+            raise ValueError("default_limit must be at least 1")
+        if tier is not None and not 1 <= tier <= 5:
+            raise ValueError("tier must be between 1 and 5")
+        if signal_quality_score is not None and not 0 <= signal_quality_score <= 1:
+            raise ValueError("signal_quality_score must be between 0 and 1")
+        now = datetime.now(tz=UTC)
+        return cls(
+            id=normalized_id,
+            template_niche_id=normalized_template_niche_id,
+            source_id=normalized_source_id,
+            company_id=company_id.strip() if company_id else None,
+            default_enabled=default_enabled,
+            default_limit=default_limit,
+            default_scan_frequency=(
+                default_scan_frequency.strip() if default_scan_frequency else None
+            ),
+            default_buyer_voice_verified=default_buyer_voice_verified,
+            default_options=default_options or {},
+            tier=tier,
+            signal_quality_score=signal_quality_score,
+            recommended_cadence=(
+                recommended_cadence.strip() if recommended_cadence else None
+            ),
+            created_at=created_at or now,
+            updated_at=updated_at or now,
+        )
+
+
+@dataclass(frozen=True)
+class UserSourcePreference:
+    """Per-user override for a canonical source attached to an adopted niche."""
+
+    id: str
+    user_niche_id: str
+    source_id: str
+    enabled: bool | None = None
+    muted: bool = False
+    cadence_override: str | None = None
+    priority_override: int | None = None
+    limit_override: int | None = None
+    options_override: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_niche_id: str,
+        source_id: str,
+        id: str | None = None,
+        enabled: bool | None = None,
+        muted: bool = False,
+        cadence_override: str | None = None,
+        priority_override: int | None = None,
+        limit_override: int | None = None,
+        options_override: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "UserSourcePreference":
+        normalized_id = (id or str(uuid.uuid4())).strip()
+        normalized_user_niche_id = user_niche_id.strip()
+        normalized_source_id = source_id.strip()
+        if not normalized_id:
+            raise ValueError("id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
+        if not normalized_source_id:
+            raise ValueError("source_id is required")
+        if priority_override is not None and priority_override < 1:
+            raise ValueError("priority_override must be at least 1")
+        if limit_override is not None and limit_override < 1:
+            raise ValueError("limit_override must be at least 1")
+        now = datetime.now(tz=UTC)
+        return cls(
+            id=normalized_id,
+            user_niche_id=normalized_user_niche_id,
+            source_id=normalized_source_id,
+            enabled=enabled,
+            muted=muted,
+            cadence_override=cadence_override.strip() if cadence_override else None,
+            priority_override=priority_override,
+            limit_override=limit_override,
+            options_override=options_override or {},
+            created_at=created_at or now,
+            updated_at=updated_at or now,
+        )
+
+    def effective_enabled(self, default_enabled: bool) -> bool:
+        """Resolve nullable user intent against a template default."""
+        return default_enabled if self.enabled is None else self.enabled
+
+
 def _clean_count_map(value: dict[str, int] | None) -> dict[str, int]:
     if not value:
         return {}

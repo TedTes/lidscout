@@ -16,9 +16,12 @@ from application.ports.repositories import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceRepository,
     SourceLocatorRepository,
+    TemplateSourceBindingRepository,
     ThemeRepository,
     UserNicheRepository,
+    UserSourcePreferenceRepository,
 )
 
 __all__ = [
@@ -38,7 +41,10 @@ __all__ = [
     "PostRepository",
     "ScoreRepository",
     "SignalRepository",
+    "SourceRepository",
     "SourceLocatorRepository",
+    "TemplateSourceBindingRepository",
     "ThemeRepository",
     "UserNicheRepository",
+    "UserSourcePreferenceRepository",
 ]

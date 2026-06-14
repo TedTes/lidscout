@@ -7,7 +7,9 @@ from domain.niche import (
     NicheCompany,
     NicheSource,
     NicheSourceRunStats,
+    TemplateSourceBinding,
     UserNiche,
+    UserSourcePreference,
 )
 from domain.agent import (
     AgentAction,
@@ -24,7 +26,7 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import Source, SourceLocator
 from domain.theme import Theme, ThemeFinding
 
 
@@ -366,6 +368,31 @@ class SourceLocatorRepository(Protocol):
         ...
 
 
+class SourceRepository(Protocol):
+    """Persistence boundary for canonical source identities."""
+
+    def save_sources(self, sources: list[Source]) -> int:
+        """Persist canonical sources and return the number saved."""
+        ...
+
+    def get_source(self, source_id: str) -> Source | None:
+        """Load one canonical source by id."""
+        ...
+
+    def get_source_by_identity(self, source_type: str, locator: str) -> Source | None:
+        """Load one canonical source by its unique source_type and locator pair."""
+        ...
+
+    def list_sources(
+        self,
+        *,
+        source_type: str | None = None,
+        source_family: str | None = None,
+    ) -> list[Source]:
+        """Load canonical sources, optionally filtered by type or family."""
+        ...
+
+
 class NicheRepository(Protocol):
     """Persistence boundary for shared operator-curated niches."""
 
@@ -480,6 +507,30 @@ class NicheSourceRepository(Protocol):
         ...
 
 
+class TemplateSourceBindingRepository(Protocol):
+    """Persistence boundary for template-to-source default bindings."""
+
+    def save_template_source_bindings(
+        self,
+        bindings: list[TemplateSourceBinding],
+    ) -> int:
+        """Persist template source bindings and return the number saved."""
+        ...
+
+    def list_template_source_bindings(
+        self,
+        template_niche_id: str,
+        *,
+        default_enabled: bool | None = None,
+    ) -> list[TemplateSourceBinding]:
+        """Load source bindings for a template niche, optionally filtered."""
+        ...
+
+    def delete_template_source_binding(self, binding_id: str) -> bool:
+        """Delete one template source binding and return whether it existed."""
+        ...
+
+
 class UserNicheRepository(Protocol):
     """Persistence boundary for per-user niche adoptions."""
 
@@ -505,4 +556,34 @@ class UserNicheRepository(Protocol):
 
     def delete_user_niche(self, user_niche_id: str) -> bool:
         """Delete one user niche and return whether it existed."""
+        ...
+
+
+class UserSourcePreferenceRepository(Protocol):
+    """Persistence boundary for per-user source preference overrides."""
+
+    def save_user_source_preference(
+        self,
+        preference: UserSourcePreference,
+    ) -> bool:
+        """Persist one user source preference and return whether it was inserted."""
+        ...
+
+    def get_user_source_preference(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSourcePreference | None:
+        """Load one preference by user niche and canonical source."""
+        ...
+
+    def list_user_source_preferences(
+        self,
+        user_niche_id: str,
+    ) -> list[UserSourcePreference]:
+        """Load all source preferences for a user niche."""
+        ...
+
+    def delete_user_source_preference(self, preference_id: str) -> bool:
+        """Delete one user source preference and return whether it existed."""
         ...
