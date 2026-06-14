@@ -10,6 +10,7 @@ from domain.niche import (
     TemplateSourceBinding,
     UserNiche,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 from domain.agent import (
     AgentAction,
@@ -586,4 +587,31 @@ class UserSourcePreferenceRepository(Protocol):
 
     def delete_user_source_preference(self, preference_id: str) -> bool:
         """Delete one user source preference and return whether it existed."""
+        ...
+
+
+class UserSourceRunStatsRepository(Protocol):
+    """Persistence boundary for per-user catalog source runtime stats."""
+
+    def upsert_user_source_run_stats(
+        self,
+        stats: UserSourceRunStats,
+    ) -> bool:
+        """Create or replace cumulative runtime stats for one user source."""
+        ...
+
+    def get_user_source_run_stats(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSourceRunStats | None:
+        """Load cumulative runtime stats for one user source."""
+        ...
+
+    def list_user_source_run_stats(
+        self,
+        user_niche_id: str,
+        source_ids: list[str] | None = None,
+    ) -> list[UserSourceRunStats]:
+        """Load user source stats, optionally limited to source IDs."""
         ...

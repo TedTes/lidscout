@@ -14,6 +14,7 @@ from domain.niche import (
     NicheSourceRunStats,
     TemplateSourceBinding,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 from domain.opportunity import Opportunity
 from domain.post import RawPost
@@ -36,6 +37,7 @@ from infrastructure.db import (
     InMemorySourceLocatorRepository,
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserSourcePreferenceRepository,
+    InMemoryUserSourceRunStatsRepository,
 )
 
 
@@ -376,6 +378,51 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertTrue(repository.delete_user_source_preference("preference-1"))
         self.assertIsNone(
             repository.get_user_source_preference("user-niche-1", "source-1"),
+        )
+
+    def test_user_source_run_stats_repository_persists_stats(self):
+        repository = InMemoryUserSourceRunStatsRepository()
+        stats = UserSourceRunStats.create(
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            template_source_binding_id="binding-1",
+            total_runs=1,
+            success_count=1,
+            posts_fetched_count=10,
+            relevant_posts_count=3,
+            last_status="healthy",
+            rejection_breakdown={"wrong_subject": 2},
+        )
+        other_stats = UserSourceRunStats.create(
+            user_niche_id="user-niche-2",
+            source_id="source-1",
+            total_runs=1,
+        )
+
+        self.assertTrue(repository.upsert_user_source_run_stats(stats))
+        self.assertTrue(repository.upsert_user_source_run_stats(other_stats))
+        self.assertFalse(repository.upsert_user_source_run_stats(stats))
+        self.assertEqual(
+            repository.get_user_source_run_stats("user-niche-1", "source-1"),
+            stats,
+        )
+        self.assertEqual(
+            repository.list_user_source_run_stats("user-niche-1"),
+            [stats],
+        )
+        self.assertEqual(
+            repository.list_user_source_run_stats(
+                "user-niche-1",
+                ["source-1"],
+            ),
+            [stats],
+        )
+        self.assertEqual(
+            repository.list_user_source_run_stats(
+                "user-niche-1",
+                ["missing"],
+            ),
+            [],
         )
 
     @unittest.skip("InMemoryNicheCompanyRepository API changed — save_competitors replaced by save_niche_companies")

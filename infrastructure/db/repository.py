@@ -27,6 +27,7 @@ from application.ports import (
     TemplateSourceBindingRepository,
     ThemeRepository,
     UserSourcePreferenceRepository,
+    UserSourceRunStatsRepository,
 )
 from domain.agent import (
     AgentAction,
@@ -43,7 +44,11 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.niche import TemplateSourceBinding, UserSourcePreference
+from domain.niche import (
+    TemplateSourceBinding,
+    UserSourcePreference,
+    UserSourceRunStats,
+)
 from domain.source import Source, SourceLocator
 from domain.theme import Theme, ThemeFinding
 
@@ -798,6 +803,43 @@ class InMemoryUserSourcePreferenceRepository(UserSourcePreferenceRepository):
 
     def delete_user_source_preference(self, preference_id: str) -> bool:
         return self._preferences.pop(preference_id, None) is not None
+
+
+@dataclass
+class InMemoryUserSourceRunStatsRepository(UserSourceRunStatsRepository):
+    """In-memory user source runtime stats repository."""
+
+    _stats: dict[tuple[str, str], UserSourceRunStats] = field(default_factory=dict)
+
+    def upsert_user_source_run_stats(
+        self,
+        stats: UserSourceRunStats,
+    ) -> bool:
+        key = (stats.user_niche_id, stats.source_id)
+        inserted = key not in self._stats
+        self._stats[key] = stats
+        return inserted
+
+    def get_user_source_run_stats(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSourceRunStats | None:
+        return self._stats.get((user_niche_id, source_id))
+
+    def list_user_source_run_stats(
+        self,
+        user_niche_id: str,
+        source_ids: list[str] | None = None,
+    ) -> list[UserSourceRunStats]:
+        allowed = set(source_ids) if source_ids is not None else None
+        stats = [
+            value
+            for (stats_user_niche_id, stats_source_id), value in self._stats.items()
+            if stats_user_niche_id == user_niche_id
+            and (allowed is None or stats_source_id in allowed)
+        ]
+        return sorted(stats, key=lambda value: value.source_id)
 
 
 class _SQLiteRepository:

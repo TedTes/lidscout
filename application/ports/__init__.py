@@ -22,6 +22,7 @@ from application.ports.repositories import (
     ThemeRepository,
     UserNicheRepository,
     UserSourcePreferenceRepository,
+    UserSourceRunStatsRepository,
 )
 
 __all__ = [
@@ -47,4 +48,5 @@ __all__ = [
     "ThemeRepository",
     "UserNicheRepository",
     "UserSourcePreferenceRepository",
+    "UserSourceRunStatsRepository",
 ]

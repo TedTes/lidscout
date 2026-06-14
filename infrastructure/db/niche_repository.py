@@ -12,6 +12,7 @@ from application.ports import (
     TemplateSourceBindingRepository,
     UserNicheRepository,
     UserSourcePreferenceRepository,
+    UserSourceRunStatsRepository,
 )
 from domain.niche import (
     Niche,
@@ -21,6 +22,7 @@ from domain.niche import (
     TemplateSourceBinding,
     UserNiche,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 from infrastructure.db.repository import _PostgresRepository, _rowcount
 
@@ -633,6 +635,139 @@ class PostgresUserSourcePreferenceRepository(
         return _rowcount(cursor) > 0
 
 
+class PostgresUserSourceRunStatsRepository(
+    _PostgresRepository,
+    UserSourceRunStatsRepository,
+):
+    """Postgres-backed user source runtime stats repository."""
+
+    def upsert_user_source_run_stats(
+        self,
+        stats: UserSourceRunStats,
+    ) -> bool:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO user_source_run_stats (
+                user_niche_id, source_id, template_source_binding_id, total_runs,
+                success_count, failure_count, consecutive_failures,
+                posts_fetched_count, relevant_posts_count, rule_filtered_count,
+                llm_filtered_count, relevance_failed_count,
+                extracted_signals_count, gap_count, last_status, last_error,
+                last_fetched_count, last_relevant_count, last_rule_filtered_count,
+                last_llm_filtered_count, last_relevance_failed_count,
+                last_extracted_count, last_gap_count, rejection_breakdown,
+                last_rejection_breakdown, last_scanned_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s
+            )
+            ON CONFLICT (user_niche_id, source_id) DO UPDATE SET
+                template_source_binding_id = EXCLUDED.template_source_binding_id,
+                total_runs = EXCLUDED.total_runs,
+                success_count = EXCLUDED.success_count,
+                failure_count = EXCLUDED.failure_count,
+                consecutive_failures = EXCLUDED.consecutive_failures,
+                posts_fetched_count = EXCLUDED.posts_fetched_count,
+                relevant_posts_count = EXCLUDED.relevant_posts_count,
+                rule_filtered_count = EXCLUDED.rule_filtered_count,
+                llm_filtered_count = EXCLUDED.llm_filtered_count,
+                relevance_failed_count = EXCLUDED.relevance_failed_count,
+                extracted_signals_count = EXCLUDED.extracted_signals_count,
+                gap_count = EXCLUDED.gap_count,
+                last_status = EXCLUDED.last_status,
+                last_error = EXCLUDED.last_error,
+                last_fetched_count = EXCLUDED.last_fetched_count,
+                last_relevant_count = EXCLUDED.last_relevant_count,
+                last_rule_filtered_count = EXCLUDED.last_rule_filtered_count,
+                last_llm_filtered_count = EXCLUDED.last_llm_filtered_count,
+                last_relevance_failed_count = EXCLUDED.last_relevance_failed_count,
+                last_extracted_count = EXCLUDED.last_extracted_count,
+                last_gap_count = EXCLUDED.last_gap_count,
+                rejection_breakdown = EXCLUDED.rejection_breakdown,
+                last_rejection_breakdown = EXCLUDED.last_rejection_breakdown,
+                last_scanned_at = EXCLUDED.last_scanned_at,
+                updated_at = EXCLUDED.updated_at
+            """,
+            (
+                stats.user_niche_id,
+                stats.source_id,
+                stats.template_source_binding_id,
+                stats.total_runs,
+                stats.success_count,
+                stats.failure_count,
+                stats.consecutive_failures,
+                stats.posts_fetched_count,
+                stats.relevant_posts_count,
+                stats.rule_filtered_count,
+                stats.llm_filtered_count,
+                stats.relevance_failed_count,
+                stats.extracted_signals_count,
+                stats.gap_count,
+                stats.last_status,
+                stats.last_error,
+                stats.last_fetched_count,
+                stats.last_relevant_count,
+                stats.last_rule_filtered_count,
+                stats.last_llm_filtered_count,
+                stats.last_relevance_failed_count,
+                stats.last_extracted_count,
+                stats.last_gap_count,
+                json.dumps(stats.rejection_breakdown),
+                json.dumps(stats.last_rejection_breakdown),
+                stats.last_scanned_at,
+                stats.updated_at,
+            ),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+    def get_user_source_run_stats(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSourceRunStats | None:
+        row = self.connection.execute(
+            """
+            SELECT *
+              FROM user_source_run_stats
+             WHERE user_niche_id = %s AND source_id = %s
+            """,
+            (user_niche_id, source_id),
+        ).fetchone()
+        return _user_source_run_stats_from_row(row) if row else None
+
+    def list_user_source_run_stats(
+        self,
+        user_niche_id: str,
+        source_ids: list[str] | None = None,
+    ) -> list[UserSourceRunStats]:
+        if source_ids == []:
+            return []
+        if source_ids is None:
+            rows = self.connection.execute(
+                """
+                SELECT *
+                  FROM user_source_run_stats
+                 WHERE user_niche_id = %s
+                 ORDER BY updated_at DESC
+                """,
+                (user_niche_id,),
+            ).fetchall()
+        else:
+            placeholders = ", ".join(["%s"] * len(source_ids))
+            rows = self.connection.execute(
+                f"""
+                SELECT *
+                  FROM user_source_run_stats
+                 WHERE user_niche_id = %s
+                   AND source_id IN ({placeholders})
+                 ORDER BY updated_at DESC
+                """,
+                (user_niche_id, *source_ids),
+            ).fetchall()
+        return [_user_source_run_stats_from_row(row) for row in rows]
+
+
 # ── Row deserializers ─────────────────────────────────────────────────────────
 
 def _json_obj(value: Any) -> dict[str, Any]:
@@ -728,6 +863,48 @@ def _template_source_binding_from_row(row: dict[str, Any]) -> TemplateSourceBind
 def _niche_source_run_stats_from_row(row: dict[str, Any]) -> NicheSourceRunStats:
     return NicheSourceRunStats.create(
         niche_source_id=str(row["niche_source_id"]),
+        total_runs=int(row.get("total_runs", 0)),
+        success_count=int(row.get("success_count", 0)),
+        failure_count=int(row.get("failure_count", 0)),
+        consecutive_failures=int(row.get("consecutive_failures", 0)),
+        posts_fetched_count=int(row.get("posts_fetched_count", 0)),
+        relevant_posts_count=int(row.get("relevant_posts_count", 0)),
+        rule_filtered_count=int(row.get("rule_filtered_count", 0)),
+        llm_filtered_count=int(row.get("llm_filtered_count", 0)),
+        relevance_failed_count=int(row.get("relevance_failed_count", 0)),
+        extracted_signals_count=int(row.get("extracted_signals_count", 0)),
+        gap_count=int(row.get("gap_count", 0)),
+        last_status=row.get("last_status", "unknown"),
+        last_error=row.get("last_error"),
+        last_fetched_count=int(row.get("last_fetched_count", 0)),
+        last_relevant_count=int(row.get("last_relevant_count", 0)),
+        last_rule_filtered_count=int(row.get("last_rule_filtered_count", 0)),
+        last_llm_filtered_count=int(row.get("last_llm_filtered_count", 0)),
+        last_relevance_failed_count=int(row.get("last_relevance_failed_count", 0)),
+        last_extracted_count=int(row.get("last_extracted_count", 0)),
+        last_gap_count=int(row.get("last_gap_count", 0)),
+        rejection_breakdown={
+            key: int(value)
+            for key, value in _json_obj(row.get("rejection_breakdown")).items()
+        },
+        last_rejection_breakdown={
+            key: int(value)
+            for key, value in _json_obj(row.get("last_rejection_breakdown")).items()
+        },
+        last_scanned_at=row.get("last_scanned_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+def _user_source_run_stats_from_row(row: dict[str, Any]) -> UserSourceRunStats:
+    return UserSourceRunStats.create(
+        user_niche_id=str(row["user_niche_id"]),
+        source_id=str(row["source_id"]),
+        template_source_binding_id=(
+            str(row["template_source_binding_id"])
+            if row.get("template_source_binding_id")
+            else None
+        ),
         total_runs=int(row.get("total_runs", 0)),
         success_count=int(row.get("success_count", 0)),
         failure_count=int(row.get("failure_count", 0)),

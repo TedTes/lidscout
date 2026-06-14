@@ -13,6 +13,7 @@ from domain.niche import (
     NicheSourceRunStats,
     TemplateSourceBinding,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
@@ -39,6 +40,7 @@ from infrastructure.db import (
     PostgresTemplateSourceBindingRepository,
     PostgresThemeRepository,
     PostgresUserSourcePreferenceRepository,
+    PostgresUserSourceRunStatsRepository,
     connect_postgres,
 )
 
@@ -743,6 +745,90 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(connection.calls[2][1], ("user-niche-1",))
         self.assertEqual(connection.calls[3][1], ("preference-1",))
         self.assertEqual(connection.commit_count, 2)
+
+    def test_user_source_run_stats_repository_upserts_and_loads_stats(self):
+        scanned_at = datetime(2026, 6, 13, 12, 0, tzinfo=UTC)
+        updated_at = datetime(2026, 6, 13, 12, 1, tzinfo=UTC)
+        stats = UserSourceRunStats.create(
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            template_source_binding_id="binding-1",
+            total_runs=2,
+            success_count=1,
+            failure_count=1,
+            consecutive_failures=1,
+            posts_fetched_count=30,
+            relevant_posts_count=6,
+            rule_filtered_count=12,
+            llm_filtered_count=5,
+            relevance_failed_count=1,
+            extracted_signals_count=3,
+            gap_count=1,
+            last_status="failing",
+            last_error="blocked",
+            last_rule_filtered_count=4,
+            last_llm_filtered_count=2,
+            last_relevance_failed_count=1,
+            rejection_breakdown={"wrong_subject": 7, "tutorial_or_template": 5},
+            last_rejection_breakdown={"wrong_subject": 3, "tutorial_or_template": 2},
+            last_scanned_at=scanned_at,
+            updated_at=updated_at,
+        )
+        row = {
+            "user_niche_id": "user-niche-1",
+            "source_id": "source-1",
+            "template_source_binding_id": "binding-1",
+            "total_runs": 2,
+            "success_count": 1,
+            "failure_count": 1,
+            "consecutive_failures": 1,
+            "posts_fetched_count": 30,
+            "relevant_posts_count": 6,
+            "rule_filtered_count": 12,
+            "llm_filtered_count": 5,
+            "relevance_failed_count": 1,
+            "extracted_signals_count": 3,
+            "gap_count": 1,
+            "last_status": "failing",
+            "last_error": "blocked",
+            "last_fetched_count": 0,
+            "last_relevant_count": 0,
+            "last_rule_filtered_count": 4,
+            "last_llm_filtered_count": 2,
+            "last_relevance_failed_count": 1,
+            "last_extracted_count": 0,
+            "last_gap_count": 0,
+            "rejection_breakdown": {"wrong_subject": 7, "tutorial_or_template": 5},
+            "last_rejection_breakdown": {"wrong_subject": 3, "tutorial_or_template": 2},
+            "last_scanned_at": scanned_at,
+            "updated_at": updated_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresUserSourceRunStatsRepository(connection=connection)
+
+        self.assertTrue(repository.upsert_user_source_run_stats(stats))
+        self.assertEqual(
+            repository.get_user_source_run_stats("user-niche-1", "source-1"),
+            stats,
+        )
+        self.assertEqual(
+            repository.list_user_source_run_stats("user-niche-1", ["source-1"]),
+            [stats],
+        )
+        self.assertIn("INSERT INTO user_source_run_stats", connection.calls[0][0])
+        self.assertIn("ON CONFLICT (user_niche_id, source_id)", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1][0], "user-niche-1")
+        self.assertEqual(connection.calls[0][1][1], "source-1")
+        self.assertEqual(connection.calls[0][1][2], "binding-1")
+        self.assertEqual(connection.calls[1][1], ("user-niche-1", "source-1"))
+        self.assertEqual(connection.calls[2][1], ("user-niche-1", "source-1"))
+        self.assertEqual(connection.commit_count, 1)
 
     @unittest.skip("PostgresNicheCompanyRepository API changed — save_competitors replaced by save_niche_companies")
     def test_competitor_repository_saves_and_loads_competitors(self):

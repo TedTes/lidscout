@@ -7,6 +7,7 @@ from domain.niche.models import (
     TemplateSourceBinding,
     UserNiche,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "TemplateSourceBinding",
     "UserNiche",
     "UserSourcePreference",
+    "UserSourceRunStats",
 ]

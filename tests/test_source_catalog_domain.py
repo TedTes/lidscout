@@ -1,6 +1,10 @@
 import pytest
 
-from domain.niche import TemplateSourceBinding, UserSourcePreference
+from domain.niche import (
+    TemplateSourceBinding,
+    UserSourcePreference,
+    UserSourceRunStats,
+)
 from domain.source import Source
 
 
@@ -92,4 +96,30 @@ def test_user_source_preference_rejects_invalid_overrides() -> None:
             user_niche_id="user-niche-1",
             source_id="source-1",
             limit_override=0,
+        )
+
+
+def test_user_source_run_stats_validates_and_cleans_counts() -> None:
+    stats = UserSourceRunStats.create(
+        user_niche_id=" user-niche-1 ",
+        source_id=" source-1 ",
+        template_source_binding_id=" binding-1 ",
+        total_runs=1,
+        success_count=1,
+        last_status="healthy",
+        rejection_breakdown={" wrong_subject ": 2},
+    )
+
+    assert stats.user_niche_id == "user-niche-1"
+    assert stats.source_id == "source-1"
+    assert stats.template_source_binding_id == "binding-1"
+    assert stats.rejection_breakdown == {"wrong_subject": 2}
+
+
+def test_user_source_run_stats_rejects_invalid_counts() -> None:
+    with pytest.raises(ValueError, match="total_runs must be non-negative"):
+        UserSourceRunStats.create(
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            total_runs=-1,
         )

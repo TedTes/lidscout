@@ -6,6 +6,7 @@ from infrastructure.db.niche_repository import (
     PostgresTemplateSourceBindingRepository,
     PostgresUserNicheRepository,
     PostgresUserSourcePreferenceRepository,
+    PostgresUserSourceRunStatsRepository,
 )
 from infrastructure.db.repository import (
     InMemoryAgentActionRepository,
@@ -29,6 +30,7 @@ from infrastructure.db.repository import (
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
     InMemoryUserSourcePreferenceRepository,
+    InMemoryUserSourceRunStatsRepository,
     PostgresAgentActivityRepository,
     PostgresAgentAlertRepository,
     PostgresAgentFeedbackRepository,
@@ -80,6 +82,7 @@ __all__ = [
     "InMemorySourceLocatorRepository",
     "InMemoryTemplateSourceBindingRepository",
     "InMemoryUserSourcePreferenceRepository",
+    "InMemoryUserSourceRunStatsRepository",
     "PostgresClusterRepository",
     "PostgresFindingRepository",
     "PostgresAgentActionRepository",
@@ -102,6 +105,7 @@ __all__ = [
     "PostgresThemeRepository",
     "PostgresUserNicheRepository",
     "PostgresUserSourcePreferenceRepository",
+    "PostgresUserSourceRunStatsRepository",
     "SQLiteClusterRepository",
     "SQLiteAgentActivityRepository",
     "SQLiteAgentAlertRepository",
