@@ -2,6 +2,7 @@ import pytest
 
 from domain.niche import (
     TemplateSourceBinding,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -88,6 +89,43 @@ def test_user_source_preference_resolves_nullable_enabled() -> None:
     assert inherited.effective_enabled(default_enabled=True) is True
     assert inherited.effective_enabled(default_enabled=False) is False
     assert disabled.effective_enabled(default_enabled=True) is False
+
+
+def test_user_source_validates_and_resolves_active_state() -> None:
+    source = UserSource.create(
+        id=" user-source-1 ",
+        user_niche_id=" user-niche-1 ",
+        source_id=" source-1 ",
+        template_source_binding_id=" binding-1 ",
+        enabled=True,
+        muted=True,
+        cadence=" daily ",
+        priority=2,
+        limit=25,
+    )
+
+    assert source.id == "user-source-1"
+    assert source.user_niche_id == "user-niche-1"
+    assert source.source_id == "source-1"
+    assert source.template_source_binding_id == "binding-1"
+    assert source.cadence == "daily"
+    assert source.active is False
+
+
+def test_user_source_rejects_invalid_limits() -> None:
+    with pytest.raises(ValueError, match="priority must be at least 1"):
+        UserSource.create(
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            priority=0,
+        )
+
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        UserSource.create(
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            limit=0,
+        )
 
 
 def test_user_source_preference_rejects_invalid_overrides() -> None:

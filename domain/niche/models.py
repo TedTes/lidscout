@@ -457,6 +457,79 @@ class TemplateSourceBinding:
 
 
 @dataclass(frozen=True)
+class UserSource:
+    """Concrete source binding for one user's adopted niche."""
+
+    id: str
+    user_niche_id: str
+    source_id: str
+    template_source_binding_id: str | None = None
+    enabled: bool = True
+    muted: bool = False
+    cadence: str | None = None
+    priority: int | None = None
+    limit: int | None = None
+    options: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_niche_id: str,
+        source_id: str,
+        id: str | None = None,
+        template_source_binding_id: str | None = None,
+        enabled: bool = True,
+        muted: bool = False,
+        cadence: str | None = None,
+        priority: int | None = None,
+        limit: int | None = None,
+        options: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ) -> "UserSource":
+        normalized_id = (id or str(uuid.uuid4())).strip()
+        normalized_user_niche_id = user_niche_id.strip()
+        normalized_source_id = source_id.strip()
+        if not normalized_id:
+            raise ValueError("id is required")
+        if not normalized_user_niche_id:
+            raise ValueError("user_niche_id is required")
+        if not normalized_source_id:
+            raise ValueError("source_id is required")
+        if priority is not None and priority < 1:
+            raise ValueError("priority must be at least 1")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be at least 1")
+        now = datetime.now(tz=UTC)
+        return cls(
+            id=normalized_id,
+            user_niche_id=normalized_user_niche_id,
+            source_id=normalized_source_id,
+            template_source_binding_id=(
+                template_source_binding_id.strip()
+                if template_source_binding_id
+                else None
+            ),
+            enabled=enabled,
+            muted=muted,
+            cadence=cadence.strip() if cadence else None,
+            priority=priority,
+            limit=limit,
+            options=options or {},
+            created_at=created_at or now,
+            updated_at=updated_at or now,
+        )
+
+    @property
+    def active(self) -> bool:
+        """Whether the source should be scanned for this user niche."""
+        return self.enabled and not self.muted
+
+
+@dataclass(frozen=True)
 class UserSourcePreference:
     """Per-user override for a canonical source attached to an adopted niche."""
 

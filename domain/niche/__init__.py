@@ -6,6 +6,7 @@ from domain.niche.models import (
     NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "NicheSourceRunStats",
     "TemplateSourceBinding",
     "UserNiche",
+    "UserSource",
     "UserSourcePreference",
     "UserSourceRunStats",
 ]

@@ -9,6 +9,7 @@ from domain.niche import (
     NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -557,6 +558,36 @@ class UserNicheRepository(Protocol):
 
     def delete_user_niche(self, user_niche_id: str) -> bool:
         """Delete one user niche and return whether it existed."""
+        ...
+
+
+class UserSourceRepository(Protocol):
+    """Persistence boundary for concrete per-user source bindings."""
+
+    def save_user_sources(self, sources: list[UserSource]) -> int:
+        """Persist user source bindings and return the number saved."""
+        ...
+
+    def get_user_source(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSource | None:
+        """Load one user source by user niche and canonical source."""
+        ...
+
+    def list_user_sources(
+        self,
+        user_niche_id: str,
+        *,
+        enabled: bool | None = None,
+        include_muted: bool = True,
+    ) -> list[UserSource]:
+        """Load source bindings for one user niche."""
+        ...
+
+    def delete_user_source(self, user_source_id: str) -> bool:
+        """Delete one user source binding and return whether it existed."""
         ...
 
 
