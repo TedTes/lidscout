@@ -46,18 +46,6 @@ class ApiDependencyTests(unittest.TestCase):
         )
 
         with ExitStack() as stack:
-            post_repository = stack.enter_context(
-                patch("api.dependencies.PostgresPostRepository")
-            )
-            signal_repository = stack.enter_context(
-                patch("api.dependencies.PostgresSignalRepository")
-            )
-            score_repository = stack.enter_context(
-                patch("api.dependencies.PostgresScoreRepository")
-            )
-            cluster_repository = stack.enter_context(
-                patch("api.dependencies.PostgresClusterRepository")
-            )
             opportunity_repository = stack.enter_context(
                 patch("api.dependencies.PostgresOpportunityRepository")
             )
@@ -97,6 +85,15 @@ class ApiDependencyTests(unittest.TestCase):
             niche_source_repository = stack.enter_context(
                 patch("api.dependencies.PostgresNicheSourceRepository")
             )
+            source_repository = stack.enter_context(
+                patch("api.dependencies.PostgresSourceRepository")
+            )
+            template_source_binding_repository = stack.enter_context(
+                patch("api.dependencies.PostgresTemplateSourceBindingRepository")
+            )
+            user_source_preference_repository = stack.enter_context(
+                patch("api.dependencies.PostgresUserSourcePreferenceRepository")
+            )
             user_niche_repository = stack.enter_context(
                 patch("api.dependencies.PostgresUserNicheRepository")
             )
@@ -123,10 +120,6 @@ class ApiDependencyTests(unittest.TestCase):
 
         connect_postgres.assert_called_once_with(database_url)
         connection = connect_postgres.return_value
-        post_repository.assert_called_once_with(connection=connection)
-        signal_repository.assert_called_once_with(connection=connection)
-        score_repository.assert_called_once_with(connection=connection)
-        cluster_repository.assert_called_once_with(connection=connection)
         opportunity_repository.assert_called_once_with(connection=connection)
         finding_repository.assert_called_once_with(connection=connection)
         theme_repository.assert_called_once_with(connection=connection)
@@ -140,6 +133,11 @@ class ApiDependencyTests(unittest.TestCase):
         niche_repository.assert_called_once_with(connection=connection)
         niche_company_repository.assert_called_once_with(connection=connection)
         niche_source_repository.assert_called_once_with(connection=connection)
+        source_repository.assert_called_once_with(connection=connection)
+        template_source_binding_repository.assert_called_once_with(
+            connection=connection,
+        )
+        user_source_preference_repository.assert_called_once_with(connection=connection)
         user_niche_repository.assert_called_once_with(connection=connection)
         self.assertEqual(llm_client.call_count, 2)
         llm_client.assert_any_call(api_key="llm-key", model="response-model")
@@ -156,10 +154,6 @@ class ApiDependencyTests(unittest.TestCase):
 
         self.assertIn(json_adapter.return_value, dependencies.source_adapters)
         self.assertIn(static_adapter.return_value, dependencies.source_adapters)
-        self.assertIs(dependencies.post_repository, post_repository.return_value)
-        self.assertIs(dependencies.signal_repository, signal_repository.return_value)
-        self.assertIs(dependencies.score_repository, score_repository.return_value)
-        self.assertIs(dependencies.cluster_repository, cluster_repository.return_value)
         self.assertIs(
             dependencies.opportunity_repository,
             opportunity_repository.return_value,
@@ -190,9 +184,27 @@ class ApiDependencyTests(unittest.TestCase):
             dependencies.agent_follow_up_repository,
             agent_follow_up_repository.return_value,
         )
-        self.assertIs(dependencies.niche_company_repository, niche_company_repository.return_value)
-        self.assertIs(dependencies.user_niche_repository, user_niche_repository.return_value)
-        self.assertIs(dependencies.niche_source_repository, niche_source_repository.return_value)
+        self.assertIs(
+            dependencies.niche_company_repository,
+            niche_company_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.user_niche_repository,
+            user_niche_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.niche_source_repository,
+            niche_source_repository.return_value,
+        )
+        self.assertIs(dependencies.source_repository, source_repository.return_value)
+        self.assertIs(
+            dependencies.template_source_binding_repository,
+            template_source_binding_repository.return_value,
+        )
+        self.assertIs(
+            dependencies.user_source_preference_repository,
+            user_source_preference_repository.return_value,
+        )
         self.assertIs(dependencies.llm_client, llm_client.return_value)
         self.assertIs(dependencies.relevance_llm_client, llm_client.return_value)
         self.assertIs(dependencies.embedding_client, embedding_client.return_value)
@@ -209,9 +221,19 @@ class ApiDependencyTests(unittest.TestCase):
             )
 
         connect_postgres.assert_not_called()
-        self.assertIs(dependencies.post_repository.connection, supplied_connection)
-        self.assertIs(dependencies.signal_repository.connection, supplied_connection)
-        self.assertIs(dependencies.niche_source_repository.connection, supplied_connection)
+        self.assertIs(
+            dependencies.niche_source_repository.connection,
+            supplied_connection,
+        )
+        self.assertIs(dependencies.source_repository.connection, supplied_connection)
+        self.assertIs(
+            dependencies.template_source_binding_repository.connection,
+            supplied_connection,
+        )
+        self.assertIs(
+            dependencies.user_source_preference_repository.connection,
+            supplied_connection,
+        )
         self.assertIs(dependencies.finding_repository.connection, supplied_connection)
         self.assertIs(dependencies.theme_repository.connection, supplied_connection)
 
@@ -223,10 +245,6 @@ class ApiDependencyTests(unittest.TestCase):
 
         with ExitStack() as stack:
             for target in [
-                "api.dependencies.PostgresPostRepository",
-                "api.dependencies.PostgresSignalRepository",
-                "api.dependencies.PostgresScoreRepository",
-                "api.dependencies.PostgresClusterRepository",
                 "api.dependencies.PostgresOpportunityRepository",
                 "api.dependencies.PostgresFindingRepository",
                 "api.dependencies.PostgresThemeRepository",
@@ -240,6 +258,9 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresNicheRepository",
                 "api.dependencies.PostgresNicheCompanyRepository",
                 "api.dependencies.PostgresNicheSourceRepository",
+                "api.dependencies.PostgresSourceRepository",
+                "api.dependencies.PostgresTemplateSourceBindingRepository",
+                "api.dependencies.PostgresUserSourcePreferenceRepository",
                 "api.dependencies.PostgresUserNicheRepository",
                 "api.dependencies.JsonUrlAdapter",
                 "api.dependencies.StaticUrlAdapter",

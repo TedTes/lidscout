@@ -42,8 +42,11 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceRepository,
     ThemeRepository,
+    TemplateSourceBindingRepository,
     UserNicheRepository,
+    UserSourcePreferenceRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_quality import source_quality_status, source_scan_eligibility
@@ -86,7 +89,10 @@ from infrastructure.db import (
     InMemoryPipelineRunMetricsRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceRepository,
+    InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
+    InMemoryUserSourcePreferenceRepository,
 )
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -252,6 +258,15 @@ class SignalApiDependencies:
     )
     niche_source_repository: NicheSourceRepository = field(
         default_factory=InMemoryNicheSourceRepository
+    )
+    source_repository: SourceRepository = field(
+        default_factory=InMemorySourceRepository
+    )
+    template_source_binding_repository: TemplateSourceBindingRepository = field(
+        default_factory=InMemoryTemplateSourceBindingRepository
+    )
+    user_source_preference_repository: UserSourcePreferenceRepository = field(
+        default_factory=InMemoryUserSourcePreferenceRepository
     )
     user_niche_repository: UserNicheRepository = field(
         default_factory=InMemoryUserNicheRepository

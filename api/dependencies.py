@@ -14,8 +14,11 @@ from infrastructure.db import (
     PostgresNicheSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
+    PostgresSourceRepository,
+    PostgresTemplateSourceBindingRepository,
     PostgresThemeRepository,
     PostgresUserNicheRepository,
+    PostgresUserSourcePreferenceRepository,
     connect_postgres,
 )
 from infrastructure.email import EmailClient, ResendEmailNotifier
@@ -60,6 +63,13 @@ def build_signal_api_dependencies(
         niche_repository=PostgresNicheRepository(connection=connection),
         niche_company_repository=PostgresNicheCompanyRepository(connection=connection),
         niche_source_repository=PostgresNicheSourceRepository(connection=connection),
+        source_repository=PostgresSourceRepository(connection=connection),
+        template_source_binding_repository=PostgresTemplateSourceBindingRepository(
+            connection=connection,
+        ),
+        user_source_preference_repository=PostgresUserSourcePreferenceRepository(
+            connection=connection,
+        ),
         user_niche_repository=PostgresUserNicheRepository(connection=connection),
         source_adapters=[
             *(_reddit_adapter(app_config) or []),
