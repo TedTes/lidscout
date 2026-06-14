@@ -6,9 +6,15 @@ from domain.agent import AgentPreferences
 from domain.competitor import Competitor
 from domain.finding import Finding
 from domain.market import Market
-from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
+from domain.niche import (
+    NicheSource,
+    NicheSourceRunStats,
+    TemplateSourceBinding,
+    UserNiche,
+    UserSourcePreference,
+)
 from domain.post import RawPost
-from domain.source import MonitoredSource, SourceInput
+from domain.source import MonitoredSource, Source, SourceInput
 from domain.theme import Theme, ThemeFinding
 from application.ingestion import SourceFetchDetail
 from infrastructure.db import (
@@ -18,6 +24,9 @@ from infrastructure.db import (
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
     InMemoryNicheSourceRepository,
+    InMemorySourceRepository,
+    InMemoryTemplateSourceBindingRepository,
+    InMemoryUserSourcePreferenceRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -560,6 +569,100 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.fetch_failed_count, 0)
         self.assertEqual(result.no_signal_count, 1)
+
+    def test_runs_pipeline_from_catalog_sources(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        source_repository = InMemorySourceRepository()
+        source_repository.save_sources(
+            [
+                Source.create(
+                    id="source-1",
+                    locator="https://example.com/reviews",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
+                ),
+                Source.create(
+                    id="source-2",
+                    locator="https://example.com/disabled",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
+                ),
+            ]
+        )
+        template_source_binding_repository = InMemoryTemplateSourceBindingRepository()
+        template_source_binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-1",
+                    template_niche_id="niche-1",
+                    source_id="source-1",
+                    default_limit=1,
+                    tier=1,
+                    signal_quality_score=0.9,
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-2",
+                    template_niche_id="niche-1",
+                    source_id="source-2",
+                    default_enabled=True,
+                ),
+            ]
+        )
+        user_source_preference_repository = InMemoryUserSourcePreferenceRepository()
+        user_source_preference_repository.save_user_source_preference(
+            UserSourcePreference.create(
+                user_niche_id="market-1",
+                source_id="source-2",
+                enabled=False,
+            )
+        )
+        niche_source_repository = InMemoryNicheSourceRepository()
+        llm_client = SequentialLLMClient(
+            [
+                """
+                {
+                  "has_signal": false,
+                  "is_about_competitor": false,
+                  "competitor_match_reason": null,
+                  "signal": null
+                }
+                """
+            ]
+        )
+        config = PipelineConfig(
+            source_repository=source_repository,
+            template_source_binding_repository=template_source_binding_repository,
+            user_source_preference_repository=user_source_preference_repository,
+            niche_source_repository=niche_source_repository,
+            user_niche_repository=user_niche_repository,
+            llm_client=llm_client,
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[FakeSourceAdapter()],
+            user_niche_id="market-1",
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.fetch_failed_count, 0)
+        self.assertEqual(result.no_signal_count, 1)
+        self.assertIsNone(
+            niche_source_repository.get_niche_source_run_stats("binding-1")
+        )
 
     @unittest.skip("PipelineConfig API changed — source_health_repository/monitored_source_repository removed")
     def test_runs_pipeline_from_enabled_monitored_sources(self):

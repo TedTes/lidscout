@@ -1712,6 +1712,13 @@ async def run_pipeline(
             agent_activity_repository=dependencies.agent_activity_repository,
             agent_alert_repository=dependencies.agent_alert_repository,
             niche_source_repository=dependencies.niche_source_repository,
+            source_repository=dependencies.source_repository,
+            template_source_binding_repository=(
+                dependencies.template_source_binding_repository
+            ),
+            user_source_preference_repository=(
+                dependencies.user_source_preference_repository
+            ),
             user_niche_repository=dependencies.user_niche_repository,
             llm_client=dependencies.llm_client,
             relevance_llm_client=dependencies.relevance_llm_client,
