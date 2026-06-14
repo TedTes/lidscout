@@ -155,7 +155,14 @@ function TemplatePickerStep({
   }, []);
 
   const existingNames = useMemo(
-    () => new Set(existingMarkets.map(market => normalize(market.name))),
+    () => new Set(existingMarkets.flatMap(market => [
+      normalize(market.name),
+      normalize(market.display_label),
+    ]).filter(Boolean)),
+    [existingMarkets],
+  );
+  const existingTemplateIds = useMemo(
+    () => new Set(existingMarkets.map(market => market.template_niche_id).filter(Boolean)),
     [existingMarkets],
   );
 
@@ -163,14 +170,16 @@ function TemplatePickerStep({
     () => templates.map(template => ({
       template,
       category: categoryForTemplate(template),
-      alreadyAdded: existingNames.has(normalize(template.name)),
-    })),
-    [existingNames, templates],
+    })).filter(({ template }) =>
+      !existingTemplateIds.has(template.id)
+      && !existingNames.has(normalize(template.name))
+    ),
+    [existingNames, existingTemplateIds, templates],
   );
 
   const counts = useMemo(() => {
     const next: Record<CategoryFilter, number> = {
-      all: templates.length,
+      all: templatesWithCategory.length,
       devtools: 0,
       data: 0,
       vertical_saas: 0,
@@ -180,7 +189,7 @@ function TemplatePickerStep({
     };
     for (const item of templatesWithCategory) next[item.category] += 1;
     return next;
-  }, [templates.length, templatesWithCategory]);
+  }, [templatesWithCategory]);
 
   const filtered = useMemo(() => {
     const normalizedQuery = normalize(query);
@@ -194,10 +203,8 @@ function TemplatePickerStep({
         template.sourceFamilies.join(' '),
       ].join(' '));
       return haystack.includes(normalizedQuery);
-    }).sort((a, b) => Number(a.alreadyAdded) - Number(b.alreadyAdded));
+    });
   }, [activeCategory, query, templatesWithCategory]);
-
-  const selectableFiltered = filtered.filter(item => !item.alreadyAdded);
 
   // Reset focused index when results change
   useEffect(() => { setFocusedIndex(0); }, [query, activeCategory]);
@@ -213,13 +220,13 @@ function TemplatePickerStep({
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setFocusedIndex(i => Math.min(i + 1, selectableFiltered.length - 1));
+      setFocusedIndex(i => filtered.length === 0 ? 0 : Math.min(i + 1, filtered.length - 1));
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       setFocusedIndex(i => Math.max(i - 1, 0));
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      const target = selectableFiltered[focusedIndex];
+      const target = filtered[focusedIndex];
       if (target) onSelect(target.template);
     }
   };
@@ -276,12 +283,12 @@ function TemplatePickerStep({
         {!loading && filtered.length === 0 && (
           <div className="px-8 py-12 text-sm text-slate-500">No curated markets match that search.</div>
         )}
-        {!loading && filtered.map(({ template, category, alreadyAdded }) => {
+        {!loading && filtered.map(({ template, category }) => {
           const accessLabel = sourceAccessLabel(template);
           const creating = creatingTemplateId === template.id;
-          const disabled = alreadyAdded || creatingTemplateId !== null;
-          const selectableIdx = selectableFiltered.findIndex(s => s.template.id === template.id);
-          const isFocused = !alreadyAdded && selectableIdx === focusedIndex;
+          const disabled = creatingTemplateId !== null;
+          const selectableIdx = filtered.findIndex(s => s.template.id === template.id);
+          const isFocused = selectableIdx === focusedIndex;
           return (
             <button
               key={template.id}
@@ -289,11 +296,9 @@ function TemplatePickerStep({
               data-picker-row=""
               disabled={disabled}
               onClick={() => onSelect(template)}
-              onMouseEnter={() => { if (!alreadyAdded) setFocusedIndex(selectableIdx); }}
+              onMouseEnter={() => setFocusedIndex(selectableIdx)}
               className={`group grid w-full grid-cols-[minmax(0,1fr)_auto] gap-5 border-b border-white/10 px-8 py-5 text-left transition ${
-                alreadyAdded
-                  ? 'cursor-default opacity-45'
-                  : isFocused
+                isFocused
                   ? 'bg-white/[0.05]'
                   : 'hover:bg-white/[0.035]'
               }`}
@@ -330,19 +335,13 @@ function TemplatePickerStep({
                   <span className="rounded-full bg-black/20 px-3 py-1 text-xs font-semibold text-slate-400">
                     {CATEGORY_LABELS[category]}
                   </span>
-                  {alreadyAdded ? (
-                    <span className="rounded-full bg-black/20 px-3 py-1 text-xs font-semibold text-slate-500">
-                      Already added
-                    </span>
-                  ) : (
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      accessLabel === 'Proxy required'
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {accessLabel}
-                    </span>
-                  )}
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    accessLabel === 'Proxy required'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {accessLabel}
+                  </span>
                 </div>
                 {creating && (
                   <span className="text-xs font-semibold text-violet-400">Adding...</span>

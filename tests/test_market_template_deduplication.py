@@ -8,6 +8,7 @@ from api.routes.signals import (
     apply_template,
     create_market,
     list_markets,
+    list_templates,
 )
 from domain.niche import Niche, UserNiche
 from domain.user import User
@@ -78,6 +79,43 @@ class MarketTemplateDeduplicationTest(unittest.TestCase):
 
         self.assertEqual(len(response["markets"]), 1)
         self.assertEqual(response["markets"][0]["id"], "market-one")
+
+    def test_list_templates_excludes_templates_user_already_added(self) -> None:
+        dependencies = SignalApiDependencies()
+        current_user = User(id="user-1", email="user@example.com")
+        dependencies.niche_repository.save_niches([
+            Niche.create(
+                id="template-devtools",
+                job="Build internal tools",
+                buyer="Developer teams",
+                category="devtools",
+            ),
+            Niche.create(
+                id="template-analytics",
+                job="Measure product analytics",
+                buyer="Product teams",
+                category="data",
+            ),
+        ])
+        dependencies.user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-one",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Developer teams",
+                category="devtools",
+                template_niche_id="template-devtools",
+            )
+        )
+
+        response = asyncio.run(
+            list_templates(dependencies=dependencies, current_user=current_user)
+        )
+
+        self.assertEqual(
+            [template["id"] for template in response["templates"]],
+            ["template-analytics"],
+        )
 
     def test_list_markets_hides_existing_duplicate_custom_niches(self) -> None:
         dependencies = SignalApiDependencies()

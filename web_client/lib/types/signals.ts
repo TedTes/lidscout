@@ -116,6 +116,7 @@ export type Market = {
   id: string;
   name: string;
   display_label: string;
+  template_niche_id?: string | null;
   description: string | null;
   target_user: string | null;
   idea_prompt: string | null;

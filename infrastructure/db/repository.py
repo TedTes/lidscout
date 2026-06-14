@@ -487,12 +487,14 @@ class InMemoryNicheRepository:
     def get_niche(self, niche_id: str):
         return self._niches.get(niche_id)
 
-    def list_niches(self, *, category=None, status=None) -> list:
+    def list_niches(self, *, category=None, status=None, is_custom=None) -> list:
         niches = list(self._niches.values())
         if category is not None:
             niches = [n for n in niches if n.category == category]
         if status is not None:
             niches = [n for n in niches if n.status == status]
+        if is_custom is not None:
+            niches = [n for n in niches if n.is_custom == is_custom]
         return niches
 
     def update_niche(self, niche) -> bool:

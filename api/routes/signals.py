@@ -467,11 +467,21 @@ async def list_opportunities(
 @router.get("/templates")
 async def list_templates(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Return operator-curated niche templates from the catalog."""
+    """Return operator-curated niche templates the current user has not adopted."""
+    user_id = _current_user_id(current_user)
+    adopted_template_ids = {
+        str(user_niche.template_niche_id)
+        for user_niche in dependencies.user_niche_repository.list_user_niches(user_id)
+        if user_niche.template_niche_id is not None
+    } if user_id is not None else set()
+
     niches = dependencies.niche_repository.list_niches(is_custom=False)
     templates = []
     for niche in niches:
+        if niche.id in adopted_template_ids:
+            continue
         companies = dependencies.niche_company_repository.list_niche_companies(niche.id)
         sources = dependencies.niche_source_repository.list_niche_sources(niche.id)
         source_families = sorted({s.source_family for s in sources})
@@ -2673,6 +2683,7 @@ def _serialize_market(user_niche: UserNiche) -> dict[str, Any]:
         "id": user_niche.id,
         "name": user_niche.job,
         "display_label": user_niche.job[:32],
+        "template_niche_id": user_niche.template_niche_id,
         "description": user_niche.category,
         "target_user": user_niche.buyer,
         "idea_prompt": None,
