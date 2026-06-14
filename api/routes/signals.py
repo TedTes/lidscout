@@ -70,6 +70,7 @@ from domain.niche import (
     NicheSource,
     NicheSourceRunStats,
     UserNiche,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -875,7 +876,7 @@ async def update_source(
                 status_code=422,
                 detail="Catalog source type cannot be changed per user",
             )
-        _save_catalog_source_preference(updated_source, user_niche, dependencies)
+        _save_user_source_binding(updated_source, user_niche, dependencies)
         return _serialize_niche_source(
             updated_source,
             _catalog_source_stats_for_display_source(
@@ -902,7 +903,7 @@ async def delete_source(
     """Delete a monitored source owned by the current user."""
     source, user_niche = _get_owned_niche_source(source_id, dependencies, current_user)
     if _is_catalog_backed_source(source):
-        _save_catalog_source_preference(
+        _save_user_source_binding(
             replace(source, enabled=False),
             user_niche,
             dependencies,
@@ -2802,20 +2803,12 @@ def _list_market_display_sources(
     template_niche_id = user_niche.template_niche_id
     if template_niche_id is None:
         return []
-    template_bindings = (
-        dependencies.template_source_binding_repository.list_template_source_bindings(
-            template_niche_id,
-        )
-    )
-    if not template_bindings:
-        return dependencies.niche_source_repository.list_niche_sources(
-            template_niche_id,
-        )
     resolver = SourceCatalogResolver(
         source_repository=dependencies.source_repository,
         template_source_binding_repository=(
             dependencies.template_source_binding_repository
         ),
+        user_source_repository=dependencies.user_source_repository,
         user_source_preference_repository=(
             dependencies.user_source_preference_repository
         ),
@@ -2849,7 +2842,9 @@ def _effective_source_to_niche_source(
         options={
             **source.options,
             "template_source_binding_id": source.template_source_binding_id,
+            "user_source_id": source.user_source_id,
             "user_source_preference_id": source.user_source_preference_id,
+            "user_source_priority": source.priority,
         },
         tier=source.tier,
         signal_quality_score=source.signal_quality_score,
@@ -2861,29 +2856,35 @@ def _effective_source_to_niche_source(
 
 
 def _is_catalog_backed_source(source: NicheSource) -> bool:
-    return bool(source.options.get("template_source_binding_id"))
+    return bool(
+        source.options.get("template_source_binding_id")
+        or source.options.get("user_source_id")
+    )
 
 
-def _save_catalog_source_preference(
+def _save_user_source_binding(
     source: NicheSource,
     user_niche: UserNiche,
     dependencies: SignalApiDependencies,
     *,
     muted: bool = False,
 ) -> None:
-    preference = UserSourcePreference.create(
-        id=_option_str(source.options, "user_source_preference_id"),
+    user_source = UserSource.create(
+        id=_option_str(source.options, "user_source_id"),
         user_niche_id=user_niche.id,
         source_id=source.id,
+        template_source_binding_id=_option_str(
+            source.options,
+            "template_source_binding_id",
+        ),
         enabled=source.enabled,
         muted=muted,
-        cadence_override=source.scan_frequency,
-        limit_override=source.limit,
-        options_override=_source_user_options_override(source.options),
+        cadence=source.scan_frequency,
+        priority=_option_int(source.options, "user_source_priority"),
+        limit=source.limit,
+        options=_source_user_options_override(source.options),
     )
-    dependencies.user_source_preference_repository.save_user_source_preference(
-        preference,
-    )
+    dependencies.user_source_repository.save_user_sources([user_source])
 
 
 def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:
@@ -2892,7 +2893,9 @@ def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:
         "source_type",
         "source_family",
         "template_source_binding_id",
+        "user_source_id",
         "user_source_preference_id",
+        "user_source_priority",
     }
     return {
         key: value

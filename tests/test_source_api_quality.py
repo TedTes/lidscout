@@ -9,8 +9,6 @@ from api.routes.signals import (
     update_source,
 )
 from domain.niche import (
-    NicheSource,
-    NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
     UserSourcePreference,
@@ -23,6 +21,7 @@ from infrastructure.db import (
     InMemorySourceRepository,
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
+    InMemoryUserSourceRepository,
     InMemoryUserSourcePreferenceRepository,
     InMemoryUserSourceRunStatsRepository,
 )
@@ -41,20 +40,36 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
             template_niche_id="template-1",
         )
     )
-    source_repository = InMemoryNicheSourceRepository()
-    source = NicheSource.create(
-        id="source-1",
-        niche_id="template-1",
-        locator="https://hn.algolia.com/api/v1/search_by_date?query=devtools",
-        source_type="hackernews_search",
-        source_family="technical_forum",
-        is_gate_free=True,
-        buyer_voice_verified=True,
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://hn.algolia.com/api/v1/search_by_date?query=devtools",
+                source_type="hackernews_search",
+                source_family="technical_forum",
+                is_gate_free=True,
+                access_mode="api",
+            )
+        ]
     )
-    source_repository.save_niche_sources([source])
-    source_repository.upsert_niche_source_run_stats(
-        NicheSourceRunStats.create(
-            niche_source_id=source.id,
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+                default_buyer_voice_verified=True,
+            )
+        ]
+    )
+    user_source_run_stats_repository = InMemoryUserSourceRunStatsRepository()
+    user_source_run_stats_repository.upsert_user_source_run_stats(
+        UserSourceRunStats.create(
+            user_niche_id="market-1",
+            source_id="source-1",
+            template_source_binding_id="binding-1",
             total_runs=4,
             success_count=4,
             posts_fetched_count=40,
@@ -71,7 +86,9 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     )
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
-        niche_source_repository=source_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_run_stats_repository=user_source_run_stats_repository,
     )
 
     response = asyncio.run(
@@ -182,7 +199,7 @@ def test_market_sources_can_be_resolved_from_source_catalog() -> None:
     assert response["summary"]["source_count"] == 1
 
 
-def test_catalog_source_update_and_delete_write_user_preferences() -> None:
+def test_catalog_source_update_and_delete_write_user_sources() -> None:
     user = User(id="user-1", email="user@example.com")
     user_niche_repository = InMemoryUserNicheRepository()
     user_niche_repository.save_user_niche(
@@ -222,12 +239,14 @@ def test_catalog_source_update_and_delete_write_user_preferences() -> None:
         ]
     )
     preference_repository = InMemoryUserSourcePreferenceRepository()
+    user_source_repository = InMemoryUserSourceRepository()
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
         niche_source_repository=InMemoryNicheSourceRepository(),
         source_repository=source_repository,
         template_source_binding_repository=binding_repository,
         user_source_preference_repository=preference_repository,
+        user_source_repository=user_source_repository,
     )
 
     updated = asyncio.run(
@@ -244,28 +263,29 @@ def test_catalog_source_update_and_delete_write_user_preferences() -> None:
         )
     )
 
-    preference = preference_repository.get_user_source_preference(
+    user_source = user_source_repository.get_user_source(
         "market-1",
         "source-1",
     )
     assert updated["enabled"] is False
     assert updated["limit"] == 5
-    assert preference is not None
-    assert preference.enabled is False
-    assert preference.limit_override == 5
-    assert preference.cadence_override == "weekly"
-    assert preference.options_override == {"query": "vercel railway"}
+    assert user_source is not None
+    assert user_source.enabled is False
+    assert user_source.limit == 5
+    assert user_source.cadence == "weekly"
+    assert user_source.template_source_binding_id == "binding-1"
+    assert user_source.options == {"query": "vercel railway"}
 
     deleted = asyncio.run(delete_source("source-1", dependencies, current_user=user))
-    preference = preference_repository.get_user_source_preference(
+    user_source = user_source_repository.get_user_source(
         "market-1",
         "source-1",
     )
 
     assert deleted == {"id": "source-1", "deleted": True}
-    assert preference is not None
-    assert preference.muted is True
-    assert preference.enabled is False
+    assert user_source is not None
+    assert user_source.muted is True
+    assert user_source.enabled is False
 
 
 def test_pipeline_diagnostics_returns_sanitized_runtime_warnings() -> None:
@@ -304,22 +324,35 @@ def test_market_sources_include_replacement_suggestions_for_blocked_sources() ->
             template_niche_id="template-1",
         )
     )
-    source_repository = InMemoryNicheSourceRepository()
-    source = NicheSource.create(
-        id="source-1",
-        niche_id="template-1",
-        locator="https://www.reddit.com/search.json?q=retool&sort=new",
-        source_type="reddit_search",
-        source_family="social",
-        is_gate_free=False,
-        enabled=False,
-        access_mode="api_auth",
-        requires_auth=True,
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://www.reddit.com/search.json?q=retool&sort=new",
+                source_type="reddit_search",
+                source_family="social",
+                is_gate_free=False,
+                access_mode="api_auth",
+                requires_auth=True,
+            )
+        ]
     )
-    source_repository.save_niche_sources([source])
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+                default_enabled=False,
+            )
+        ]
+    )
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
-        niche_source_repository=source_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
     )
 
     response = asyncio.run(
@@ -350,12 +383,11 @@ def test_updates_owned_source_enabled_state() -> None:
             template_niche_id="template-1",
         )
     )
-    source_repository = InMemoryNicheSourceRepository()
-    source_repository.save_niche_sources(
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
         [
-            NicheSource.create(
+            Source.create(
                 id="source-1",
-                niche_id="template-1",
                 locator="https://github.com/appsmithorg/appsmith/issues",
                 source_type="github_issues",
                 source_family="technical_forum",
@@ -363,9 +395,22 @@ def test_updates_owned_source_enabled_state() -> None:
             )
         ]
     )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+            )
+        ]
+    )
+    user_source_repository = InMemoryUserSourceRepository()
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
-        niche_source_repository=source_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_repository=user_source_repository,
     )
 
     updated = asyncio.run(
@@ -379,7 +424,9 @@ def test_updates_owned_source_enabled_state() -> None:
 
     assert updated["enabled"] is False
     assert updated["management"]["can_enable"] is True
-    assert source_repository.list_niche_sources("template-1")[0].enabled is False
+    user_source = user_source_repository.get_user_source("market-1", "source-1")
+    assert user_source is not None
+    assert user_source.enabled is False
 
 
 def test_deletes_owned_source() -> None:
@@ -395,12 +442,11 @@ def test_deletes_owned_source() -> None:
             template_niche_id="template-1",
         )
     )
-    source_repository = InMemoryNicheSourceRepository()
-    source_repository.save_niche_sources(
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
         [
-            NicheSource.create(
+            Source.create(
                 id="source-1",
-                niche_id="template-1",
                 locator="https://github.com/appsmithorg/appsmith/issues",
                 source_type="github_issues",
                 source_family="technical_forum",
@@ -408,9 +454,22 @@ def test_deletes_owned_source() -> None:
             )
         ]
     )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+            )
+        ]
+    )
+    user_source_repository = InMemoryUserSourceRepository()
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
-        niche_source_repository=source_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_repository=user_source_repository,
     )
 
     response = asyncio.run(
@@ -418,4 +477,6 @@ def test_deletes_owned_source() -> None:
     )
 
     assert response == {"id": "source-1", "deleted": True}
-    assert source_repository.list_niche_sources("template-1") == []
+    user_source = user_source_repository.get_user_source("market-1", "source-1")
+    assert user_source is not None
+    assert user_source.muted is True
