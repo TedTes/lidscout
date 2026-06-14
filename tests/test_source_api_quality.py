@@ -8,11 +8,21 @@ from api.routes.signals import (
     list_market_sources,
     update_source,
 )
-from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
+from domain.niche import (
+    NicheSource,
+    NicheSourceRunStats,
+    TemplateSourceBinding,
+    UserNiche,
+    UserSourcePreference,
+)
+from domain.source import Source
 from domain.user import User
 from infrastructure.db import (
     InMemoryNicheSourceRepository,
+    InMemorySourceRepository,
+    InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
+    InMemoryUserSourcePreferenceRepository,
 )
 
 
@@ -77,6 +87,95 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     assert item["health"]["signal_yield_rate"] == 0.375
     assert item["management"]["recommended_action"] == "keep_monitoring"
     assert item["management"]["can_disable"] is True
+
+
+def test_market_sources_can_be_resolved_from_source_catalog() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+                source_type="hackernews",
+                source_family="technical_forum",
+                access_mode="api",
+                is_gate_free=True,
+            )
+        ]
+    )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+                default_limit=25,
+                default_scan_frequency="daily",
+                default_options={"query": "vercel"},
+                tier=2,
+                signal_quality_score=0.78,
+            )
+        ]
+    )
+    preference_repository = InMemoryUserSourcePreferenceRepository()
+    preference_repository.save_user_source_preference(
+        UserSourcePreference.create(
+            id="preference-1",
+            user_niche_id="market-1",
+            source_id="source-1",
+            limit_override=10,
+            options_override={"query": "vercel railway"},
+        )
+    )
+    stats_repository = InMemoryNicheSourceRepository()
+    stats_repository.upsert_niche_source_run_stats(
+        NicheSourceRunStats.create(
+            niche_source_id="source-1",
+            total_runs=1,
+            success_count=1,
+            posts_fetched_count=10,
+            relevant_posts_count=2,
+            extracted_signals_count=1,
+            gap_count=1,
+            last_status="healthy",
+        )
+    )
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        niche_source_repository=stats_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_preference_repository=preference_repository,
+    )
+
+    response = asyncio.run(
+        list_market_sources("market-1", dependencies, current_user=user)
+    )
+
+    item = response["sources"][0]
+    assert item["id"] == "source-1"
+    assert item["market_id"] == "template-1"
+    assert item["enabled"] is True
+    assert item["limit"] == 10
+    assert item["scan_frequency"] == "daily"
+    assert item["options"]["query"] == "vercel railway"
+    assert item["options"]["template_source_binding_id"] == "binding-1"
+    assert item["options"]["user_source_preference_id"] == "preference-1"
+    assert item["health"]["total_runs"] == 1
+    assert response["summary"]["source_count"] == 1
 
 
 def test_pipeline_diagnostics_returns_sanitized_runtime_warnings() -> None:

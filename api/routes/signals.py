@@ -49,6 +49,7 @@ from application.ports import (
     UserSourcePreferenceRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
+from application.source_catalog import EffectiveSource, SourceCatalogResolver
 from application.source_quality import source_quality_status, source_scan_eligibility
 from application.source_suggestions import SourceReplacementSuggestionService
 from domain.cluster import SignalCluster
@@ -732,7 +733,7 @@ async def list_market_sources(
     niche_id = user_niche.template_niche_id
     if niche_id is None:
         return {"sources": [], "summary": _source_coverage_summary([])}
-    sources = dependencies.niche_source_repository.list_niche_sources(niche_id)
+    sources = _list_market_display_sources(user_niche, dependencies)
     stats_by_source = _niche_source_stats_by_source_id(
         dependencies.niche_source_repository,
         sources,
@@ -2747,6 +2748,71 @@ def _serialize_niche_company(company: NicheCompany) -> dict[str, Any]:
         "market_id": company.niche_id,
         "created_at": company.created_at.isoformat() if company.created_at else None,
     }
+
+
+def _list_market_display_sources(
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies,
+) -> list[NicheSource]:
+    template_niche_id = user_niche.template_niche_id
+    if template_niche_id is None:
+        return []
+    template_bindings = (
+        dependencies.template_source_binding_repository.list_template_source_bindings(
+            template_niche_id,
+        )
+    )
+    if not template_bindings:
+        return dependencies.niche_source_repository.list_niche_sources(
+            template_niche_id,
+        )
+    resolver = SourceCatalogResolver(
+        source_repository=dependencies.source_repository,
+        template_source_binding_repository=(
+            dependencies.template_source_binding_repository
+        ),
+        user_source_preference_repository=(
+            dependencies.user_source_preference_repository
+        ),
+    )
+    effective_sources = resolver.list_effective_sources(
+        template_niche_id=template_niche_id,
+        user_niche_id=user_niche.id,
+        include_muted=True,
+    )
+    return [
+        _effective_source_to_niche_source(template_niche_id, source)
+        for source in effective_sources
+    ]
+
+
+def _effective_source_to_niche_source(
+    template_niche_id: str,
+    source: EffectiveSource,
+) -> NicheSource:
+    return NicheSource.create(
+        id=source.source_id,
+        niche_id=template_niche_id,
+        locator=source.locator,
+        source_type=source.source_type,
+        source_family=source.source_family,
+        is_gate_free=source.is_gate_free,
+        enabled=source.enabled,
+        limit=source.limit,
+        scan_frequency=source.scan_frequency,
+        buyer_voice_verified=source.buyer_voice_verified,
+        options={
+            **source.options,
+            "template_source_binding_id": source.template_source_binding_id,
+            "user_source_preference_id": source.user_source_preference_id,
+        },
+        tier=source.tier,
+        signal_quality_score=source.signal_quality_score,
+        access_mode=source.access_mode,
+        requires_proxy=source.requires_proxy,
+        requires_auth=source.requires_auth,
+        recommended_cadence=source.recommended_cadence,
+    )
 
 
 def _niche_source_stats_by_source_id(
