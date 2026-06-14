@@ -20,9 +20,10 @@ from api.routes.signals import (
 from domain.agent import AgentAction, AgentFollowUp
 from domain.cluster import SignalCluster
 from domain.finding import Finding
-from domain.niche import NicheSource, UserNiche
+from domain.niche import UserNiche, UserSource
 from domain.opportunity import Opportunity
 from domain.signal import Signal
+from domain.source import Source
 from domain.theme import Theme
 from domain.user import User
 
@@ -198,13 +199,18 @@ def test_execute_market_agent_actions_applies_approved_actions() -> None:
         )
     )
 
-    sources = dependencies.niche_source_repository.list_niche_sources("niche-1")
+    user_source = dependencies.user_source_repository.get_user_source(
+        "market-1",
+        "source-1",
+    )
     actions = dependencies.agent_action_repository.list_agent_actions(
         user_niche_id="market-1",
     )
     assert response["executed_count"] == 1
     assert response["failed_count"] == 0
-    assert sources[0].health_status == "paused"
+    assert user_source is not None
+    assert user_source.muted is True
+    assert user_source.enabled is False
     assert actions[0].status == "completed"
 
 
@@ -570,16 +576,22 @@ def _seed_market_with_follow_up(dependencies: SignalApiDependencies) -> None:
         category="devtools",
     )
     dependencies.user_niche_repository.save_user_niche(user_niche)
-    dependencies.niche_source_repository.save_niche_sources(
+    dependencies.source_repository.save_sources(
         [
-            NicheSource.create(
+            Source.create(
                 id="source-1",
-                niche_id="niche-1",
                 locator="https://example.com/feed",
                 source_type="web",
                 source_family="forum",
                 is_gate_free=True,
-                health_status="active",
+            )
+        ]
+    )
+    dependencies.user_source_repository.save_user_sources(
+        [
+            UserSource.create(
+                user_niche_id="market-1",
+                source_id="source-1",
             )
         ]
     )

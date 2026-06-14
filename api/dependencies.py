@@ -11,7 +11,6 @@ from infrastructure.db import (
     PostgresFindingRepository,
     PostgresNicheCompanyRepository,
     PostgresNicheRepository,
-    PostgresNicheSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
     PostgresSourceRepository,
@@ -64,7 +63,6 @@ def build_signal_api_dependencies(
         ),
         niche_repository=PostgresNicheRepository(connection=connection),
         niche_company_repository=PostgresNicheCompanyRepository(connection=connection),
-        niche_source_repository=PostgresNicheSourceRepository(connection=connection),
         source_repository=PostgresSourceRepository(connection=connection),
         template_source_binding_repository=PostgresTemplateSourceBindingRepository(
             connection=connection,

@@ -19,7 +19,6 @@ from domain.niche import (
 from domain.source import Source
 from domain.user import User
 from infrastructure.db import (
-    InMemoryNicheSourceRepository,
     InMemorySourceRepository,
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
@@ -244,7 +243,6 @@ def test_catalog_source_update_and_delete_write_user_sources() -> None:
     user_source_repository = InMemoryUserSourceRepository()
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
-        niche_source_repository=InMemoryNicheSourceRepository(),
         source_repository=source_repository,
         template_source_binding_repository=binding_repository,
         user_source_preference_repository=preference_repository,

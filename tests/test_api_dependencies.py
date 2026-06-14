@@ -82,9 +82,6 @@ class ApiDependencyTests(unittest.TestCase):
             niche_company_repository = stack.enter_context(
                 patch("api.dependencies.PostgresNicheCompanyRepository")
             )
-            niche_source_repository = stack.enter_context(
-                patch("api.dependencies.PostgresNicheSourceRepository")
-            )
             source_repository = stack.enter_context(
                 patch("api.dependencies.PostgresSourceRepository")
             )
@@ -138,7 +135,6 @@ class ApiDependencyTests(unittest.TestCase):
         agent_action_repository.assert_called_once_with(connection=connection)
         niche_repository.assert_called_once_with(connection=connection)
         niche_company_repository.assert_called_once_with(connection=connection)
-        niche_source_repository.assert_called_once_with(connection=connection)
         source_repository.assert_called_once_with(connection=connection)
         template_source_binding_repository.assert_called_once_with(
             connection=connection,
@@ -200,10 +196,6 @@ class ApiDependencyTests(unittest.TestCase):
             dependencies.user_niche_repository,
             user_niche_repository.return_value,
         )
-        self.assertIs(
-            dependencies.niche_source_repository,
-            niche_source_repository.return_value,
-        )
         self.assertIs(dependencies.source_repository, source_repository.return_value)
         self.assertIs(
             dependencies.template_source_binding_repository,
@@ -237,10 +229,6 @@ class ApiDependencyTests(unittest.TestCase):
             )
 
         connect_postgres.assert_not_called()
-        self.assertIs(
-            dependencies.niche_source_repository.connection,
-            supplied_connection,
-        )
         self.assertIs(dependencies.source_repository.connection, supplied_connection)
         self.assertIs(
             dependencies.template_source_binding_repository.connection,
@@ -281,7 +269,6 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresAgentActionRepository",
                 "api.dependencies.PostgresNicheRepository",
                 "api.dependencies.PostgresNicheCompanyRepository",
-                "api.dependencies.PostgresNicheSourceRepository",
                 "api.dependencies.PostgresSourceRepository",
                 "api.dependencies.PostgresTemplateSourceBindingRepository",
                 "api.dependencies.PostgresUserSourceRepository",

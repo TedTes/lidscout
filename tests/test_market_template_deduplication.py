@@ -241,10 +241,10 @@ class MarketTemplateDeduplicationTest(unittest.TestCase):
         )
         self.assertIsNotNone(user_source)
         self.assertEqual(
-            dependencies.niche_source_repository.list_niche_sources(
-                user_niche.template_niche_id or "",
+            dependencies.source_repository.list_sources(
+                source_type="hackernews",
             ),
-            [],
+            [canonical_source],
         )
 
 

@@ -36,7 +36,6 @@ from application.ports import (
     FindingRepository,
     NicheCompanyRepository,
     NicheRepository,
-    NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     PostRepository,
@@ -95,7 +94,6 @@ from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryNicheCompanyRepository,
     InMemoryNicheRepository,
-    InMemoryNicheSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
     InMemoryScoreRepository,
@@ -268,9 +266,6 @@ class SignalApiDependencies:
     )
     niche_company_repository: NicheCompanyRepository = field(
         default_factory=InMemoryNicheCompanyRepository
-    )
-    niche_source_repository: NicheSourceRepository = field(
-        default_factory=InMemoryNicheSourceRepository
     )
     source_repository: SourceRepository = field(
         default_factory=InMemorySourceRepository
@@ -902,27 +897,21 @@ async def update_source(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if _is_catalog_backed_source(source):
-        if "source_type" in fields:
-            raise HTTPException(
-                status_code=422,
-                detail="Catalog source type cannot be changed per user",
-            )
-        _save_user_source_binding(updated_source, user_niche, dependencies)
-        return _serialize_niche_source(
-            updated_source,
-            _catalog_source_stats_for_display_source(
-                dependencies,
-                user_niche.id,
-                updated_source,
-            ),
-        )
-
-    if not dependencies.niche_source_repository.update_niche_source(updated_source):
+    if not _is_catalog_backed_source(source):
         raise HTTPException(status_code=404, detail="Source not found")
+    if "source_type" in fields:
+        raise HTTPException(
+            status_code=422,
+            detail="Catalog source type cannot be changed per user",
+        )
+    _save_user_source_binding(updated_source, user_niche, dependencies)
     return _serialize_niche_source(
         updated_source,
-        dependencies.niche_source_repository.get_niche_source_run_stats(source_id),
+        _catalog_source_stats_for_display_source(
+            dependencies,
+            user_niche.id,
+            updated_source,
+        ),
     )
 
 
@@ -942,8 +931,7 @@ async def delete_source(
             muted=True,
         )
         return {"id": source_id, "deleted": True}
-    deleted = dependencies.niche_source_repository.delete_niche_source(source_id)
-    return {"id": source_id, "deleted": deleted}
+    raise HTTPException(status_code=404, detail="Source not found")
 
 
 @router.get("/reports/latest")
@@ -1139,9 +1127,8 @@ async def execute_market_agent_actions(
     _get_owned_user_niche(market_id, dependencies, current_user)
     result = AgentActionExecutor(
         dependencies.agent_action_repository,
-        dependencies.niche_source_repository,
-        dependencies.agent_follow_up_repository,
-        dependencies.agent_alert_repository,
+        follow_up_repository=dependencies.agent_follow_up_repository,
+        alert_repository=dependencies.agent_alert_repository,
         source_repository=dependencies.source_repository,
         user_source_repository=dependencies.user_source_repository,
     ).execute_approved_actions(market_id)
@@ -1753,7 +1740,6 @@ async def run_pipeline(
             agent_preferences_repository=dependencies.agent_preferences_repository,
             agent_activity_repository=dependencies.agent_activity_repository,
             agent_alert_repository=dependencies.agent_alert_repository,
-            niche_source_repository=dependencies.niche_source_repository,
             source_repository=dependencies.source_repository,
             template_source_binding_repository=(
                 dependencies.template_source_binding_repository
@@ -3017,28 +3003,12 @@ def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _niche_source_stats_by_source_id(
-    repository: NicheSourceRepository,
-    sources: list[NicheSource],
-) -> dict[str, NicheSourceRunStats]:
-    if not sources:
-        return {}
-    stats = repository.list_niche_source_run_stats([source.id for source in sources])
-    return {item.niche_source_id: item for item in stats}
-
-
 def _source_stats_by_display_source_id(
     dependencies: SignalApiDependencies,
     user_niche: UserNiche,
     sources: list[NicheSource],
 ) -> dict[str, NicheSourceRunStats]:
-    legacy_sources = [
-        source for source in sources if not _is_catalog_backed_source(source)
-    ]
-    stats_by_source = _niche_source_stats_by_source_id(
-        dependencies.niche_source_repository,
-        legacy_sources,
-    )
+    stats_by_source: dict[str, NicheSourceRunStats] = {}
     catalog_source_ids = [
         source.id for source in sources if _is_catalog_backed_source(source)
     ]
