@@ -517,8 +517,7 @@ async def list_templates(
         if niche.id in adopted_template_ids:
             continue
         companies = dependencies.niche_company_repository.list_niche_companies(niche.id)
-        sources = dependencies.niche_source_repository.list_niche_sources(niche.id)
-        source_families = sorted({s.source_family for s in sources})
+        source_families = _source_families_for_template(niche.id, dependencies)
         templates.append(
             _serialize_niche_template(niche, companies, source_families)
         )
@@ -592,7 +591,6 @@ async def create_market(
     if existing is not None:
         return _serialize_market(existing)
 
-    # Create the backing Niche record first so sources can reference its id.
     niche = Niche.create(
         job=request.name,
         buyer=buyer,
@@ -610,10 +608,6 @@ async def create_market(
     if validation_error:
         raise HTTPException(status_code=400, detail=validation_error)
 
-    dependencies.niche_repository.save_niches([niche])
-    if auto_sources:
-        dependencies.niche_source_repository.save_niche_sources(auto_sources)
-
     try:
         user_niche = UserNiche.create(
             user_id=user_id,
@@ -625,7 +619,9 @@ async def create_market(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    dependencies.niche_repository.save_niches([niche])
     dependencies.user_niche_repository.save_user_niche(user_niche)
+    _save_generated_user_sources(auto_sources, user_niche, dependencies)
     _enqueue_pipeline(user_niche.id)
     return _serialize_market(user_niche)
 
@@ -794,33 +790,19 @@ async def create_market_source(
             status_code=422,
             detail="Cannot add sources to a custom market without a template",
         )
-    source_family = str(
-        request.options.get("source_family") or request.source_type or "web",
-    )
-    is_gate_free = bool(request.options.get("is_gate_free", True))
     try:
-        canonical_source = dependencies.source_repository.get_source_by_identity(
-            request.source_type,
-            request.locator,
+        canonical_source = _ensure_canonical_source(
+            locator=request.locator,
+            source_type=request.source_type,
+            source_family=str(
+                request.options.get("source_family") or request.source_type or "web",
+            ),
+            is_gate_free=bool(request.options.get("is_gate_free", True)),
+            dependencies=dependencies,
+            access_mode=str(request.options.get("access_mode") or "unknown"),
+            requires_proxy=bool(request.options.get("requires_proxy", False)),
+            requires_auth=bool(request.options.get("requires_auth", False)),
         )
-        if canonical_source is None:
-            canonical_source = Source.create(
-                locator=request.locator,
-                source_type=request.source_type,
-                source_family=source_family,
-                is_gate_free=is_gate_free,
-                access_mode=str(request.options.get("access_mode") or "unknown"),
-                requires_proxy=bool(request.options.get("requires_proxy", False)),
-                requires_auth=bool(request.options.get("requires_auth", False)),
-            )
-            dependencies.source_repository.save_sources([canonical_source])
-            canonical_source = (
-                dependencies.source_repository.get_source_by_identity(
-                    canonical_source.source_type,
-                    canonical_source.locator,
-                )
-                or canonical_source
-            )
         user_source = UserSource.create(
             user_niche_id=user_niche.id,
             source_id=canonical_source.id,
@@ -1044,11 +1026,7 @@ async def get_market_agent_cold_start(
         if niche_id is not None
         else []
     )
-    sources = (
-        dependencies.niche_source_repository.list_niche_sources(niche_id)
-        if niche_id is not None
-        else []
-    )
+    sources = _list_market_display_sources(user_niche, dependencies)
     plan = AgentColdStartService().build_plan(
         user_niche=user_niche,
         companies=companies,
@@ -1709,12 +1687,7 @@ async def get_market_agent_memory(
     feedback = dependencies.agent_feedback_repository.list_agent_feedback(
         user_niche_id=market_id,
     )
-    niche_id = user_niche.template_niche_id
-    sources = (
-        dependencies.niche_source_repository.list_niche_sources(niche_id)
-        if niche_id is not None
-        else []
-    )
+    sources = _list_market_display_sources(user_niche, dependencies)
     summary = build_agent_memory_summary(
         user_niche=user_niche,
         preferences=preferences,
@@ -2236,12 +2209,7 @@ def _agent_planner_input(
     current_user: User | Any,
 ) -> AgentPlannerInput:
     user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
-    niche_id = user_niche.template_niche_id
-    sources = (
-        dependencies.niche_source_repository.list_niche_sources(niche_id)
-        if niche_id is not None
-        else []
-    )
+    sources = _list_market_display_sources(user_niche, dependencies)
     return AgentPlannerInput(
         user_niche=user_niche,
         preferences=dependencies.agent_preferences_repository.get_agent_preferences(
@@ -2938,6 +2906,88 @@ def _save_user_source_binding(
         options=_source_user_options_override(source.options),
     )
     dependencies.user_source_repository.save_user_sources([user_source])
+
+
+def _source_families_for_template(
+    template_niche_id: str,
+    dependencies: SignalApiDependencies,
+) -> list[str]:
+    families: set[str] = set()
+    bindings = dependencies.template_source_binding_repository.list_template_source_bindings(
+        template_niche_id,
+    )
+    for binding in bindings:
+        source = dependencies.source_repository.get_source(binding.source_id)
+        if source is not None:
+            families.add(source.source_family)
+    return sorted(families)
+
+
+def _ensure_canonical_source(
+    *,
+    locator: str,
+    source_type: str,
+    source_family: str,
+    is_gate_free: bool,
+    dependencies: SignalApiDependencies,
+    access_mode: str = "unknown",
+    requires_proxy: bool = False,
+    requires_auth: bool = False,
+) -> Source:
+    source = dependencies.source_repository.get_source_by_identity(
+        source_type,
+        locator,
+    )
+    if source is not None:
+        return source
+    source = Source.create(
+        locator=locator,
+        source_type=source_type,
+        source_family=source_family,
+        is_gate_free=is_gate_free,
+        access_mode=access_mode,
+        requires_proxy=requires_proxy,
+        requires_auth=requires_auth,
+    )
+    dependencies.source_repository.save_sources([source])
+    return (
+        dependencies.source_repository.get_source_by_identity(
+            source.source_type,
+            source.locator,
+        )
+        or source
+    )
+
+
+def _save_generated_user_sources(
+    sources: list[NicheSource],
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies,
+) -> None:
+    user_sources: list[UserSource] = []
+    for source in sources:
+        canonical_source = _ensure_canonical_source(
+            locator=source.locator,
+            source_type=source.source_type,
+            source_family=source.source_family,
+            is_gate_free=source.is_gate_free,
+            dependencies=dependencies,
+            access_mode=source.access_mode,
+            requires_proxy=source.requires_proxy,
+            requires_auth=source.requires_auth,
+        )
+        user_sources.append(
+            UserSource.create(
+                user_niche_id=user_niche.id,
+                source_id=canonical_source.id,
+                enabled=source.enabled,
+                cadence=source.scan_frequency,
+                limit=source.limit,
+                options=_source_user_options_override(source.options),
+            )
+        )
+    if user_sources:
+        dependencies.user_source_repository.save_user_sources(user_sources)
 
 
 def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:

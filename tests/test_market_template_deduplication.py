@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from unittest.mock import patch
 
@@ -12,6 +13,36 @@ from api.routes.signals import (
 )
 from domain.niche import Niche, UserNiche
 from domain.user import User
+
+
+class FakeMarketSourceLLM:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_structured_response(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        schema: dict | None = None,
+    ) -> str:
+        self.calls += 1
+        if self.calls == 1:
+            return json.dumps({"valid": True, "reason": ""})
+        return json.dumps(
+            {
+                "sources": [
+                    {
+                        "locator": (
+                            "https://hn.algolia.com/api/v1/search_by_date"
+                            "?query=devtools"
+                        ),
+                        "source_type": "hackernews",
+                        "source_family": "technical_forum",
+                        "is_gate_free": True,
+                    }
+                ]
+            }
+        )
 
 
 class MarketTemplateDeduplicationTest(unittest.TestCase):
@@ -177,6 +208,44 @@ class MarketTemplateDeduplicationTest(unittest.TestCase):
             1,
         )
         enqueue_pipeline.assert_called_once_with(first["id"])
+
+    def test_custom_market_generated_sources_use_user_source_bindings(self) -> None:
+        dependencies = SignalApiDependencies(llm_client=FakeMarketSourceLLM())
+        current_user = User(id="user-1", email="user@example.com")
+
+        with patch("api.routes.signals._enqueue_pipeline"):
+            response = asyncio.run(
+                create_market(
+                    MarketRequest(
+                        name="Build internal tools",
+                        target_user="Developer teams",
+                        description="devtools",
+                    ),
+                    dependencies=dependencies,
+                    current_user=current_user,
+                )
+            )
+
+        user_niche = dependencies.user_niche_repository.get_user_niche(response["id"])
+        self.assertIsNotNone(user_niche)
+        assert user_niche is not None
+        canonical_source = dependencies.source_repository.get_source_by_identity(
+            "hackernews",
+            "https://hn.algolia.com/api/v1/search_by_date?query=devtools",
+        )
+        self.assertIsNotNone(canonical_source)
+        assert canonical_source is not None
+        user_source = dependencies.user_source_repository.get_user_source(
+            user_niche.id,
+            canonical_source.id,
+        )
+        self.assertIsNotNone(user_source)
+        self.assertEqual(
+            dependencies.niche_source_repository.list_niche_sources(
+                user_niche.template_niche_id or "",
+            ),
+            [],
+        )
 
 
 if __name__ == "__main__":

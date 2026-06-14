@@ -1127,17 +1127,7 @@ def _resolved_niche_sources_for_user_niche(
         user_niche,
         enabled=enabled,
     )
-    if catalog_sources:
-        return catalog_sources
-    if (
-        config.niche_source_repository is None
-        or user_niche.template_niche_id is None
-    ):
-        return []
-    return config.niche_source_repository.list_niche_sources(
-        user_niche.template_niche_id,
-        enabled=enabled,
-    )
+    return catalog_sources
 
 
 def _catalog_niche_sources_for_user_niche(
