@@ -97,25 +97,19 @@ def check_worker_readiness(
 
     niche_source_count = 0
     if user_niche_id is not None:
-        user_niche = runtime_dependencies.user_niche_repository.get_user_niche(user_niche_id)
-        if user_niche and user_niche.template_niche_id:
-            niche_source_count = len(
-                runtime_dependencies.niche_source_repository.list_niche_sources(
-                    user_niche.template_niche_id,
-                    enabled=True,
-                )
+        user_niche = runtime_dependencies.user_niche_repository.get_user_niche(
+            user_niche_id,
+        )
+        if user_niche is not None:
+            niche_source_count = _enabled_source_count_for_user_niche(
+                runtime_dependencies,
+                user_niche,
             )
     else:
         all_niches = runtime_dependencies.user_niche_repository.list_all_user_niches()
         niche_source_count = sum(
-            len(
-                runtime_dependencies.niche_source_repository.list_niche_sources(
-                    un.template_niche_id,
-                    enabled=True,
-                )
-            )
-            for un in all_niches
-            if un.template_niche_id
+            _enabled_source_count_for_user_niche(runtime_dependencies, user_niche)
+            for user_niche in all_niches
         )
 
     has_email_client = runtime_dependencies.email_client is not None
@@ -155,6 +149,51 @@ def check_worker_readiness(
         "coordinator_lock_seconds": app_config.PIPELINE_COORDINATOR_LOCK_SECONDS,
         "missing_dependencies": missing_dependencies,
     }
+
+
+def _enabled_source_count_for_user_niche(
+    dependencies: object,
+    user_niche: object,
+) -> int:
+    template_niche_id = getattr(user_niche, "template_niche_id", None)
+    if template_niche_id is None:
+        return 0
+    source_repository = getattr(dependencies, "source_repository", None)
+    binding_repository = getattr(
+        dependencies,
+        "template_source_binding_repository",
+        None,
+    )
+    preference_repository = getattr(
+        dependencies,
+        "user_source_preference_repository",
+        None,
+    )
+    if (
+        source_repository is not None
+        and binding_repository is not None
+        and preference_repository is not None
+        and binding_repository.list_template_source_bindings(template_niche_id)
+    ):
+        from application.source_catalog import SourceCatalogResolver
+
+        return len(
+            SourceCatalogResolver(
+                source_repository=source_repository,
+                template_source_binding_repository=binding_repository,
+                user_source_preference_repository=preference_repository,
+            ).list_effective_sources(
+                template_niche_id=template_niche_id,
+                user_niche_id=getattr(user_niche, "id", None),
+                enabled=True,
+            )
+        )
+    return len(
+        dependencies.niche_source_repository.list_niche_sources(
+            template_niche_id,
+            enabled=True,
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

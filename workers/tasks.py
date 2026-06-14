@@ -55,6 +55,7 @@ def run_daily_pipeline_all() -> dict:
     if _root not in _sys.path:
         _sys.path.insert(0, _root)
     from api.dependencies import build_signal_api_dependencies
+    from workers.jobs import _enabled_source_count_for_user_niche
 
     lock_state = _acquire_coordinator_lock()
     if lock_state is False:
@@ -66,10 +67,7 @@ def run_daily_pipeline_all() -> dict:
     active = [
         un for un in all_niches
         if un.template_niche_id is not None
-        and deps.niche_source_repository.list_niche_sources(
-            un.template_niche_id,
-            enabled=True,
-        )
+        and _enabled_source_count_for_user_niche(deps, un) > 0
     ]
 
     for user_niche in active:

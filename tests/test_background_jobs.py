@@ -3,9 +3,9 @@ from typing import Any
 
 from api.routes.signals import SignalApiDependencies
 from domain.agent import AgentAction
-from domain.niche import NicheSource, UserNiche
+from domain.niche import NicheSource, TemplateSourceBinding, UserNiche
 from domain.post import RawPost
-from domain.source import SourceInput
+from domain.source import Source, SourceInput
 from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryPostRepository,
@@ -72,7 +72,6 @@ class FakeEmailNotifier(EmailNotifier):
 class BackgroundJobTests(unittest.TestCase):
     def test_worker_readiness_reports_missing_runtime_config(self):
         dependencies = SignalApiDependencies(
-            post_repository=InMemoryPostRepository(),
             signal_repository=InMemorySignalRepository(),
             score_repository=InMemoryScoreRepository(),
             cluster_repository=InMemoryClusterRepository(),
@@ -90,6 +89,52 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertIn("source_adapters", result["missing_dependencies"])
         self.assertIn("pipeline_schedule", result)
         self.assertIn("coordinator_lock_seconds", result)
+
+    def test_worker_readiness_counts_catalog_sources(self):
+        dependencies = SignalApiDependencies(
+            signal_repository=InMemorySignalRepository(),
+            score_repository=InMemoryScoreRepository(),
+            cluster_repository=InMemoryClusterRepository(),
+            source_adapters=[FakeSourceAdapter()],
+            llm_client=FakeLLMClient(),
+            embedding_client=FakeEmbeddingClient(),
+        )
+        dependencies.user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                template_niche_id="niche-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+            )
+        )
+        dependencies.source_repository.save_sources(
+            [
+                Source.create(
+                    id="source-1",
+                    locator="https://example.com/reviews",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
+                )
+            ]
+        )
+        dependencies.template_source_binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    template_niche_id="niche-1",
+                    source_id="source-1",
+                )
+            ]
+        )
+
+        result = check_worker_readiness(
+            user_niche_id="market-1",
+            dependencies=dependencies,
+        )
+
+        self.assertEqual(result["enabled_niche_source_count"], 1)
 
     def test_runs_configured_daily_pipeline_from_niche_sources(self):
         dependencies = SignalApiDependencies(
