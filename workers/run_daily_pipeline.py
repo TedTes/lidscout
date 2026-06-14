@@ -35,6 +35,7 @@ from application.ports import (
     TemplateSourceBindingRepository,
     ThemeRepository,
     UserSourcePreferenceRepository,
+    UserSourceRunStatsRepository,
     UserNicheRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
@@ -54,7 +55,12 @@ from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.signal import Signal
-from domain.niche import NicheSource, NicheSourceRunStats, UserNiche
+from domain.niche import (
+    NicheSource,
+    NicheSourceRunStats,
+    UserNiche,
+    UserSourceRunStats,
+)
 from domain.source import SourceInput
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -91,6 +97,7 @@ class PipelineConfig:
     source_repository: SourceRepository | None = None
     template_source_binding_repository: TemplateSourceBindingRepository | None = None
     user_source_preference_repository: UserSourcePreferenceRepository | None = None
+    user_source_run_stats_repository: UserSourceRunStatsRepository | None = None
     user_niche_repository: UserNicheRepository | None = None
     source_adapters: list[SourceAdapter] = field(default_factory=list)
     sources: list[SourceInput] = field(default_factory=list)
@@ -228,8 +235,8 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
             metadata={"gap_count": theme_opportunity_count},
         )
 
-    _record_niche_source_health(
-        config.niche_source_repository,
+    _record_source_health(
+        config,
         fetch_result.details,
         relevance_result.source_stats,
     )
@@ -596,6 +603,61 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     )
 
 
+def _record_source_health(
+    config: PipelineConfig,
+    details: list[SourceFetchDetail],
+    relevance_stats: dict[str, SourceRelevanceStats] | None = None,
+) -> None:
+    _record_niche_source_health(
+        config.niche_source_repository,
+        details,
+        relevance_stats,
+    )
+    _record_user_source_health(
+        config.user_source_run_stats_repository,
+        config.user_niche_id,
+        details,
+        relevance_stats,
+    )
+
+
+def _record_user_source_health(
+    user_source_run_stats_repository: UserSourceRunStatsRepository | None,
+    user_niche_id: str | None,
+    details: list[SourceFetchDetail],
+    relevance_stats: dict[str, SourceRelevanceStats] | None = None,
+) -> None:
+    if user_source_run_stats_repository is None or user_niche_id is None:
+        return
+    scanned_at = datetime.now(tz=UTC)
+    relevance_stats = relevance_stats or {}
+    for detail in details:
+        source_id = detail.source.options.get("source_id")
+        binding_id = detail.source.options.get("template_source_binding_id")
+        relevance_key = detail.source.options.get("niche_source_id")
+        if not isinstance(source_id, str) or not isinstance(binding_id, str):
+            continue
+        relevance = (
+            relevance_stats.get(relevance_key)
+            if isinstance(relevance_key, str)
+            else None
+        )
+        existing = user_source_run_stats_repository.get_user_source_run_stats(
+            user_niche_id,
+            source_id,
+        )
+        stats = _next_user_source_run_stats(
+            user_niche_id=user_niche_id,
+            source_id=source_id,
+            template_source_binding_id=binding_id,
+            detail=detail,
+            relevance=relevance,
+            existing=existing,
+            scanned_at=scanned_at,
+        )
+        user_source_run_stats_repository.upsert_user_source_run_stats(stats)
+
+
 def _record_niche_source_health(
     niche_source_repository: NicheSourceRepository | None,
     details: list[SourceFetchDetail],
@@ -662,6 +724,71 @@ def _next_niche_source_run_stats(
 
     return NicheSourceRunStats.create(
         niche_source_id=source_id,
+        total_runs=(existing.total_runs if existing else 0) + 1,
+        success_count=(existing.success_count if existing else 0)
+        + (0 if was_failure else 1),
+        failure_count=(existing.failure_count if existing else 0)
+        + (1 if was_failure else 0),
+        consecutive_failures=(
+            (existing.consecutive_failures if existing else 0) + 1
+            if was_failure
+            else 0
+        ),
+        posts_fetched_count=(existing.posts_fetched_count if existing else 0)
+        + detail.fetched_count,
+        relevant_posts_count=(existing.relevant_posts_count if existing else 0)
+        + last_relevant_count,
+        rule_filtered_count=(existing.rule_filtered_count if existing else 0)
+        + last_rule_filtered_count,
+        llm_filtered_count=(existing.llm_filtered_count if existing else 0)
+        + last_llm_filtered_count,
+        relevance_failed_count=(existing.relevance_failed_count if existing else 0)
+        + last_relevance_failed_count,
+        extracted_signals_count=(
+            existing.extracted_signals_count if existing else 0
+        ),
+        gap_count=existing.gap_count if existing else 0,
+        last_status="failing" if was_failure else "healthy",
+        last_error=detail.error,
+        last_fetched_count=detail.fetched_count,
+        last_relevant_count=last_relevant_count,
+        last_rule_filtered_count=last_rule_filtered_count,
+        last_llm_filtered_count=last_llm_filtered_count,
+        last_relevance_failed_count=last_relevance_failed_count,
+        last_extracted_count=0,
+        last_gap_count=0,
+        rejection_breakdown=_merge_count_maps(
+            existing.rejection_breakdown if existing else {},
+            last_rejection_breakdown,
+        ),
+        last_rejection_breakdown=last_rejection_breakdown,
+        last_scanned_at=scanned_at,
+    )
+
+
+def _next_user_source_run_stats(
+    *,
+    user_niche_id: str,
+    source_id: str,
+    template_source_binding_id: str,
+    detail: SourceFetchDetail,
+    relevance: SourceRelevanceStats | None,
+    existing: UserSourceRunStats | None,
+    scanned_at: datetime,
+) -> UserSourceRunStats:
+    was_failure = detail.error is not None
+    last_relevant_count = relevance.relevant_count if relevance else 0
+    last_rule_filtered_count = relevance.rule_filtered_count if relevance else 0
+    last_llm_filtered_count = relevance.llm_filtered_count if relevance else 0
+    last_relevance_failed_count = relevance.failed_count if relevance else 0
+    last_rejection_breakdown = (
+        dict(relevance.rejection_breakdown) if relevance else {}
+    )
+
+    return UserSourceRunStats.create(
+        user_niche_id=user_niche_id,
+        source_id=source_id,
+        template_source_binding_id=template_source_binding_id,
         total_runs=(existing.total_runs if existing else 0) + 1,
         success_count=(existing.success_count if existing else 0)
         + (0 if was_failure else 1),

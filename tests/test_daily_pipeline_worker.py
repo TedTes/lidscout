@@ -27,6 +27,7 @@ from infrastructure.db import (
     InMemorySourceRepository,
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserSourcePreferenceRepository,
+    InMemoryUserSourceRunStatsRepository,
 )
 from infrastructure.email import EmailClient, EmailNotifier
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -629,6 +630,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             )
         )
         niche_source_repository = InMemoryNicheSourceRepository()
+        user_source_run_stats_repository = InMemoryUserSourceRunStatsRepository()
         llm_client = SequentialLLMClient(
             [
                 """
@@ -645,6 +647,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             source_repository=source_repository,
             template_source_binding_repository=template_source_binding_repository,
             user_source_preference_repository=user_source_preference_repository,
+            user_source_run_stats_repository=user_source_run_stats_repository,
             niche_source_repository=niche_source_repository,
             user_niche_repository=user_niche_repository,
             llm_client=llm_client,
@@ -663,6 +666,16 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertIsNone(
             niche_source_repository.get_niche_source_run_stats("binding-1")
         )
+        stats = user_source_run_stats_repository.get_user_source_run_stats(
+            "market-1",
+            "source-1",
+        )
+        self.assertIsNotNone(stats)
+        self.assertEqual(stats.template_source_binding_id, "binding-1")
+        self.assertEqual(stats.total_runs, 1)
+        self.assertEqual(stats.success_count, 1)
+        self.assertEqual(stats.posts_fetched_count, 1)
+        self.assertEqual(stats.relevant_posts_count, 1)
 
     @unittest.skip("PipelineConfig API changed — source_health_repository/monitored_source_repository removed")
     def test_runs_pipeline_from_enabled_monitored_sources(self):

@@ -19,6 +19,7 @@ from infrastructure.db import (
     PostgresThemeRepository,
     PostgresUserNicheRepository,
     PostgresUserSourcePreferenceRepository,
+    PostgresUserSourceRunStatsRepository,
     connect_postgres,
 )
 from infrastructure.email import EmailClient, ResendEmailNotifier
@@ -68,6 +69,9 @@ def build_signal_api_dependencies(
             connection=connection,
         ),
         user_source_preference_repository=PostgresUserSourcePreferenceRepository(
+            connection=connection,
+        ),
+        user_source_run_stats_repository=PostgresUserSourceRunStatsRepository(
             connection=connection,
         ),
         user_niche_repository=PostgresUserNicheRepository(connection=connection),

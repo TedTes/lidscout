@@ -47,6 +47,7 @@ from application.ports import (
     TemplateSourceBindingRepository,
     UserNicheRepository,
     UserSourcePreferenceRepository,
+    UserSourceRunStatsRepository,
 )
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_catalog import EffectiveSource, SourceCatalogResolver
@@ -95,6 +96,7 @@ from infrastructure.db import (
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
     InMemoryUserSourcePreferenceRepository,
+    InMemoryUserSourceRunStatsRepository,
 )
 from infrastructure.email import EmailClient, EmailSendResult
 from infrastructure.llm import EmbeddingClient, LLMClient
@@ -269,6 +271,9 @@ class SignalApiDependencies:
     )
     user_source_preference_repository: UserSourcePreferenceRepository = field(
         default_factory=InMemoryUserSourcePreferenceRepository
+    )
+    user_source_run_stats_repository: UserSourceRunStatsRepository = field(
+        default_factory=InMemoryUserSourceRunStatsRepository
     )
     user_niche_repository: UserNicheRepository = field(
         default_factory=InMemoryUserNicheRepository
@@ -1718,6 +1723,9 @@ async def run_pipeline(
             ),
             user_source_preference_repository=(
                 dependencies.user_source_preference_repository
+            ),
+            user_source_run_stats_repository=(
+                dependencies.user_source_run_stats_repository
             ),
             user_niche_repository=dependencies.user_niche_repository,
             llm_client=dependencies.llm_client,

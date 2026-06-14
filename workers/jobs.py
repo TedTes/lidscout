@@ -67,6 +67,9 @@ def run_configured_daily_pipeline(
             user_source_preference_repository=(
                 runtime_dependencies.user_source_preference_repository
             ),
+            user_source_run_stats_repository=(
+                runtime_dependencies.user_source_run_stats_repository
+            ),
             user_niche_repository=runtime_dependencies.user_niche_repository,
             llm_client=runtime_dependencies.llm_client,
             relevance_llm_client=runtime_dependencies.relevance_llm_client,
