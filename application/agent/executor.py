@@ -6,12 +6,11 @@ from application.ports import (
     AgentActionRepository,
     AgentAlertRepository,
     AgentFollowUpRepository,
-    NicheSourceRepository,
     SourceRepository,
     UserSourceRepository,
 )
 from domain.agent import AgentAction
-from domain.niche import NicheSource, UserSource
+from domain.niche import UserSource
 from domain.source import Source
 
 
@@ -30,14 +29,12 @@ class AgentActionExecutor:
     def __init__(
         self,
         action_repository: AgentActionRepository,
-        niche_source_repository: NicheSourceRepository | None = None,
         follow_up_repository: AgentFollowUpRepository | None = None,
         alert_repository: AgentAlertRepository | None = None,
         source_repository: SourceRepository | None = None,
         user_source_repository: UserSourceRepository | None = None,
     ) -> None:
         self._action_repository = action_repository
-        self._niche_source_repository = niche_source_repository
         self._follow_up_repository = follow_up_repository
         self._alert_repository = alert_repository
         self._source_repository = source_repository
@@ -121,14 +118,7 @@ class AgentActionExecutor:
         source_id = str(action.metadata.get("source_id") or "").strip()
         if not source_id:
             return False
-        if self._pause_user_source(action.user_niche_id, source_id):
-            return True
-        if self._niche_source_repository is None:
-            return False
-        return self._niche_source_repository.update_niche_source_health(
-            source_id,
-            "paused",
-        )
+        return self._pause_user_source(action.user_niche_id, source_id)
 
     def _pause_user_source(self, user_niche_id: str, source_id: str) -> bool:
         if self._user_source_repository is None:
@@ -207,12 +197,7 @@ class AgentActionExecutor:
                 )
                 is not None
             )
-        source = self._source_from_action(action)
-        if source is None:
-            return False
-        if self._niche_source_repository is None:
-            return False
-        return self._niche_source_repository.save_niche_sources([source]) > 0
+        return False
 
     def _user_source_from_action(self, action: AgentAction) -> UserSource | None:
         if self._source_repository is None or self._user_source_repository is None:
@@ -262,49 +247,6 @@ class AgentActionExecutor:
         except (TypeError, ValueError):
             return None
 
-    def _source_from_action(self, action: AgentAction) -> NicheSource | None:
-        niche_id = str(action.metadata.get("niche_id") or "").strip()
-        locator = str(action.metadata.get("locator") or "").strip()
-        source_type = str(action.metadata.get("source_type") or "").strip()
-        source_family = str(action.metadata.get("source_family") or "").strip()
-        if not niche_id or not locator or not source_type or not source_family:
-            return None
-        try:
-            return NicheSource.create(
-                id=str(action.metadata.get("source_id") or "").strip() or None,
-                niche_id=niche_id,
-                locator=locator,
-                source_type=source_type,
-                source_family=source_family,
-                is_gate_free=bool(action.metadata.get("is_gate_free", False)),
-                company_id=_clean_optional_metadata(action.metadata.get("company_id")),
-                enabled=bool(action.metadata.get("enabled", True)),
-                limit=_int_optional_metadata(action.metadata.get("limit")),
-                scan_frequency=_clean_optional_metadata(
-                    action.metadata.get("scan_frequency"),
-                ),
-                buyer_voice_verified=bool(
-                    action.metadata.get("buyer_voice_verified", False),
-                ),
-                tier=_int_optional_metadata(action.metadata.get("tier")),
-                signal_quality_score=_float_optional_metadata(
-                    action.metadata.get("signal_quality_score"),
-                ),
-                access_mode=str(action.metadata.get("access_mode") or "unknown"),
-                requires_proxy=bool(action.metadata.get("requires_proxy", False)),
-                requires_auth=bool(action.metadata.get("requires_auth", False)),
-                recommended_cadence=_clean_optional_metadata(
-                    action.metadata.get("recommended_cadence"),
-                ),
-                options={
-                    "created_by_action_id": action.id,
-                    **dict(action.metadata.get("options") or {}),
-                },
-            )
-        except (TypeError, ValueError):
-            return None
-
-
 def _clean_optional_metadata(value: object) -> str | None:
     if value is None:
         return None
@@ -320,11 +262,3 @@ def _int_optional_metadata(value: object) -> int | None:
     except (TypeError, ValueError):
         return None
 
-
-def _float_optional_metadata(value: object) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None

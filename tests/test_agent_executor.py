@@ -1,59 +1,18 @@
 from application.agent import AgentActionExecutor
 from domain.agent import AgentAction, AgentAlert, AgentFollowUp
-from domain.niche import NicheSource, UserSource
+from domain.niche import UserSource
 from domain.source import Source
 from infrastructure.db import (
     InMemoryAgentActionRepository,
     InMemoryAgentAlertRepository,
     InMemoryAgentFollowUpRepository,
-    InMemoryNicheSourceRepository,
     InMemorySourceRepository,
     InMemoryUserSourceRepository,
 )
 
 
-def test_executor_pauses_source_for_approved_action() -> None:
-    action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
-    source_repository.save_niche_sources(
-        [
-            NicheSource.create(
-                id="source-1",
-                niche_id="niche-1",
-                locator="https://example.com/feed",
-                source_type="web",
-                source_family="forum",
-                is_gate_free=True,
-                health_status="failing",
-            )
-        ]
-    )
-    action_repository.save_agent_action(
-        AgentAction.create(
-            id="action-1",
-            user_niche_id="market-1",
-            action_type="pause_source",
-            status="approved",
-            metadata={"source_id": "source-1"},
-        )
-    )
-
-    result = AgentActionExecutor(
-        action_repository,
-        source_repository,
-    ).execute_approved_actions("market-1")
-
-    sources = source_repository.list_niche_sources("niche-1")
-    actions = action_repository.list_agent_actions(user_niche_id="market-1")
-    assert result.executed_count == 1
-    assert result.failed_count == 0
-    assert sources[0].health_status == "paused"
-    assert actions[0].status == "completed"
-
-
 def test_executor_marks_pause_source_failed_when_source_id_missing() -> None:
     action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
     action_repository.save_agent_action(
         AgentAction.create(
             id="action-1",
@@ -63,10 +22,7 @@ def test_executor_marks_pause_source_failed_when_source_id_missing() -> None:
         )
     )
 
-    result = AgentActionExecutor(
-        action_repository,
-        source_repository,
-    ).execute_approved_actions("market-1")
+    result = AgentActionExecutor(action_repository).execute_approved_actions("market-1")
 
     actions = action_repository.list_agent_actions(user_niche_id="market-1")
     assert result.executed_count == 0
@@ -127,7 +83,6 @@ def test_executor_pauses_user_source_binding_for_approved_action() -> None:
 
 def test_executor_answers_follow_up_for_approved_action() -> None:
     action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
     follow_up_repository = InMemoryAgentFollowUpRepository()
     follow_up_repository.save_agent_follow_up(
         AgentFollowUp.create(
@@ -151,8 +106,7 @@ def test_executor_answers_follow_up_for_approved_action() -> None:
 
     result = AgentActionExecutor(
         action_repository,
-        source_repository,
-        follow_up_repository,
+        follow_up_repository=follow_up_repository,
     ).execute_approved_actions("market-1")
 
     actions = action_repository.list_agent_actions(user_niche_id="market-1")
@@ -169,7 +123,6 @@ def test_executor_answers_follow_up_for_approved_action() -> None:
 
 def test_executor_marks_follow_up_action_failed_when_response_missing() -> None:
     action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
     follow_up_repository = InMemoryAgentFollowUpRepository()
     follow_up_repository.save_agent_follow_up(
         AgentFollowUp.create(
@@ -190,8 +143,7 @@ def test_executor_marks_follow_up_action_failed_when_response_missing() -> None:
 
     result = AgentActionExecutor(
         action_repository,
-        source_repository,
-        follow_up_repository,
+        follow_up_repository=follow_up_repository,
     ).execute_approved_actions("market-1")
 
     actions = action_repository.list_agent_actions(user_niche_id="market-1")
@@ -206,7 +158,6 @@ def test_executor_marks_follow_up_action_failed_when_response_missing() -> None:
 
 def test_executor_acknowledges_alert_for_approved_action() -> None:
     action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
     alert_repository = InMemoryAgentAlertRepository()
     alert_repository.save_agent_alert(
         AgentAlert.create(
@@ -229,7 +180,6 @@ def test_executor_acknowledges_alert_for_approved_action() -> None:
 
     result = AgentActionExecutor(
         action_repository,
-        source_repository,
         alert_repository=alert_repository,
     ).execute_approved_actions("market-1")
 
@@ -244,7 +194,6 @@ def test_executor_acknowledges_alert_for_approved_action() -> None:
 
 def test_executor_marks_alert_action_failed_when_alert_id_missing() -> None:
     action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
     alert_repository = InMemoryAgentAlertRepository()
     action_repository.save_agent_action(
         AgentAction.create(
@@ -258,7 +207,6 @@ def test_executor_marks_alert_action_failed_when_alert_id_missing() -> None:
 
     result = AgentActionExecutor(
         action_repository,
-        source_repository,
         alert_repository=alert_repository,
     ).execute_approved_actions("market-1")
 
@@ -266,45 +214,6 @@ def test_executor_marks_alert_action_failed_when_alert_id_missing() -> None:
     assert result.executed_count == 0
     assert result.failed_count == 1
     assert actions[0].status == "failed"
-
-
-def test_executor_adds_source_for_concrete_source_suggestion() -> None:
-    action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
-    action_repository.save_agent_action(
-        AgentAction.create(
-            id="action-1",
-            user_niche_id="market-1",
-            action_type="suggest_source",
-            status="approved",
-            metadata={
-                "niche_id": "niche-1",
-                "locator": "https://hn.algolia.com/api/v1/search_by_date?query=dbt",
-                "source_type": "hackernews_search",
-                "source_family": "technical_forum",
-                "is_gate_free": True,
-                "limit": 25,
-                "tier": 2,
-                "signal_quality_score": 0.78,
-                "access_mode": "api",
-                "recommended_cadence": "daily",
-            },
-        )
-    )
-
-    result = AgentActionExecutor(
-        action_repository,
-        source_repository,
-    ).execute_approved_actions("market-1")
-
-    actions = action_repository.list_agent_actions(user_niche_id="market-1")
-    sources = source_repository.list_niche_sources("niche-1")
-    assert result.executed_count == 1
-    assert result.failed_count == 0
-    assert actions[0].status == "completed"
-    assert len(sources) == 1
-    assert sources[0].source_type == "hackernews_search"
-    assert sources[0].options["created_by_action_id"] == "action-1"
 
 
 def test_executor_adds_user_source_for_concrete_source_suggestion() -> None:
@@ -353,7 +262,8 @@ def test_executor_adds_user_source_for_concrete_source_suggestion() -> None:
 
 def test_executor_marks_source_suggestion_failed_when_locator_missing() -> None:
     action_repository = InMemoryAgentActionRepository()
-    source_repository = InMemoryNicheSourceRepository()
+    source_repository = InMemorySourceRepository()
+    user_source_repository = InMemoryUserSourceRepository()
     action_repository.save_agent_action(
         AgentAction.create(
             id="action-1",
@@ -366,11 +276,12 @@ def test_executor_marks_source_suggestion_failed_when_locator_missing() -> None:
 
     result = AgentActionExecutor(
         action_repository,
-        source_repository,
+        source_repository=source_repository,
+        user_source_repository=user_source_repository,
     ).execute_approved_actions("market-1")
 
     actions = action_repository.list_agent_actions(user_niche_id="market-1")
     assert result.executed_count == 0
     assert result.failed_count == 1
     assert actions[0].status == "failed"
-    assert source_repository.list_niche_sources("niche-1") == []
+    assert source_repository.list_sources() == []
