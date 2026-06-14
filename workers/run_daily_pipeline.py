@@ -950,7 +950,7 @@ def _configured_sources(
     if user_niche_repository is None or user_niche_id is None:
         return []
     user_niche = user_niche_repository.get_user_niche(user_niche_id)
-    if user_niche is None or user_niche.template_niche_id is None:
+    if user_niche is None:
         return []
 
     niche_sources = _catalog_niche_sources(
@@ -961,11 +961,6 @@ def _configured_sources(
         user_niche=user_niche,
         enabled=True,
     )
-    niche_sources = [
-        source
-        for source in niche_sources
-        if source.health_status != "paused"
-    ]
     if niche_sources:
         filtered = _apply_agent_source_preferences(
             niche_sources,
@@ -1013,7 +1008,6 @@ def _catalog_niche_sources_for_user_niche(
     if (
         config.source_repository is None
         or config.template_source_binding_repository is None
-        or user_niche.template_niche_id is None
     ):
         return []
     return _catalog_niche_sources(
@@ -1038,7 +1032,6 @@ def _catalog_niche_sources(
     if (
         source_repository is None
         or template_source_binding_repository is None
-        or user_niche.template_niche_id is None
     ):
         return []
     resolver = SourceCatalogResolver(
@@ -1047,8 +1040,9 @@ def _catalog_niche_sources(
         user_source_repository=user_source_repository,
         user_source_preference_repository=user_source_preference_repository,
     )
+    scoping_id = user_niche.template_niche_id or user_niche.id
     return [
-        _effective_source_to_niche_source(user_niche.template_niche_id, source)
+        _effective_source_to_niche_source(scoping_id, source)
         for source in resolver.list_effective_sources(
             template_niche_id=user_niche.template_niche_id,
             user_niche_id=user_niche.id,

@@ -73,14 +73,18 @@ class SourceCatalogResolver:
     def list_effective_sources(
         self,
         *,
-        template_niche_id: str,
+        template_niche_id: str | None,
         user_niche_id: str | None = None,
         enabled: bool | None = None,
         include_muted: bool = False,
     ) -> list[EffectiveSource]:
         """List sources with template defaults and optional user preferences applied."""
-        bindings = self._template_source_binding_repository.list_template_source_bindings(
-            template_niche_id,
+        bindings = (
+            self._template_source_binding_repository.list_template_source_bindings(
+                template_niche_id,
+            )
+            if template_niche_id is not None
+            else []
         )
         user_sources = {
             user_source.source_id: user_source
@@ -171,7 +175,7 @@ def _resolve_source(
         source_type=source.source_type,
         source_family=source.source_family,
         is_gate_free=source.is_gate_free,
-        enabled=enabled and not muted,
+        enabled=enabled,
         muted=muted,
         limit=limit,
         scan_frequency=scan_frequency,

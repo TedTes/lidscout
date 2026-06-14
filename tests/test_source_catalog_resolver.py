@@ -242,7 +242,9 @@ def test_resolver_filters_muted_sources_unless_requested() -> None:
     )
     assert len(resolved) == 1
     assert resolved[0].muted is True
-    assert resolved[0].enabled is False
+    # enabled reflects the binding's default, not the muted override — callers
+    # use the muted flag to determine net-active state
+    assert resolved[0].enabled is True
 
 
 def test_resolver_skips_bindings_without_canonical_source() -> None:
