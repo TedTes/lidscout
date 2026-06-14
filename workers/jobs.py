@@ -64,6 +64,7 @@ def run_configured_daily_pipeline(
             template_source_binding_repository=(
                 runtime_dependencies.template_source_binding_repository
             ),
+            user_source_repository=runtime_dependencies.user_source_repository,
             user_source_preference_repository=(
                 runtime_dependencies.user_source_preference_repository
             ),
@@ -169,11 +170,10 @@ def _enabled_source_count_for_user_niche(
         "user_source_preference_repository",
         None,
     )
+    user_source_repository = getattr(dependencies, "user_source_repository", None)
     if (
         source_repository is not None
         and binding_repository is not None
-        and preference_repository is not None
-        and binding_repository.list_template_source_bindings(template_niche_id)
     ):
         from application.source_catalog import SourceCatalogResolver
 
@@ -181,6 +181,7 @@ def _enabled_source_count_for_user_niche(
             SourceCatalogResolver(
                 source_repository=source_repository,
                 template_source_binding_repository=binding_repository,
+                user_source_repository=user_source_repository,
                 user_source_preference_repository=preference_repository,
             ).list_effective_sources(
                 template_niche_id=template_niche_id,
@@ -188,12 +189,7 @@ def _enabled_source_count_for_user_niche(
                 enabled=True,
             )
         )
-    return len(
-        dependencies.niche_source_repository.list_niche_sources(
-            template_niche_id,
-            enabled=True,
-        )
-    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

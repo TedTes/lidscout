@@ -1783,6 +1783,7 @@ async def run_pipeline(
             template_source_binding_repository=(
                 dependencies.template_source_binding_repository
             ),
+            user_source_repository=dependencies.user_source_repository,
             user_source_preference_repository=(
                 dependencies.user_source_preference_repository
             ),

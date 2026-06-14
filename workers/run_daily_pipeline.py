@@ -34,6 +34,7 @@ from application.ports import (
     SourceRepository,
     TemplateSourceBindingRepository,
     ThemeRepository,
+    UserSourceRepository,
     UserSourcePreferenceRepository,
     UserSourceRunStatsRepository,
     UserNicheRepository,
@@ -96,6 +97,7 @@ class PipelineConfig:
     niche_source_repository: NicheSourceRepository | None = None
     source_repository: SourceRepository | None = None
     template_source_binding_repository: TemplateSourceBindingRepository | None = None
+    user_source_repository: UserSourceRepository | None = None
     user_source_preference_repository: UserSourcePreferenceRepository | None = None
     user_source_run_stats_repository: UserSourceRunStatsRepository | None = None
     user_niche_repository: UserNicheRepository | None = None
@@ -566,6 +568,7 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
         config.user_niche_id,
         source_repository=config.source_repository,
         template_source_binding_repository=config.template_source_binding_repository,
+        user_source_repository=config.user_source_repository,
         user_source_preference_repository=config.user_source_preference_repository,
         allow_proxy_sources=config.allow_proxy_sources,
         allow_auth_sources=config.allow_auth_sources,
@@ -635,8 +638,10 @@ def _record_user_source_health(
         source_id = detail.source.options.get("source_id")
         binding_id = detail.source.options.get("template_source_binding_id")
         relevance_key = detail.source.options.get("niche_source_id")
-        if not isinstance(source_id, str) or not isinstance(binding_id, str):
+        if not isinstance(source_id, str):
             continue
+        if binding_id is not None and not isinstance(binding_id, str):
+            binding_id = None
         relevance = (
             relevance_stats.get(relevance_key)
             if isinstance(relevance_key, str)
@@ -668,7 +673,10 @@ def _record_niche_source_health(
     scanned_at = datetime.now(tz=UTC)
     relevance_stats = relevance_stats or {}
     for detail in details:
-        if isinstance(detail.source.options.get("template_source_binding_id"), str):
+        if (
+            isinstance(detail.source.options.get("template_source_binding_id"), str)
+            or isinstance(detail.source.options.get("user_source_id"), str)
+        ):
             continue
         source_id = detail.source.options.get("niche_source_id")
         if not isinstance(source_id, str):
@@ -1052,6 +1060,7 @@ def _configured_sources(
     *,
     source_repository: SourceRepository | None = None,
     template_source_binding_repository: TemplateSourceBindingRepository | None = None,
+    user_source_repository: UserSourceRepository | None = None,
     user_source_preference_repository: UserSourcePreferenceRepository | None = None,
     allow_proxy_sources: bool = False,
     allow_auth_sources: bool = False,
@@ -1065,15 +1074,11 @@ def _configured_sources(
     niche_sources = _catalog_niche_sources(
         source_repository=source_repository,
         template_source_binding_repository=template_source_binding_repository,
+        user_source_repository=user_source_repository,
         user_source_preference_repository=user_source_preference_repository,
         user_niche=user_niche,
         enabled=True,
     )
-    if not niche_sources and niche_source_repository is not None:
-        niche_sources = niche_source_repository.list_niche_sources(
-            user_niche.template_niche_id,
-            enabled=True,
-        )
     niche_sources = [
         source
         for source in niche_sources
@@ -1090,21 +1095,11 @@ def _configured_sources(
             if agent_preferences_repository is not None
             else None
         )
-        prioritized = (
-            _prioritize_niche_sources(
-                filtered,
-                niche_source_repository,
-                preferences=preferences,
-                allow_proxy_sources=allow_proxy_sources,
-                allow_auth_sources=allow_auth_sources,
-            )
-            if niche_source_repository is not None
-            else _prioritize_sources_without_run_stats(
-                filtered,
-                preferences=preferences,
-                allow_proxy_sources=allow_proxy_sources,
-                allow_auth_sources=allow_auth_sources,
-            )
+        prioritized = _prioritize_sources_without_run_stats(
+            filtered,
+            preferences=preferences,
+            allow_proxy_sources=allow_proxy_sources,
+            allow_auth_sources=allow_auth_sources,
         )
         return [
             _niche_source_input(source, user_niche, preferences)
@@ -1146,13 +1141,13 @@ def _catalog_niche_sources_for_user_niche(
     if (
         config.source_repository is None
         or config.template_source_binding_repository is None
-        or config.user_source_preference_repository is None
         or user_niche.template_niche_id is None
     ):
         return []
     return _catalog_niche_sources(
         source_repository=config.source_repository,
         template_source_binding_repository=config.template_source_binding_repository,
+        user_source_repository=config.user_source_repository,
         user_source_preference_repository=config.user_source_preference_repository,
         user_niche=user_niche,
         enabled=enabled,
@@ -1163,6 +1158,7 @@ def _catalog_niche_sources(
     *,
     source_repository: SourceRepository | None,
     template_source_binding_repository: TemplateSourceBindingRepository | None,
+    user_source_repository: UserSourceRepository | None,
     user_source_preference_repository: UserSourcePreferenceRepository | None,
     user_niche: UserNiche,
     enabled: bool | None,
@@ -1170,13 +1166,13 @@ def _catalog_niche_sources(
     if (
         source_repository is None
         or template_source_binding_repository is None
-        or user_source_preference_repository is None
         or user_niche.template_niche_id is None
     ):
         return []
     resolver = SourceCatalogResolver(
         source_repository=source_repository,
         template_source_binding_repository=template_source_binding_repository,
+        user_source_repository=user_source_repository,
         user_source_preference_repository=user_source_preference_repository,
     )
     return [
@@ -1199,11 +1195,16 @@ def _effective_source_to_niche_source(
         "source_type": source.source_type,
         "source_family": source.source_family,
         "template_source_binding_id": source.template_source_binding_id,
+        "user_source_id": source.user_source_id,
     }
     if source.user_source_preference_id:
         options["user_source_preference_id"] = source.user_source_preference_id
     return NicheSource.create(
-        id=source.template_source_binding_id,
+        id=(
+            source.template_source_binding_id
+            or source.user_source_id
+            or source.source_id
+        ),
         niche_id=niche_id,
         company_id=None,
         locator=source.locator,

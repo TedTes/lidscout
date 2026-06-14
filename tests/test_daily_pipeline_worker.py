@@ -11,6 +11,7 @@ from domain.niche import (
     NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
+    UserSource,
     UserSourcePreference,
 )
 from domain.post import RawPost
@@ -26,6 +27,7 @@ from infrastructure.db import (
     InMemoryNicheSourceRepository,
     InMemorySourceRepository,
     InMemoryTemplateSourceBindingRepository,
+    InMemoryUserSourceRepository,
     InMemoryUserSourcePreferenceRepository,
     InMemoryUserSourceRunStatsRepository,
 )
@@ -507,7 +509,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertIsNone(opportunity.cluster_id)
         self.assertEqual(opportunity.evidence_count, 2)
 
-    def test_runs_pipeline_from_enabled_niche_sources(self):
+    def test_runs_pipeline_from_user_sources(self):
         user_niche_repository = InMemoryUserNicheRepository()
         user_niche_repository.save_user_niche(
             UserNiche.create(
@@ -519,27 +521,50 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 template_niche_id="niche-1",
             )
         )
-        niche_source_repository = InMemoryNicheSourceRepository()
-        niche_source_repository.save_niche_sources(
+        source_repository = InMemorySourceRepository()
+        source_repository.save_sources(
             [
-                NicheSource.create(
+                Source.create(
                     id="source-1",
-                    niche_id="niche-1",
                     locator="https://example.com/reviews",
                     source_type="web",
                     source_family="forum",
                     is_gate_free=True,
-                    limit=1,
                 ),
-                NicheSource.create(
+                Source.create(
                     id="source-2",
-                    niche_id="niche-1",
                     locator="https://example.com/disabled",
                     source_type="web",
                     source_family="forum",
                     is_gate_free=True,
-                    enabled=False,
                 ),
+            ]
+        )
+        template_source_binding_repository = InMemoryTemplateSourceBindingRepository()
+        template_source_binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-1",
+                    template_niche_id="niche-1",
+                    source_id="source-1",
+                    default_limit=1,
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-2",
+                    template_niche_id="niche-1",
+                    source_id="source-2",
+                ),
+            ]
+        )
+        user_source_repository = InMemoryUserSourceRepository()
+        user_source_repository.save_user_sources(
+            [
+                UserSource.create(
+                    user_niche_id="market-1",
+                    source_id="source-2",
+                    template_source_binding_id="binding-2",
+                    enabled=False,
+                )
             ]
         )
         llm_client = SequentialLLMClient(
@@ -555,7 +580,9 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             ]
         )
         config = PipelineConfig(
-            niche_source_repository=niche_source_repository,
+            source_repository=source_repository,
+            template_source_binding_repository=template_source_binding_repository,
+            user_source_repository=user_source_repository,
             user_niche_repository=user_niche_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
