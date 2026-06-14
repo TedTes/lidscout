@@ -28,7 +28,6 @@ from application.ports import (
     AgentFollowUpRepository,
     AgentPreferencesRepository,
     FindingRepository,
-    NicheSourceRepository,
     OpportunityRepository,
     PipelineRunMetricsRepository,
     SourceRepository,
@@ -94,7 +93,6 @@ class PipelineConfig:
     agent_alert_repository: AgentAlertRepository | None = None
     agent_follow_up_repository: AgentFollowUpRepository | None = None
     agent_action_repository: AgentActionRepository | None = None
-    niche_source_repository: NicheSourceRepository | None = None
     source_repository: SourceRepository | None = None
     template_source_binding_repository: TemplateSourceBindingRepository | None = None
     user_source_repository: UserSourceRepository | None = None
@@ -423,20 +421,14 @@ def _execute_approved_agent_actions(config: PipelineConfig) -> None:
     if (
         config.user_niche_id is None
         or config.agent_action_repository is None
-        or (
-            config.niche_source_repository is None
-            and (
-                config.source_repository is None
-                or config.user_source_repository is None
-            )
-        )
+        or config.source_repository is None
+        or config.user_source_repository is None
     ):
         return
     result = AgentActionExecutor(
         config.agent_action_repository,
-        config.niche_source_repository,
-        config.agent_follow_up_repository,
-        config.agent_alert_repository,
+        follow_up_repository=config.agent_follow_up_repository,
+        alert_repository=config.agent_alert_repository,
         source_repository=config.source_repository,
         user_source_repository=config.user_source_repository,
     ).execute_approved_actions(config.user_niche_id)
@@ -570,7 +562,6 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
     failed_count = 0
     details: list[SourceFetchDetail] = []
     sources = config.sources or _configured_sources(
-        config.niche_source_repository,
         config.user_niche_repository,
         config.agent_preferences_repository,
         config.user_niche_id,
@@ -619,11 +610,6 @@ def _record_source_health(
     details: list[SourceFetchDetail],
     relevance_stats: dict[str, SourceRelevanceStats] | None = None,
 ) -> None:
-    _record_niche_source_health(
-        config.niche_source_repository,
-        details,
-        relevance_stats,
-    )
     _record_user_source_health(
         config.user_source_run_stats_repository,
         config.user_niche_id,
@@ -669,117 +655,6 @@ def _record_user_source_health(
             scanned_at=scanned_at,
         )
         user_source_run_stats_repository.upsert_user_source_run_stats(stats)
-
-
-def _record_niche_source_health(
-    niche_source_repository: NicheSourceRepository | None,
-    details: list[SourceFetchDetail],
-    relevance_stats: dict[str, SourceRelevanceStats] | None = None,
-) -> None:
-    if niche_source_repository is None:
-        return
-    scanned_at = datetime.now(tz=UTC)
-    relevance_stats = relevance_stats or {}
-    for detail in details:
-        if (
-            isinstance(detail.source.options.get("template_source_binding_id"), str)
-            or isinstance(detail.source.options.get("user_source_id"), str)
-        ):
-            continue
-        source_id = detail.source.options.get("niche_source_id")
-        if not isinstance(source_id, str):
-            continue
-        health_status = "failing" if detail.error else "active"
-        niche_source_repository.update_niche_source_health(
-            source_id,
-            health_status,
-            scanned_at,
-            detail.error,
-        )
-        existing = niche_source_repository.get_niche_source_run_stats(source_id)
-        stats = _next_niche_source_run_stats(
-            source_id=source_id,
-            detail=detail,
-            relevance=relevance_stats.get(source_id),
-            existing=existing,
-            scanned_at=scanned_at,
-        )
-        niche_source_repository.upsert_niche_source_run_stats(stats)
-        niche_source_repository.update_niche_source_quality(
-            source_id,
-            source_observed_quality_score(stats),
-            buyer_voice_verified=(
-                True if stats.relevant_posts_count >= 3 else None
-            ),
-        )
-        if stats.consecutive_failures >= 5:
-            niche_source_repository.update_niche_source_health(
-                source_id,
-                "paused",
-                scanned_at,
-                stats.last_error,
-            )
-
-
-def _next_niche_source_run_stats(
-    *,
-    source_id: str,
-    detail: SourceFetchDetail,
-    relevance: SourceRelevanceStats | None,
-    existing: NicheSourceRunStats | None,
-    scanned_at: datetime,
-) -> NicheSourceRunStats:
-    was_failure = detail.error is not None
-    last_relevant_count = relevance.relevant_count if relevance else 0
-    last_rule_filtered_count = relevance.rule_filtered_count if relevance else 0
-    last_llm_filtered_count = relevance.llm_filtered_count if relevance else 0
-    last_relevance_failed_count = relevance.failed_count if relevance else 0
-    last_rejection_breakdown = (
-        dict(relevance.rejection_breakdown) if relevance else {}
-    )
-
-    return NicheSourceRunStats.create(
-        niche_source_id=source_id,
-        total_runs=(existing.total_runs if existing else 0) + 1,
-        success_count=(existing.success_count if existing else 0)
-        + (0 if was_failure else 1),
-        failure_count=(existing.failure_count if existing else 0)
-        + (1 if was_failure else 0),
-        consecutive_failures=(
-            (existing.consecutive_failures if existing else 0) + 1
-            if was_failure
-            else 0
-        ),
-        posts_fetched_count=(existing.posts_fetched_count if existing else 0)
-        + detail.fetched_count,
-        relevant_posts_count=(existing.relevant_posts_count if existing else 0)
-        + last_relevant_count,
-        rule_filtered_count=(existing.rule_filtered_count if existing else 0)
-        + last_rule_filtered_count,
-        llm_filtered_count=(existing.llm_filtered_count if existing else 0)
-        + last_llm_filtered_count,
-        relevance_failed_count=(existing.relevance_failed_count if existing else 0)
-        + last_relevance_failed_count,
-        extracted_signals_count=(
-            existing.extracted_signals_count if existing else 0
-        ),
-        gap_count=existing.gap_count if existing else 0,
-        last_status="failing" if was_failure else "healthy",
-        last_error=detail.error,
-        last_fetched_count=detail.fetched_count,
-        last_relevant_count=last_relevant_count,
-        last_rule_filtered_count=last_rule_filtered_count,
-        last_llm_filtered_count=last_llm_filtered_count,
-        last_relevance_failed_count=last_relevance_failed_count,
-        last_extracted_count=0,
-        last_gap_count=0,
-        rejection_breakdown=_merge_count_maps(
-            existing.rejection_breakdown if existing else {},
-            last_rejection_breakdown,
-        ),
-        last_rejection_breakdown=last_rejection_breakdown,
-        last_scanned_at=scanned_at,
-    )
 
 
 def _next_user_source_run_stats(
@@ -1061,7 +936,6 @@ def _build_source_post_list(
 
 
 def _configured_sources(
-    niche_source_repository: NicheSourceRepository | None,
     user_niche_repository: UserNicheRepository | None,
     agent_preferences_repository: AgentPreferencesRepository | None,
     user_niche_id: str | None,
@@ -1240,45 +1114,6 @@ def _prioritize_sources_without_run_stats(
         eligible_sources,
         key=lambda source: (
             -_niche_source_priority_score(source, None, preferences),
-            source.id,
-        ),
-    )
-
-
-def _prioritize_niche_sources(
-    sources: list[NicheSource],
-    niche_source_repository: NicheSourceRepository,
-    *,
-    preferences: object | None = None,
-    allow_proxy_sources: bool = False,
-    allow_auth_sources: bool = False,
-) -> list[NicheSource]:
-    if not sources:
-        return []
-    stats_by_source = {
-        stats.niche_source_id: stats
-        for stats in niche_source_repository.list_niche_source_run_stats(
-            [source.id for source in sources]
-        )
-    }
-    eligible_sources = [
-        source
-        for source in sources
-        if source_scan_eligibility(
-            source,
-            stats_by_source.get(source.id),
-            allow_proxy_sources=allow_proxy_sources,
-            allow_auth_sources=allow_auth_sources,
-        ).eligible
-    ]
-    return sorted(
-        eligible_sources,
-        key=lambda source: (
-            -_niche_source_priority_score(
-                source,
-                stats_by_source.get(source.id),
-                preferences,
-            ),
             source.id,
         ),
     )

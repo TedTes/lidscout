@@ -37,7 +37,6 @@ from workers.run_daily_pipeline import (
     PipelineConfig,
     SourceRelevanceStats,
     _configured_sources,
-    _record_niche_source_health,
     _synthesize_accumulated_theme_opportunities,
     run_daily_pipeline,
 )
@@ -656,7 +655,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 enabled=False,
             )
         )
-        niche_source_repository = InMemoryNicheSourceRepository()
         user_source_run_stats_repository = InMemoryUserSourceRunStatsRepository()
         llm_client = SequentialLLMClient(
             [
@@ -675,7 +673,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             template_source_binding_repository=template_source_binding_repository,
             user_source_preference_repository=user_source_preference_repository,
             user_source_run_stats_repository=user_source_run_stats_repository,
-            niche_source_repository=niche_source_repository,
             user_niche_repository=user_niche_repository,
             llm_client=llm_client,
             embedding_client=FakeEmbeddingClient(),
@@ -690,9 +687,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(result.fetched_count, 1)
         self.assertEqual(result.fetch_failed_count, 0)
         self.assertEqual(result.no_signal_count, 1)
-        self.assertIsNone(
-            niche_source_repository.get_niche_source_run_stats("binding-1")
-        )
         stats = user_source_run_stats_repository.get_user_source_run_stats(
             "market-1",
             "source-1",
@@ -1213,48 +1207,6 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
         self.assertEqual(metrics.extracted_count, result.extracted_count)
         self.assertTrue(metrics.email_sent)
-
-    def test_records_niche_source_run_stats_with_relevance_outcomes(self):
-        repository = InMemoryNicheSourceRepository()
-        source = NicheSource.create(
-            id="source-1",
-            niche_id="niche-1",
-            locator="https://example.com/reviews",
-            source_type="hackernews_search",
-            source_family="technical_forum",
-            is_gate_free=True,
-        )
-        repository.save_niche_sources([source])
-        detail = SourceFetchDetail(
-            source=SourceInput.create(
-                locator="https://example.com/reviews",
-                options={"niche_source_id": "source-1"},
-            ),
-            fetched_count=5,
-        )
-        relevance = SourceRelevanceStats(
-            source_id="source-1",
-            relevant_count=2,
-            rule_filtered_count=1,
-            llm_filtered_count=2,
-            rejection_breakdown={"empty": 1, "wrong_subject": 2},
-        )
-
-        _record_niche_source_health(repository, [detail], {"source-1": relevance})
-
-        updated_source = repository.list_niche_sources("niche-1")[0]
-        stats = repository.get_niche_source_run_stats("source-1")
-
-        self.assertEqual(updated_source.health_status, "active")
-        self.assertEqual(updated_source.signal_quality_score, 0.622)
-        self.assertFalse(updated_source.buyer_voice_verified)
-        self.assertIsNotNone(stats)
-        self.assertEqual(stats.total_runs, 1)
-        self.assertEqual(stats.posts_fetched_count, 5)
-        self.assertEqual(stats.relevant_posts_count, 2)
-        self.assertEqual(stats.rule_filtered_count, 1)
-        self.assertEqual(stats.llm_filtered_count, 2)
-        self.assertEqual(stats.rejection_breakdown, {"empty": 1, "wrong_subject": 2})
 
     def test_configured_sources_prioritizes_observed_source_quality(self):
         user_niche_repository = InMemoryUserNicheRepository()
