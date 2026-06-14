@@ -14,6 +14,7 @@ from domain.niche import (
     TemplateSourceBinding,
     UserNiche,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 from domain.source import Source
 from domain.user import User
@@ -23,6 +24,7 @@ from infrastructure.db import (
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
     InMemoryUserSourcePreferenceRepository,
+    InMemoryUserSourceRunStatsRepository,
 )
 
 
@@ -140,10 +142,12 @@ def test_market_sources_can_be_resolved_from_source_catalog() -> None:
             options_override={"query": "vercel railway"},
         )
     )
-    stats_repository = InMemoryNicheSourceRepository()
-    stats_repository.upsert_niche_source_run_stats(
-        NicheSourceRunStats.create(
-            niche_source_id="source-1",
+    user_source_run_stats_repository = InMemoryUserSourceRunStatsRepository()
+    user_source_run_stats_repository.upsert_user_source_run_stats(
+        UserSourceRunStats.create(
+            user_niche_id="market-1",
+            source_id="source-1",
+            template_source_binding_id="binding-1",
             total_runs=1,
             success_count=1,
             posts_fetched_count=10,
@@ -155,10 +159,10 @@ def test_market_sources_can_be_resolved_from_source_catalog() -> None:
     )
     dependencies = SignalApiDependencies(
         user_niche_repository=user_niche_repository,
-        niche_source_repository=stats_repository,
         source_repository=source_repository,
         template_source_binding_repository=binding_repository,
         user_source_preference_repository=preference_repository,
+        user_source_run_stats_repository=user_source_run_stats_repository,
     )
 
     response = asyncio.run(

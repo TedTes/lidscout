@@ -70,6 +70,7 @@ from domain.niche import (
     NicheSourceRunStats,
     UserNiche,
     UserSourcePreference,
+    UserSourceRunStats,
 )
 from domain.user import User
 from domain.opportunity import Opportunity
@@ -740,8 +741,9 @@ async def list_market_sources(
     if niche_id is None:
         return {"sources": [], "summary": _source_coverage_summary([])}
     sources = _list_market_display_sources(user_niche, dependencies)
-    stats_by_source = _niche_source_stats_by_source_id(
-        dependencies.niche_source_repository,
+    stats_by_source = _source_stats_by_display_source_id(
+        dependencies,
+        user_niche,
         sources,
     )
     app_config = get_app_config()
@@ -871,7 +873,11 @@ async def update_source(
         _save_catalog_source_preference(updated_source, user_niche, dependencies)
         return _serialize_niche_source(
             updated_source,
-            dependencies.niche_source_repository.get_niche_source_run_stats(source_id),
+            _catalog_source_stats_for_display_source(
+                dependencies,
+                user_niche.id,
+                updated_source,
+            ),
         )
 
     if not dependencies.niche_source_repository.update_niche_source(updated_source):
@@ -2898,6 +2904,78 @@ def _niche_source_stats_by_source_id(
         return {}
     stats = repository.list_niche_source_run_stats([source.id for source in sources])
     return {item.niche_source_id: item for item in stats}
+
+
+def _source_stats_by_display_source_id(
+    dependencies: SignalApiDependencies,
+    user_niche: UserNiche,
+    sources: list[NicheSource],
+) -> dict[str, NicheSourceRunStats]:
+    legacy_sources = [
+        source for source in sources if not _is_catalog_backed_source(source)
+    ]
+    stats_by_source = _niche_source_stats_by_source_id(
+        dependencies.niche_source_repository,
+        legacy_sources,
+    )
+    catalog_source_ids = [
+        source.id for source in sources if _is_catalog_backed_source(source)
+    ]
+    catalog_stats = (
+        dependencies.user_source_run_stats_repository.list_user_source_run_stats(
+            user_niche.id,
+            catalog_source_ids,
+        )
+    )
+    for stats in catalog_stats:
+        stats_by_source[stats.source_id] = _user_source_stats_as_niche_stats(stats)
+    return stats_by_source
+
+
+def _catalog_source_stats_for_display_source(
+    dependencies: SignalApiDependencies,
+    user_niche_id: str,
+    source: NicheSource,
+) -> NicheSourceRunStats | None:
+    if not _is_catalog_backed_source(source):
+        return None
+    stats = dependencies.user_source_run_stats_repository.get_user_source_run_stats(
+        user_niche_id,
+        source.id,
+    )
+    return _user_source_stats_as_niche_stats(stats) if stats else None
+
+
+def _user_source_stats_as_niche_stats(
+    stats: UserSourceRunStats,
+) -> NicheSourceRunStats:
+    return NicheSourceRunStats.create(
+        niche_source_id=stats.source_id,
+        total_runs=stats.total_runs,
+        success_count=stats.success_count,
+        failure_count=stats.failure_count,
+        consecutive_failures=stats.consecutive_failures,
+        posts_fetched_count=stats.posts_fetched_count,
+        relevant_posts_count=stats.relevant_posts_count,
+        rule_filtered_count=stats.rule_filtered_count,
+        llm_filtered_count=stats.llm_filtered_count,
+        relevance_failed_count=stats.relevance_failed_count,
+        extracted_signals_count=stats.extracted_signals_count,
+        gap_count=stats.gap_count,
+        last_status=stats.last_status,
+        last_error=stats.last_error,
+        last_fetched_count=stats.last_fetched_count,
+        last_relevant_count=stats.last_relevant_count,
+        last_rule_filtered_count=stats.last_rule_filtered_count,
+        last_llm_filtered_count=stats.last_llm_filtered_count,
+        last_relevance_failed_count=stats.last_relevance_failed_count,
+        last_extracted_count=stats.last_extracted_count,
+        last_gap_count=stats.last_gap_count,
+        rejection_breakdown=stats.rejection_breakdown,
+        last_rejection_breakdown=stats.last_rejection_breakdown,
+        last_scanned_at=stats.last_scanned_at,
+        updated_at=stats.updated_at,
+    )
 
 
 def _serialize_niche_source(
