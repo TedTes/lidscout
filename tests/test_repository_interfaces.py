@@ -355,9 +355,23 @@ class RepositoryInterfaceTests(unittest.TestCase):
             repository.get_user_source_preference("user-niche-1", "source-1"),
             preference,
         )
+        updated_preference = UserSourcePreference.create(
+            id="preference-replacement",
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            enabled=False,
+            limit_override=5,
+        )
+        self.assertFalse(repository.save_user_source_preference(updated_preference))
+        saved_preference = repository.get_user_source_preference(
+            "user-niche-1",
+            "source-1",
+        )
+        self.assertEqual(saved_preference.id, "preference-1")
+        self.assertEqual(saved_preference.limit_override, 5)
         self.assertEqual(
             repository.list_user_source_preferences("user-niche-1"),
-            [preference],
+            [saved_preference],
         )
         self.assertTrue(repository.delete_user_source_preference("preference-1"))
         self.assertIsNone(

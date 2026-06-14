@@ -68,6 +68,7 @@ from domain.niche import (
     NicheSource,
     NicheSourceRunStats,
     UserNiche,
+    UserSourcePreference,
 )
 from domain.user import User
 from domain.opportunity import Opportunity
@@ -811,7 +812,7 @@ async def update_source(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Update a monitored source owned by the current user."""
-    source, _user_niche = _get_owned_niche_source(
+    source, user_niche = _get_owned_niche_source(
         source_id,
         dependencies,
         current_user,
@@ -856,6 +857,18 @@ async def update_source(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if _is_catalog_backed_source(source):
+        if "source_type" in fields:
+            raise HTTPException(
+                status_code=422,
+                detail="Catalog source type cannot be changed per user",
+            )
+        _save_catalog_source_preference(updated_source, user_niche, dependencies)
+        return _serialize_niche_source(
+            updated_source,
+            dependencies.niche_source_repository.get_niche_source_run_stats(source_id),
+        )
+
     if not dependencies.niche_source_repository.update_niche_source(updated_source):
         raise HTTPException(status_code=404, detail="Source not found")
     return _serialize_niche_source(
@@ -871,7 +884,15 @@ async def delete_source(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Delete a monitored source owned by the current user."""
-    _get_owned_niche_source(source_id, dependencies, current_user)
+    source, user_niche = _get_owned_niche_source(source_id, dependencies, current_user)
+    if _is_catalog_backed_source(source):
+        _save_catalog_source_preference(
+            replace(source, enabled=False),
+            user_niche,
+            dependencies,
+            muted=True,
+        )
+        return {"id": source_id, "deleted": True}
     deleted = dependencies.niche_source_repository.delete_niche_source(source_id)
     return {"id": source_id, "deleted": deleted}
 
@@ -2123,9 +2144,7 @@ def _get_owned_niche_source(
     for user_niche in user_niches:
         if user_niche.template_niche_id is None:
             continue
-        for source in dependencies.niche_source_repository.list_niche_sources(
-            user_niche.template_niche_id,
-        ):
+        for source in _list_market_display_sources(user_niche, dependencies):
             if source.id == source_id:
                 return source, user_niche
     raise HTTPException(status_code=404, detail="Source not found")
@@ -2813,6 +2832,47 @@ def _effective_source_to_niche_source(
         requires_auth=source.requires_auth,
         recommended_cadence=source.recommended_cadence,
     )
+
+
+def _is_catalog_backed_source(source: NicheSource) -> bool:
+    return bool(source.options.get("template_source_binding_id"))
+
+
+def _save_catalog_source_preference(
+    source: NicheSource,
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies,
+    *,
+    muted: bool = False,
+) -> None:
+    preference = UserSourcePreference.create(
+        id=_option_str(source.options, "user_source_preference_id"),
+        user_niche_id=user_niche.id,
+        source_id=source.id,
+        enabled=source.enabled,
+        muted=muted,
+        cadence_override=source.scan_frequency,
+        limit_override=source.limit,
+        options_override=_source_user_options_override(source.options),
+    )
+    dependencies.user_source_preference_repository.save_user_source_preference(
+        preference,
+    )
+
+
+def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:
+    reserved_keys = {
+        "source_id",
+        "source_type",
+        "source_family",
+        "template_source_binding_id",
+        "user_source_preference_id",
+    }
+    return {
+        key: value
+        for key, value in options.items()
+        if key not in reserved_keys
+    }
 
 
 def _niche_source_stats_by_source_id(

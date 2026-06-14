@@ -178,6 +178,92 @@ def test_market_sources_can_be_resolved_from_source_catalog() -> None:
     assert response["summary"]["source_count"] == 1
 
 
+def test_catalog_source_update_and_delete_write_user_preferences() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+                source_type="hackernews",
+                source_family="technical_forum",
+                access_mode="api",
+                is_gate_free=True,
+            )
+        ]
+    )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+                default_limit=25,
+                default_scan_frequency="daily",
+                default_options={"query": "vercel"},
+            )
+        ]
+    )
+    preference_repository = InMemoryUserSourcePreferenceRepository()
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        niche_source_repository=InMemoryNicheSourceRepository(),
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_preference_repository=preference_repository,
+    )
+
+    updated = asyncio.run(
+        update_source(
+            "source-1",
+            NicheSourceUpdateRequest(
+                enabled=False,
+                limit=5,
+                scan_frequency="weekly",
+                options={"query": "vercel railway"},
+            ),
+            dependencies,
+            current_user=user,
+        )
+    )
+
+    preference = preference_repository.get_user_source_preference(
+        "market-1",
+        "source-1",
+    )
+    assert updated["enabled"] is False
+    assert updated["limit"] == 5
+    assert preference is not None
+    assert preference.enabled is False
+    assert preference.limit_override == 5
+    assert preference.cadence_override == "weekly"
+    assert preference.options_override == {"query": "vercel railway"}
+
+    deleted = asyncio.run(delete_source("source-1", dependencies, current_user=user))
+    preference = preference_repository.get_user_source_preference(
+        "market-1",
+        "source-1",
+    )
+
+    assert deleted == {"id": "source-1", "deleted": True}
+    assert preference is not None
+    assert preference.muted is True
+    assert preference.enabled is False
+
+
 def test_pipeline_diagnostics_returns_sanitized_runtime_warnings() -> None:
     user = User(id="user-1", email="user@example.com")
     dependencies = SignalApiDependencies(

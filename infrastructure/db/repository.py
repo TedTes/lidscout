@@ -1,7 +1,7 @@
 """Database repository implementations for domain entities."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -756,7 +756,19 @@ class InMemoryUserSourcePreferenceRepository(UserSourcePreferenceRepository):
     _preferences: dict[str, UserSourcePreference] = field(default_factory=dict)
 
     def save_user_source_preference(self, preference: UserSourcePreference) -> bool:
+        for existing in self._preferences.values():
+            if (
+                existing.user_niche_id == preference.user_niche_id
+                and existing.source_id == preference.source_id
+            ):
+                self._preferences[existing.id] = replace(
+                    preference,
+                    id=existing.id,
+                    created_at=existing.created_at,
+                )
+                return False
         if preference.id in self._preferences:
+            self._preferences[preference.id] = preference
             return False
         self._preferences[preference.id] = preference
         return True
