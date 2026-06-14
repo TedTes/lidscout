@@ -30,7 +30,6 @@ from infrastructure.db import (
     PostgresClusterRepository,
     PostgresFindingRepository,
     PostgresNicheCompanyRepository,
-    PostgresNicheSourceRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
     PostgresPostRepository,

@@ -10,8 +10,6 @@ from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
 from domain.niche import (
-    NicheSource,
-    NicheSourceRunStats,
     TemplateSourceBinding,
     UserSource,
     UserSourcePreference,
@@ -29,7 +27,6 @@ from infrastructure.db import (
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryNicheCompanyRepository,
-    InMemoryNicheSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPostRepository,
     InMemoryScoreRepository,
@@ -488,66 +485,6 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.competitors["competitor-1"], competitor)
         self.assertEqual(repository.get_competitor("competitor-1"), competitor)
         self.assertEqual(repository.list_competitors(), [competitor])
-
-    @unittest.skip("InMemoryNicheSourceRepository API changed — MonitoredSource replaced by NicheSource")
-    def test_monitored_source_repository_filters_sources(self):
-        pass
-
-    def test_niche_source_repository_persists_run_stats(self):
-        repository = InMemoryNicheSourceRepository()
-        stats = NicheSourceRunStats.create(
-            niche_source_id="source-1",
-            total_runs=1,
-            success_count=1,
-            posts_fetched_count=10,
-            relevant_posts_count=3,
-            rule_filtered_count=4,
-            llm_filtered_count=2,
-            relevance_failed_count=1,
-            extracted_signals_count=2,
-            gap_count=1,
-            last_status="healthy",
-            last_fetched_count=10,
-            last_relevant_count=3,
-            last_rule_filtered_count=4,
-            last_llm_filtered_count=2,
-            last_relevance_failed_count=1,
-            last_extracted_count=2,
-            last_gap_count=1,
-            rejection_breakdown={"wrong_subject": 3, "tutorial_or_template": 2},
-            last_rejection_breakdown={"wrong_subject": 3, "tutorial_or_template": 2},
-        )
-
-        self.assertTrue(repository.upsert_niche_source_run_stats(stats))
-        self.assertEqual(repository.get_niche_source_run_stats("source-1"), stats)
-        self.assertEqual(repository.list_niche_source_run_stats(), [stats])
-        self.assertEqual(repository.list_niche_source_run_stats(["source-1"]), [stats])
-        self.assertEqual(repository.list_niche_source_run_stats(["missing"]), [])
-
-    def test_niche_source_repository_updates_quality_score(self):
-        repository = InMemoryNicheSourceRepository()
-        source = NicheSource.create(
-            id="source-1",
-            niche_id="niche-1",
-            locator="https://example.com",
-            source_type="hackernews_search",
-            source_family="technical_forum",
-            is_gate_free=True,
-            signal_quality_score=0.5,
-        )
-        repository.save_niche_sources([source])
-
-        self.assertTrue(
-            repository.update_niche_source_quality(
-                "source-1",
-                0.72,
-                buyer_voice_verified=True,
-            )
-        )
-
-        updated = repository.list_niche_sources("niche-1")[0]
-        self.assertEqual(updated.signal_quality_score, 0.72)
-        self.assertTrue(updated.buyer_voice_verified)
 
     @unittest.skip("InMemorySourceHealthRepository removed — health tracked on NicheSource")
     def test_source_health_repository_persists_snapshots(self):

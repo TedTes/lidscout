@@ -5,8 +5,6 @@ from typing import Protocol
 from domain.niche import (
     Niche,
     NicheCompany,
-    NicheSource,
-    NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
     UserSource,
@@ -438,74 +436,6 @@ class NicheCompanyRepository(Protocol):
 
     def delete_niche_company(self, company_id: str) -> bool:
         """Delete one company and return whether it existed."""
-        ...
-
-
-class NicheSourceRepository(Protocol):
-    """Persistence boundary for niche-bound monitoring sources."""
-
-    def save_niche_sources(self, sources: list[NicheSource]) -> int:
-        """Persist sources and return the number saved."""
-        ...
-
-    def list_niche_sources(
-        self,
-        niche_id: str,
-        *,
-        enabled: bool | None = None,
-        is_gate_free: bool | None = None,
-        buyer_voice_verified: bool | None = None,
-    ) -> list[NicheSource]:
-        """Load sources for a niche, optionally filtered."""
-        ...
-
-    def update_niche_source(self, source: NicheSource) -> bool:
-        """Replace mutable fields for one source and return whether it existed."""
-        ...
-
-    def update_niche_source_health(
-        self,
-        source_id: str,
-        health_status: str,
-        last_scanned_at: object | None = None,
-        last_error: str | None = None,
-    ) -> bool:
-        """Update health status and last_scanned_at for one source."""
-        ...
-
-    def update_niche_source_quality(
-        self,
-        source_id: str,
-        signal_quality_score: float,
-        *,
-        buyer_voice_verified: bool | None = None,
-    ) -> bool:
-        """Update the observed quality score for one source."""
-        ...
-
-    def upsert_niche_source_run_stats(
-        self,
-        stats: NicheSourceRunStats,
-    ) -> bool:
-        """Create or replace cumulative runtime stats for one source."""
-        ...
-
-    def get_niche_source_run_stats(
-        self,
-        source_id: str,
-    ) -> NicheSourceRunStats | None:
-        """Load cumulative runtime stats for one source."""
-        ...
-
-    def list_niche_source_run_stats(
-        self,
-        source_ids: list[str] | None = None,
-    ) -> list[NicheSourceRunStats]:
-        """Load cumulative runtime stats, optionally limited to source IDs."""
-        ...
-
-    def delete_niche_source(self, source_id: str) -> bool:
-        """Delete one source and return whether it existed."""
         ...
 
 
