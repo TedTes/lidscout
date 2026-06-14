@@ -26,6 +26,7 @@ from application.ports import (
     SourceLocatorRepository,
     TemplateSourceBindingRepository,
     ThemeRepository,
+    UserSourceRepository,
     UserSourcePreferenceRepository,
     UserSourceRunStatsRepository,
 )
@@ -46,6 +47,7 @@ from domain.score import OpportunityScore
 from domain.signal import Signal
 from domain.niche import (
     TemplateSourceBinding,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -752,6 +754,70 @@ class InMemoryTemplateSourceBindingRepository(TemplateSourceBindingRepository):
 
     def delete_template_source_binding(self, binding_id: str) -> bool:
         return self._bindings.pop(binding_id, None) is not None
+
+
+@dataclass
+class InMemoryUserSourceRepository(UserSourceRepository):
+    """In-memory concrete user source binding repository."""
+
+    _sources: dict[str, UserSource] = field(default_factory=dict)
+
+    def save_user_sources(self, sources: list[UserSource]) -> int:
+        inserted_count = 0
+        for source in sources:
+            existing = self.get_user_source(source.user_niche_id, source.source_id)
+            if existing is not None:
+                self._sources[existing.id] = replace(
+                    source,
+                    id=existing.id,
+                    created_at=existing.created_at,
+                )
+                continue
+            if source.id in self._sources:
+                self._sources[source.id] = source
+                continue
+            self._sources[source.id] = source
+            inserted_count += 1
+        return inserted_count
+
+    def get_user_source(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSource | None:
+        for source in self._sources.values():
+            if source.user_niche_id == user_niche_id and source.source_id == source_id:
+                return source
+        return None
+
+    def list_user_sources(
+        self,
+        user_niche_id: str,
+        *,
+        enabled: bool | None = None,
+        include_muted: bool = True,
+    ) -> list[UserSource]:
+        sources = [
+            source
+            for source in self._sources.values()
+            if source.user_niche_id == user_niche_id
+        ]
+        if enabled is not None:
+            sources = [source for source in sources if source.enabled == enabled]
+        if not include_muted:
+            sources = [source for source in sources if not source.muted]
+        return sorted(
+            sources,
+            key=lambda source: (
+                source.priority is None,
+                source.priority or 0,
+                source.created_at or datetime.min.replace(tzinfo=UTC),
+                source.id,
+            ),
+        )
+
+    def delete_user_source(self, user_source_id: str) -> bool:
+        return self._sources.pop(user_source_id, None) is not None
 
 
 @dataclass

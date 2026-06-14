@@ -12,6 +12,7 @@ from domain.niche import (
     NicheSource,
     NicheSourceRunStats,
     TemplateSourceBinding,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -39,6 +40,7 @@ from infrastructure.db import (
     PostgresSourceLocatorRepository,
     PostgresTemplateSourceBindingRepository,
     PostgresThemeRepository,
+    PostgresUserSourceRepository,
     PostgresUserSourcePreferenceRepository,
     PostgresUserSourceRunStatsRepository,
     connect_postgres,
@@ -744,6 +746,71 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(connection.calls[1][1], ("user-niche-1", "source-1"))
         self.assertEqual(connection.calls[2][1], ("user-niche-1",))
         self.assertEqual(connection.calls[3][1], ("preference-1",))
+        self.assertEqual(connection.commit_count, 2)
+
+    def test_user_source_repository_upserts_loads_lists_and_deletes(self):
+        created_at = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
+        source = UserSource.create(
+            id="user-source-1",
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            template_source_binding_id="binding-1",
+            enabled=True,
+            muted=False,
+            cadence="daily",
+            priority=2,
+            limit=10,
+            options={"adapter": "json"},
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        row = {
+            "id": "user-source-1",
+            "user_niche_id": "user-niche-1",
+            "source_id": "source-1",
+            "template_source_binding_id": "binding-1",
+            "enabled": True,
+            "muted": False,
+            "cadence": "daily",
+            "priority": 2,
+            "limit_value": 10,
+            "options": {"adapter": "json"},
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+                FakeCursor(rowcount=1),
+            ]
+        )
+        repository = PostgresUserSourceRepository(connection=connection)
+
+        self.assertEqual(repository.save_user_sources([source]), 1)
+        self.assertEqual(
+            repository.get_user_source("user-niche-1", "source-1"),
+            source,
+        )
+        self.assertEqual(
+            repository.list_user_sources(
+                "user-niche-1",
+                enabled=True,
+                include_muted=False,
+            ),
+            [source],
+        )
+        self.assertTrue(repository.delete_user_source("user-source-1"))
+        self.assertIn("INSERT INTO user_sources", connection.calls[0][0])
+        self.assertIn(
+            "ON CONFLICT (user_niche_id, source_id) DO UPDATE",
+            connection.calls[0][0],
+        )
+        self.assertEqual(json.loads(connection.calls[0][1][9]), {"adapter": "json"})
+        self.assertEqual(connection.calls[1][1], ("user-niche-1", "source-1"))
+        self.assertEqual(connection.calls[2][1], ("user-niche-1", True))
+        self.assertEqual(connection.calls[3][1], ("user-source-1",))
         self.assertEqual(connection.commit_count, 2)
 
     def test_user_source_run_stats_repository_upserts_and_loads_stats(self):

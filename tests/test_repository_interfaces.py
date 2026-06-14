@@ -13,6 +13,7 @@ from domain.niche import (
     NicheSource,
     NicheSourceRunStats,
     TemplateSourceBinding,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -36,6 +37,7 @@ from infrastructure.db import (
     InMemorySourceRepository,
     InMemorySourceLocatorRepository,
     InMemoryTemplateSourceBindingRepository,
+    InMemoryUserSourceRepository,
     InMemoryUserSourcePreferenceRepository,
     InMemoryUserSourceRunStatsRepository,
 )
@@ -379,6 +381,56 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertIsNone(
             repository.get_user_source_preference("user-niche-1", "source-1"),
         )
+
+    def test_user_source_repository_upserts_and_filters_sources(self):
+        repository = InMemoryUserSourceRepository()
+        source = UserSource.create(
+            id="user-source-1",
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            template_source_binding_id="binding-1",
+            enabled=True,
+            priority=2,
+            limit=10,
+        )
+        muted_source = UserSource.create(
+            id="user-source-2",
+            user_niche_id="user-niche-1",
+            source_id="source-2",
+            enabled=True,
+            muted=True,
+            priority=1,
+        )
+
+        self.assertEqual(
+            repository.save_user_sources([source, muted_source, source]),
+            2,
+        )
+        self.assertEqual(
+            repository.get_user_source("user-niche-1", "source-1"),
+            source,
+        )
+        updated_source = UserSource.create(
+            id="user-source-replacement",
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            enabled=False,
+            limit=5,
+        )
+        self.assertEqual(repository.save_user_sources([updated_source]), 0)
+        saved_source = repository.get_user_source("user-niche-1", "source-1")
+        self.assertEqual(saved_source.id, "user-source-1")
+        self.assertEqual(saved_source.limit, 5)
+        self.assertEqual(
+            repository.list_user_sources("user-niche-1", include_muted=False),
+            [saved_source],
+        )
+        self.assertEqual(
+            repository.list_user_sources("user-niche-1", enabled=True),
+            [muted_source],
+        )
+        self.assertTrue(repository.delete_user_source("user-source-1"))
+        self.assertIsNone(repository.get_user_source("user-niche-1", "source-1"))
 
     def test_user_source_run_stats_repository_persists_stats(self):
         repository = InMemoryUserSourceRunStatsRepository()

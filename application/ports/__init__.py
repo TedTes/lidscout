@@ -21,6 +21,7 @@ from application.ports.repositories import (
     TemplateSourceBindingRepository,
     ThemeRepository,
     UserNicheRepository,
+    UserSourceRepository,
     UserSourcePreferenceRepository,
     UserSourceRunStatsRepository,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "TemplateSourceBindingRepository",
     "ThemeRepository",
     "UserNicheRepository",
+    "UserSourceRepository",
     "UserSourcePreferenceRepository",
     "UserSourceRunStatsRepository",
 ]

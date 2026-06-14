@@ -11,6 +11,7 @@ from application.ports import (
     NicheSourceRepository,
     TemplateSourceBindingRepository,
     UserNicheRepository,
+    UserSourceRepository,
     UserSourcePreferenceRepository,
     UserSourceRunStatsRepository,
 )
@@ -21,6 +22,7 @@ from domain.niche import (
     NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -555,6 +557,97 @@ class PostgresUserNicheRepository(_PostgresRepository, UserNicheRepository):
         return _rowcount(cursor) > 0
 
 
+class PostgresUserSourceRepository(_PostgresRepository, UserSourceRepository):
+    """Postgres-backed concrete user source binding repository."""
+
+    def save_user_sources(self, sources: list[UserSource]) -> int:
+        inserted = 0
+        for source in sources:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO user_sources (
+                    id, user_niche_id, source_id, template_source_binding_id,
+                    enabled, muted, cadence, priority, limit_value, options,
+                    created_at, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                )
+                ON CONFLICT (user_niche_id, source_id) DO UPDATE SET
+                    template_source_binding_id = EXCLUDED.template_source_binding_id,
+                    enabled = EXCLUDED.enabled,
+                    muted = EXCLUDED.muted,
+                    cadence = EXCLUDED.cadence,
+                    priority = EXCLUDED.priority,
+                    limit_value = EXCLUDED.limit_value,
+                    options = EXCLUDED.options,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    source.id,
+                    source.user_niche_id,
+                    source.source_id,
+                    source.template_source_binding_id,
+                    source.enabled,
+                    source.muted,
+                    source.cadence,
+                    source.priority,
+                    source.limit,
+                    json.dumps(source.options),
+                    source.created_at,
+                    source.updated_at,
+                ),
+            )
+            inserted += _rowcount(cursor)
+        self.connection.commit()
+        return inserted
+
+    def get_user_source(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSource | None:
+        row = self.connection.execute(
+            """
+            SELECT * FROM user_sources
+             WHERE user_niche_id = %s AND source_id = %s
+            """,
+            (user_niche_id, source_id),
+        ).fetchone()
+        return _user_source_from_row(row) if row else None
+
+    def list_user_sources(
+        self,
+        user_niche_id: str,
+        *,
+        enabled: bool | None = None,
+        include_muted: bool = True,
+    ) -> list[UserSource]:
+        clauses: list[str] = ["user_niche_id = %s"]
+        params: list[Any] = [user_niche_id]
+        if enabled is not None:
+            clauses.append("enabled = %s")
+            params.append(enabled)
+        if not include_muted:
+            clauses.append("muted = false")
+        rows = self.connection.execute(
+            f"""
+            SELECT * FROM user_sources
+             WHERE {' AND '.join(clauses)}
+             ORDER BY priority NULLS LAST, created_at, id
+            """,
+            tuple(params),
+        ).fetchall()
+        return [_user_source_from_row(row) for row in rows]
+
+    def delete_user_source(self, user_source_id: str) -> bool:
+        cursor = self.connection.execute(
+            "DELETE FROM user_sources WHERE id = %s",
+            (user_source_id,),
+        )
+        self.connection.commit()
+        return _rowcount(cursor) > 0
+
+
 class PostgresUserSourcePreferenceRepository(
     _PostgresRepository,
     UserSourcePreferenceRepository,
@@ -892,6 +985,27 @@ def _niche_source_run_stats_from_row(row: dict[str, Any]) -> NicheSourceRunStats
             for key, value in _json_obj(row.get("last_rejection_breakdown")).items()
         },
         last_scanned_at=row.get("last_scanned_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+def _user_source_from_row(row: dict[str, Any]) -> UserSource:
+    return UserSource.create(
+        id=str(row["id"]),
+        user_niche_id=str(row["user_niche_id"]),
+        source_id=str(row["source_id"]),
+        template_source_binding_id=(
+            str(row["template_source_binding_id"])
+            if row.get("template_source_binding_id")
+            else None
+        ),
+        enabled=bool(row.get("enabled", True)),
+        muted=bool(row.get("muted", False)),
+        cadence=row.get("cadence"),
+        priority=row.get("priority"),
+        limit=row.get("limit_value"),
+        options=_json_obj(row.get("options")),
+        created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),
     )
 
