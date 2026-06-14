@@ -1,6 +1,7 @@
 """Aggregate feedback diagnostics for niche research agents."""
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 
 from domain.agent import AgentFeedback
 
@@ -81,7 +82,7 @@ def build_agent_feedback_summary(
         )
         for item in sorted(
             feedback,
-            key=lambda item: item.updated_at or item.created_at,
+            key=lambda item: item.updated_at or item.created_at or datetime.min,
             reverse=True,
         )
         if item.comment
