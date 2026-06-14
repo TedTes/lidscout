@@ -22,8 +22,11 @@ from application.ports import (
     PostRepository,
     ScoreRepository,
     SignalRepository,
+    SourceRepository,
     SourceLocatorRepository,
+    TemplateSourceBindingRepository,
     ThemeRepository,
+    UserSourcePreferenceRepository,
 )
 from domain.agent import (
     AgentAction,
@@ -40,7 +43,8 @@ from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.niche import TemplateSourceBinding, UserSourcePreference
+from domain.source import Source, SourceLocator
 from domain.theme import Theme, ThemeFinding
 
 
@@ -471,6 +475,55 @@ class InMemorySourceLocatorRepository(SourceLocatorRepository):
 
 
 @dataclass
+class InMemorySourceRepository(SourceRepository):
+    """In-memory canonical source repository."""
+
+    sources: dict[str, Source] = field(default_factory=dict)
+
+    def save_sources(self, sources: list[Source]) -> int:
+        inserted_count = 0
+        for source in sources:
+            if source.id in self.sources:
+                continue
+            self.sources[source.id] = source
+            inserted_count += 1
+        return inserted_count
+
+    def get_source(self, source_id: str) -> Source | None:
+        return self.sources.get(source_id)
+
+    def get_source_by_identity(self, source_type: str, locator: str) -> Source | None:
+        normalized_source_type = source_type.strip().lower()
+        normalized_locator = locator.strip()
+        for source in self.sources.values():
+            if (
+                source.source_type == normalized_source_type
+                and source.locator == normalized_locator
+            ):
+                return source
+        return None
+
+    def list_sources(
+        self,
+        *,
+        source_type: str | None = None,
+        source_family: str | None = None,
+    ) -> list[Source]:
+        sources = list(self.sources.values())
+        if source_type is not None:
+            normalized_source_type = source_type.strip().lower()
+            sources = [s for s in sources if s.source_type == normalized_source_type]
+        if source_family is not None:
+            normalized_source_family = source_family.strip().lower()
+            sources = [
+                source
+                for source in sources
+                if source.source_family == normalized_source_family
+            ]
+        return sources
+
+
+@dataclass
 class InMemoryNicheRepository:
     """In-memory niche repository."""
 
@@ -653,6 +706,86 @@ class InMemoryNicheSourceRepository:
     def delete_niche_source(self, source_id: str) -> bool:
         self._run_stats.pop(source_id, None)
         return self._sources.pop(source_id, None) is not None
+
+
+@dataclass
+class InMemoryTemplateSourceBindingRepository(TemplateSourceBindingRepository):
+    """In-memory template source binding repository."""
+
+    _bindings: dict[str, TemplateSourceBinding] = field(default_factory=dict)
+
+    def save_template_source_bindings(
+        self,
+        bindings: list[TemplateSourceBinding],
+    ) -> int:
+        inserted_count = 0
+        for binding in bindings:
+            if binding.id in self._bindings:
+                continue
+            self._bindings[binding.id] = binding
+            inserted_count += 1
+        return inserted_count
+
+    def list_template_source_bindings(
+        self,
+        template_niche_id: str,
+        *,
+        default_enabled: bool | None = None,
+    ) -> list[TemplateSourceBinding]:
+        bindings = [
+            binding
+            for binding in self._bindings.values()
+            if binding.template_niche_id == template_niche_id
+        ]
+        if default_enabled is not None:
+            bindings = [
+                binding
+                for binding in bindings
+                if binding.default_enabled == default_enabled
+            ]
+        return bindings
+
+    def delete_template_source_binding(self, binding_id: str) -> bool:
+        return self._bindings.pop(binding_id, None) is not None
+
+
+@dataclass
+class InMemoryUserSourcePreferenceRepository(UserSourcePreferenceRepository):
+    """In-memory user source preference repository."""
+
+    _preferences: dict[str, UserSourcePreference] = field(default_factory=dict)
+
+    def save_user_source_preference(self, preference: UserSourcePreference) -> bool:
+        if preference.id in self._preferences:
+            return False
+        self._preferences[preference.id] = preference
+        return True
+
+    def get_user_source_preference(
+        self,
+        user_niche_id: str,
+        source_id: str,
+    ) -> UserSourcePreference | None:
+        for preference in self._preferences.values():
+            if (
+                preference.user_niche_id == user_niche_id
+                and preference.source_id == source_id
+            ):
+                return preference
+        return None
+
+    def list_user_source_preferences(
+        self,
+        user_niche_id: str,
+    ) -> list[UserSourcePreference]:
+        return [
+            preference
+            for preference in self._preferences.values()
+            if preference.user_niche_id == user_niche_id
+        ]
+
+    def delete_user_source_preference(self, preference_id: str) -> bool:
+        return self._preferences.pop(preference_id, None) is not None
 
 
 class _SQLiteRepository:

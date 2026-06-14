@@ -9,12 +9,17 @@ from domain.agent import (
 from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.market import Market
-from domain.niche import NicheSource, NicheSourceRunStats
+from domain.niche import (
+    NicheSource,
+    NicheSourceRunStats,
+    TemplateSourceBinding,
+    UserSourcePreference,
+)
 from domain.opportunity import Opportunity
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import Source, SourceLocator
 from infrastructure.db import (
     InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
@@ -27,7 +32,10 @@ from infrastructure.db import (
     InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
+    InMemorySourceRepository,
     InMemorySourceLocatorRepository,
+    InMemoryTemplateSourceBindingRepository,
+    InMemoryUserSourcePreferenceRepository,
 )
 
 
@@ -243,6 +251,118 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(repository.source_locators["locator-1"], locator)
         self.assertEqual(repository.get_source_locator("locator-1"), locator)
         self.assertEqual(repository.list_source_locators(enabled=True), [locator])
+
+    def test_source_repository_persists_and_filters_canonical_sources(self):
+        repository = InMemorySourceRepository()
+        source = Source.create(
+            id="source-1",
+            locator="https://api.github.com/search/issues?q=repo:owner/repo",
+            source_type="github_issues_search",
+            source_family="technical_forum",
+            access_mode="api",
+        )
+        review_source = Source.create(
+            id="source-2",
+            locator="https://www.g2.com/search?query=crm",
+            source_type="g2",
+            source_family="reviews",
+            access_mode="proxy_required",
+            requires_proxy=True,
+        )
+
+        saved_count = repository.save_sources([source, source, review_source])
+
+        self.assertEqual(saved_count, 2)
+        self.assertEqual(repository.get_source("source-1"), source)
+        self.assertEqual(
+            repository.get_source_by_identity(
+                "github_issues_search",
+                "https://api.github.com/search/issues?q=repo:owner/repo",
+            ),
+            source,
+        )
+        self.assertEqual(
+            repository.list_sources(source_family="reviews"),
+            [review_source],
+        )
+        self.assertEqual(
+            repository.list_sources(source_type="github_issues_search"),
+            [source],
+        )
+
+    def test_template_source_binding_repository_filters_template_defaults(self):
+        repository = InMemoryTemplateSourceBindingRepository()
+        enabled = TemplateSourceBinding.create(
+            id="binding-1",
+            template_niche_id="template-1",
+            source_id="source-1",
+            default_enabled=True,
+        )
+        disabled = TemplateSourceBinding.create(
+            id="binding-2",
+            template_niche_id="template-1",
+            source_id="source-2",
+            default_enabled=False,
+        )
+        other_template = TemplateSourceBinding.create(
+            id="binding-3",
+            template_niche_id="template-2",
+            source_id="source-1",
+        )
+
+        saved_count = repository.save_template_source_bindings(
+            [enabled, disabled, other_template, enabled],
+        )
+
+        self.assertEqual(saved_count, 3)
+        self.assertEqual(
+            repository.list_template_source_bindings("template-1"),
+            [enabled, disabled],
+        )
+        self.assertEqual(
+            repository.list_template_source_bindings(
+                "template-1",
+                default_enabled=True,
+            ),
+            [enabled],
+        )
+        self.assertTrue(repository.delete_template_source_binding("binding-2"))
+        self.assertEqual(
+            repository.list_template_source_bindings("template-1"),
+            [enabled],
+        )
+
+    def test_user_source_preference_repository_finds_and_deletes_preferences(self):
+        repository = InMemoryUserSourcePreferenceRepository()
+        preference = UserSourcePreference.create(
+            id="preference-1",
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            enabled=False,
+            limit_override=10,
+        )
+        other_preference = UserSourcePreference.create(
+            id="preference-2",
+            user_niche_id="user-niche-2",
+            source_id="source-1",
+            muted=True,
+        )
+
+        self.assertTrue(repository.save_user_source_preference(preference))
+        self.assertTrue(repository.save_user_source_preference(other_preference))
+        self.assertFalse(repository.save_user_source_preference(preference))
+        self.assertEqual(
+            repository.get_user_source_preference("user-niche-1", "source-1"),
+            preference,
+        )
+        self.assertEqual(
+            repository.list_user_source_preferences("user-niche-1"),
+            [preference],
+        )
+        self.assertTrue(repository.delete_user_source_preference("preference-1"))
+        self.assertIsNone(
+            repository.get_user_source_preference("user-niche-1", "source-1"),
+        )
 
     @unittest.skip("InMemoryNicheCompanyRepository API changed — save_competitors replaced by save_niche_companies")
     def test_competitor_repository_persists_unique_competitors(self):
