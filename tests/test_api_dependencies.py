@@ -94,6 +94,9 @@ class ApiDependencyTests(unittest.TestCase):
             user_source_preference_repository = stack.enter_context(
                 patch("api.dependencies.PostgresUserSourcePreferenceRepository")
             )
+            user_source_repository = stack.enter_context(
+                patch("api.dependencies.PostgresUserSourceRepository")
+            )
             user_source_run_stats_repository = stack.enter_context(
                 patch("api.dependencies.PostgresUserSourceRunStatsRepository")
             )
@@ -141,6 +144,7 @@ class ApiDependencyTests(unittest.TestCase):
             connection=connection,
         )
         user_source_preference_repository.assert_called_once_with(connection=connection)
+        user_source_repository.assert_called_once_with(connection=connection)
         user_source_run_stats_repository.assert_called_once_with(connection=connection)
         user_niche_repository.assert_called_once_with(connection=connection)
         self.assertEqual(llm_client.call_count, 2)
@@ -210,6 +214,10 @@ class ApiDependencyTests(unittest.TestCase):
             user_source_preference_repository.return_value,
         )
         self.assertIs(
+            dependencies.user_source_repository,
+            user_source_repository.return_value,
+        )
+        self.assertIs(
             dependencies.user_source_run_stats_repository,
             user_source_run_stats_repository.return_value,
         )
@@ -243,6 +251,10 @@ class ApiDependencyTests(unittest.TestCase):
             supplied_connection,
         )
         self.assertIs(
+            dependencies.user_source_repository.connection,
+            supplied_connection,
+        )
+        self.assertIs(
             dependencies.user_source_run_stats_repository.connection,
             supplied_connection,
         )
@@ -272,6 +284,7 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresNicheSourceRepository",
                 "api.dependencies.PostgresSourceRepository",
                 "api.dependencies.PostgresTemplateSourceBindingRepository",
+                "api.dependencies.PostgresUserSourceRepository",
                 "api.dependencies.PostgresUserSourcePreferenceRepository",
                 "api.dependencies.PostgresUserNicheRepository",
                 "api.dependencies.JsonUrlAdapter",

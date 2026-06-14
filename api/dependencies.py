@@ -18,6 +18,7 @@ from infrastructure.db import (
     PostgresTemplateSourceBindingRepository,
     PostgresThemeRepository,
     PostgresUserNicheRepository,
+    PostgresUserSourceRepository,
     PostgresUserSourcePreferenceRepository,
     PostgresUserSourceRunStatsRepository,
     connect_postgres,
@@ -71,6 +72,7 @@ def build_signal_api_dependencies(
         user_source_preference_repository=PostgresUserSourcePreferenceRepository(
             connection=connection,
         ),
+        user_source_repository=PostgresUserSourceRepository(connection=connection),
         user_source_run_stats_repository=PostgresUserSourceRunStatsRepository(
             connection=connection,
         ),

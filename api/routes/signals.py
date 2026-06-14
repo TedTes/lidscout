@@ -46,6 +46,7 @@ from application.ports import (
     ThemeRepository,
     TemplateSourceBindingRepository,
     UserNicheRepository,
+    UserSourceRepository,
     UserSourcePreferenceRepository,
     UserSourceRunStatsRepository,
 )
@@ -96,6 +97,7 @@ from infrastructure.db import (
     InMemorySourceRepository,
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserNicheRepository,
+    InMemoryUserSourceRepository,
     InMemoryUserSourcePreferenceRepository,
     InMemoryUserSourceRunStatsRepository,
 )
@@ -272,6 +274,9 @@ class SignalApiDependencies:
     )
     user_source_preference_repository: UserSourcePreferenceRepository = field(
         default_factory=InMemoryUserSourcePreferenceRepository
+    )
+    user_source_repository: UserSourceRepository = field(
+        default_factory=InMemoryUserSourceRepository
     )
     user_source_run_stats_repository: UserSourceRunStatsRepository = field(
         default_factory=InMemoryUserSourceRunStatsRepository
