@@ -20,11 +20,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from application.onboarding.niche_seeds import NICHE_SEEDS
-from domain.niche import Niche, NicheCompany, NicheSource
+from domain.niche import Niche, NicheCompany
 from infrastructure.db import (
     PostgresNicheCompanyRepository,
     PostgresNicheRepository,
-    PostgresNicheSourceRepository,
     connect_postgres,
 )
 from shared.config import get_app_config
@@ -34,13 +33,11 @@ def seed(database_url: str) -> dict[str, int]:
     connection = connect_postgres(database_url)
     niche_repo = PostgresNicheRepository(connection=connection)
     company_repo = PostgresNicheCompanyRepository(connection=connection)
-    source_repo = PostgresNicheSourceRepository(connection=connection)
 
     existing = {n.job.lower().strip() for n in niche_repo.list_niches()}
 
     niches_inserted = 0
     companies_inserted = 0
-    sources_inserted = 0
     skipped = 0
 
     for seed_entry in NICHE_SEEDS:
@@ -70,21 +67,13 @@ def seed(database_url: str) -> dict[str, int]:
             )
             companies_inserted += company_repo.save_niche_companies([company])
 
-        for src in seed_entry.get("sources", []):
-            source = NicheSource.create(
-                niche_id=niche.id,
-                locator=src["locator"],
-                source_type=src["source_type"],
-                source_family=src["source_family"],
-                is_gate_free=src["is_gate_free"],
-            )
-            sources_inserted += source_repo.save_niche_sources([source])
+        # Sources are now seeded via template_sources / PostgresTemplateSourceBindingRepository.
+        # NicheSource persistence was removed in the catalog migration.
 
     return {
         "inserted": niches_inserted,
         "skipped": skipped,
         "companies_inserted": companies_inserted,
-        "sources_inserted": sources_inserted,
     }
 
 

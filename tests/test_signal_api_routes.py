@@ -17,7 +17,6 @@ from api.routes.signals import (
     PipelineRunRequest,
     SignalApiDependencies,
     create_competitor,
-    create_competitor_source,
     create_market,
     create_market_competitor,
     create_market_source,
@@ -29,8 +28,6 @@ from api.routes.signals import (
     get_market_agent_preferences,
     get_market,
     get_latest_report,
-    list_competitor_source_suggestions,
-    list_competitor_sources,
     list_competitors,
     list_clusters,
     list_market_competitors,
@@ -64,7 +61,6 @@ from infrastructure.db import (
     InMemoryClusterRepository,
     InMemoryNicheCompanyRepository,
     InMemoryUserNicheRepository,
-    InMemoryNicheSourceRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
     InMemoryPostRepository,
@@ -797,21 +793,7 @@ class SignalApiRouteTests(unittest.TestCase):
         market_repository.save_markets(
             [Market.create(id="devtools", name="Developer tools")]
         )
-        monitored_source_repository = InMemoryNicheSourceRepository()
-        monitored_source_repository.save_monitored_sources(
-            [
-                MonitoredSource.create(
-                    id="source-1",
-                    locator="https://example.com/reviews",
-                    source_type="reviews",
-                    market_id="devtools",
-                )
-            ]
-        )
-        dependencies = self._dependencies(
-            market_repository=market_repository,
-            monitored_source_repository=monitored_source_repository,
-        )
+        dependencies = self._dependencies(market_repository=market_repository)
 
         memory = asyncio.run(get_market_agent_memory("devtools", dependencies))
 
@@ -908,6 +890,7 @@ class SignalApiRouteTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
 
+    @unittest.skip("create_competitor_source / list_competitor_sources removed in catalog migration")
     def test_creates_and_lists_competitor_sources(self):
         competitor_repository = InMemoryNicheCompanyRepository()
         competitor_repository.save_competitors(
@@ -933,6 +916,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(response["sources"][0]["competitor_name"], "Acme CRM")
         self.assertEqual(response["sources"][0]["source_family"], None)
 
+    @unittest.skip("create_competitor_source / list_competitor_source_suggestions removed in catalog migration")
     def test_lists_competitor_source_suggestions(self):
         competitor_repository = InMemoryNicheCompanyRepository()
         monitored_source_repository = InMemoryNicheSourceRepository()
@@ -995,11 +979,9 @@ class SignalApiRouteTests(unittest.TestCase):
                 )
             ]
         )
-        monitored_source_repository = InMemoryNicheSourceRepository()
         dependencies = self._dependencies(
             market_repository=market_repository,
             competitor_repository=competitor_repository,
-            monitored_source_repository=monitored_source_repository,
         )
 
         response = asyncio.run(
@@ -1022,6 +1004,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(company_suggestion["competitor_id"], "supabase")
         self.assertEqual(company_suggestion["market_id"], "ai-devtools")
 
+    @unittest.skip("create_competitor_source removed in catalog migration")
     def test_lists_sources_across_competitors(self):
         competitor_repository = InMemoryNicheCompanyRepository()
         competitor_repository.save_competitors(
@@ -1081,6 +1064,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(len(enabled_sources["sources"]), 1)
         self.assertEqual(enabled_sources["sources"][0]["competitor_id"], "competitor-1")
 
+    @unittest.skip("create_competitor_source / SourceHealth removed in catalog migration")
     def test_lists_sources_with_health_snapshot(self):
         competitor_repository = InMemoryNicheCompanyRepository()
         competitor_repository.save_competitors(
@@ -1125,6 +1109,7 @@ class SignalApiRouteTests(unittest.TestCase):
         self.assertEqual(health["fetch_success_rate"], 0.5)
         self.assertEqual(health["relevance_yield_rate"], 0.4)
 
+    @unittest.skip("create_competitor_source / monitored_source_repository removed in catalog migration")
     def test_updates_monitored_source(self):
         competitor_repository = InMemoryNicheCompanyRepository()
         competitor_repository.save_competitors(
@@ -1321,7 +1306,6 @@ class SignalApiRouteTests(unittest.TestCase):
         agent_feedback_repository=None,
         competitor_repository=None,
         market_repository=None,
-        monitored_source_repository=None,
         source_locator_repository=None,
         source_adapters=None,
         llm_client=None,
@@ -1345,9 +1329,6 @@ class SignalApiRouteTests(unittest.TestCase):
             ),
             niche_company_repository=competitor_repository or InMemoryNicheCompanyRepository(),
             user_niche_repository=market_repository or InMemoryUserNicheRepository(),
-            niche_source_repository=(
-                monitored_source_repository or InMemoryNicheSourceRepository()
-            ),
             source_locator_repository=(
                 source_locator_repository or InMemorySourceLocatorRepository()
             ),

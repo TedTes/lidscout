@@ -1,5 +1,4 @@
 import unittest
-from dataclasses import replace
 from typing import Any
 
 from domain.agent import AgentPreferences
@@ -7,15 +6,13 @@ from domain.competitor import Competitor
 from domain.finding import Finding
 from domain.market import Market
 from domain.niche import (
-    NicheSource,
-    NicheSourceRunStats,
     TemplateSourceBinding,
     UserNiche,
     UserSource,
     UserSourcePreference,
 )
 from domain.post import RawPost
-from domain.source import MonitoredSource, Source, SourceInput
+from domain.source import Source, SourceInput
 from domain.theme import Theme, ThemeFinding
 from application.ingestion import SourceFetchDetail
 from infrastructure.db import (
@@ -24,7 +21,6 @@ from infrastructure.db import (
     InMemoryUserNicheRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
-    InMemoryNicheSourceRepository,
     InMemorySourceRepository,
     InMemoryTemplateSourceBindingRepository,
     InMemoryUserSourceRepository,
@@ -1220,62 +1216,67 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 template_niche_id="niche-1",
             )
         )
-        source_repository = InMemoryNicheSourceRepository()
-        source_repository.save_niche_sources(
+        source_repository = InMemorySourceRepository()
+        binding_repository = InMemoryTemplateSourceBindingRepository()
+        user_source_repository = InMemoryUserSourceRepository()
+        source_repository.save_sources(
             [
-                NicheSource.create(
+                Source.create(
                     id="source-low",
-                    niche_id="niche-1",
                     locator="https://example.com/low",
                     source_type="hackernews_search",
                     source_family="technical_forum",
                     is_gate_free=True,
-                    signal_quality_score=0.45,
                 ),
-                NicheSource.create(
+                Source.create(
                     id="source-high",
-                    niche_id="niche-1",
                     locator="https://example.com/high",
                     source_type="github_issues_search",
                     source_family="technical_forum",
                     is_gate_free=True,
-                    signal_quality_score=0.7,
-                ),
-                NicheSource.create(
-                    id="source-failing",
-                    niche_id="niche-1",
-                    locator="https://example.com/failing",
-                    source_type="github_issues_search",
-                    source_family="technical_forum",
-                    is_gate_free=True,
-                    signal_quality_score=0.9,
                 ),
             ]
         )
-        source_repository.upsert_niche_source_run_stats(
-            NicheSourceRunStats.create(
-                niche_source_id="source-high",
-                total_runs=3,
-                success_count=3,
-                posts_fetched_count=30,
-                relevant_posts_count=10,
-                rule_filtered_count=5,
-            )
+        binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-low",
+                    template_niche_id="niche-1",
+                    source_id="source-low",
+                    signal_quality_score=0.45,
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-high",
+                    template_niche_id="niche-1",
+                    source_id="source-high",
+                    signal_quality_score=0.7,
+                ),
+            ]
         )
-        source_repository.upsert_niche_source_run_stats(
-            NicheSourceRunStats.create(
-                niche_source_id="source-failing",
-                total_runs=3,
-                failure_count=3,
-                consecutive_failures=3,
-            )
+        user_source_repository.save_user_sources(
+            [
+                UserSource.create(
+                    id="user-source-low",
+                    user_niche_id="market-1",
+                    source_id="source-low",
+                    template_source_binding_id="binding-low",
+                ),
+                UserSource.create(
+                    id="user-source-high",
+                    user_niche_id="market-1",
+                    source_id="source-high",
+                    template_source_binding_id="binding-high",
+                ),
+            ]
         )
 
         sources = _configured_sources(
-            source_repository,
             user_niche_repository,
             None,
             "market-1",
+            source_repository=source_repository,
+            template_source_binding_repository=binding_repository,
+            user_source_repository=user_source_repository,
         )
 
         self.assertEqual(
@@ -1298,28 +1299,58 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 template_niche_id="niche-1",
             )
         )
-        source_repository = InMemoryNicheSourceRepository()
-        source_repository.save_niche_sources(
+        source_repository = InMemorySourceRepository()
+        binding_repository = InMemoryTemplateSourceBindingRepository()
+        user_source_repository = InMemoryUserSourceRepository()
+        source_repository.save_sources(
             [
-                NicheSource.create(
+                Source.create(
                     id="source-social",
-                    niche_id="niche-1",
                     locator="https://example.com/social",
                     source_type="hackernews_search",
                     source_family="social",
                     is_gate_free=True,
-                    signal_quality_score=0.7,
-                    limit=10,
                 ),
-                NicheSource.create(
+                Source.create(
                     id="source-forum",
-                    niche_id="niche-1",
                     locator="https://example.com/forum",
                     source_type="github_issues_search",
                     source_family="technical_forum",
                     is_gate_free=True,
+                ),
+            ]
+        )
+        binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-social",
+                    template_niche_id="niche-1",
+                    source_id="source-social",
+                    default_limit=10,
+                    signal_quality_score=0.7,
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-forum",
+                    template_niche_id="niche-1",
+                    source_id="source-forum",
+                    default_limit=10,
                     signal_quality_score=0.62,
-                    limit=10,
+                ),
+            ]
+        )
+        user_source_repository.save_user_sources(
+            [
+                UserSource.create(
+                    id="user-source-social",
+                    user_niche_id="market-1",
+                    source_id="source-social",
+                    template_source_binding_id="binding-social",
+                ),
+                UserSource.create(
+                    id="user-source-forum",
+                    user_niche_id="market-1",
+                    source_id="source-forum",
+                    template_source_binding_id="binding-forum",
                 ),
             ]
         )
@@ -1332,10 +1363,12 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         )
 
         sources = _configured_sources(
-            source_repository,
             user_niche_repository,
             preferences_repository,
             "market-1",
+            source_repository=source_repository,
+            template_source_binding_repository=binding_repository,
+            user_source_repository=user_source_repository,
         )
 
         self.assertEqual(
@@ -1360,38 +1393,29 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 template_niche_id="niche-1",
             )
         )
-        source_repository = InMemoryNicheSourceRepository()
-        reddit_source = replace(
-            NicheSource.create(
-                id="source-reddit",
-                niche_id="niche-1",
-                locator="https://www.reddit.com/r/devtools/new.json?limit=25",
-                source_type="reddit_subreddit",
-                source_family="social",
-                is_gate_free=False,
-                requires_auth=True,
-            ),
-            enabled=True,
-        )
-        proxy_source = replace(
-            NicheSource.create(
-                id="source-g2",
-                niche_id="niche-1",
-                locator="https://www.g2.com/products/example/reviews",
-                source_type="g2_reviews",
-                source_family="reviews",
-                is_gate_free=False,
-                requires_proxy=True,
-            ),
-            enabled=True,
-        )
-        source_repository.save_niche_sources(
+        source_repository = InMemorySourceRepository()
+        binding_repository = InMemoryTemplateSourceBindingRepository()
+        user_source_repository = InMemoryUserSourceRepository()
+        source_repository.save_sources(
             [
-                reddit_source,
-                proxy_source,
-                NicheSource.create(
+                Source.create(
+                    id="source-reddit",
+                    locator="https://www.reddit.com/r/devtools/new.json?limit=25",
+                    source_type="reddit_subreddit",
+                    source_family="social",
+                    is_gate_free=False,
+                    requires_auth=True,
+                ),
+                Source.create(
+                    id="source-g2",
+                    locator="https://www.g2.com/products/example/reviews",
+                    source_type="g2_reviews",
+                    source_family="reviews",
+                    is_gate_free=False,
+                    requires_proxy=True,
+                ),
+                Source.create(
                     id="source-hn",
-                    niche_id="niche-1",
                     locator="https://hn.algolia.com/api/v1/search_by_date?query=test&tags=comment",
                     source_type="hackernews_search",
                     source_family="technical_forum",
@@ -1399,12 +1423,55 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 ),
             ]
         )
+        binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-reddit",
+                    template_niche_id="niche-1",
+                    source_id="source-reddit",
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-g2",
+                    template_niche_id="niche-1",
+                    source_id="source-g2",
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-hn",
+                    template_niche_id="niche-1",
+                    source_id="source-hn",
+                ),
+            ]
+        )
+        user_source_repository.save_user_sources(
+            [
+                UserSource.create(
+                    id="user-source-reddit",
+                    user_niche_id="market-1",
+                    source_id="source-reddit",
+                    template_source_binding_id="binding-reddit",
+                ),
+                UserSource.create(
+                    id="user-source-g2",
+                    user_niche_id="market-1",
+                    source_id="source-g2",
+                    template_source_binding_id="binding-g2",
+                ),
+                UserSource.create(
+                    id="user-source-hn",
+                    user_niche_id="market-1",
+                    source_id="source-hn",
+                    template_source_binding_id="binding-hn",
+                ),
+            ]
+        )
 
         sources = _configured_sources(
-            source_repository,
             user_niche_repository,
             None,
             "market-1",
+            source_repository=source_repository,
+            template_source_binding_repository=binding_repository,
+            user_source_repository=user_source_repository,
         )
 
         self.assertEqual(
@@ -1424,29 +1491,48 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 template_niche_id="niche-1",
             )
         )
-        source_repository = InMemoryNicheSourceRepository()
-        source_repository.save_niche_sources(
+        source_repository = InMemorySourceRepository()
+        binding_repository = InMemoryTemplateSourceBindingRepository()
+        user_source_repository = InMemoryUserSourceRepository()
+        source_repository.save_sources(
             [
-                replace(
-                    NicheSource.create(
-                        id="source-reddit",
-                        niche_id="niche-1",
-                        locator="https://www.reddit.com/r/devtools/new.json?limit=25",
-                        source_type="reddit_subreddit",
-                        source_family="social",
-                        is_gate_free=False,
-                        requires_auth=True,
-                    ),
-                    enabled=True,
+                Source.create(
+                    id="source-reddit",
+                    locator="https://www.reddit.com/r/devtools/new.json?limit=25",
+                    source_type="reddit_subreddit",
+                    source_family="social",
+                    is_gate_free=False,
+                    requires_auth=True,
+                )
+            ]
+        )
+        binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-reddit",
+                    template_niche_id="niche-1",
+                    source_id="source-reddit",
+                )
+            ]
+        )
+        user_source_repository.save_user_sources(
+            [
+                UserSource.create(
+                    id="user-source-reddit",
+                    user_niche_id="market-1",
+                    source_id="source-reddit",
+                    template_source_binding_id="binding-reddit",
                 )
             ]
         )
 
         sources = _configured_sources(
-            source_repository,
             user_niche_repository,
             None,
             "market-1",
+            source_repository=source_repository,
+            template_source_binding_repository=binding_repository,
+            user_source_repository=user_source_repository,
             allow_auth_sources=True,
         )
 
