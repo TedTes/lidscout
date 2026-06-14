@@ -8,13 +8,18 @@ from domain.cluster import SignalCluster
 from domain.competitor import Competitor
 from domain.finding import Finding
 from domain.market import Market
-from domain.niche import NicheSource, NicheSourceRunStats
+from domain.niche import (
+    NicheSource,
+    NicheSourceRunStats,
+    TemplateSourceBinding,
+    UserSourcePreference,
+)
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
 from domain.post import RawPost
 from domain.score import OpportunityScore
 from domain.signal import Signal
-from domain.source import SourceLocator
+from domain.source import Source, SourceLocator
 from domain.theme import Theme, ThemeFinding
 from infrastructure.db import (
     PostgresAgentActivityRepository,
@@ -29,8 +34,11 @@ from infrastructure.db import (
     PostgresPostRepository,
     PostgresScoreRepository,
     PostgresSignalRepository,
+    PostgresSourceRepository,
     PostgresSourceLocatorRepository,
+    PostgresTemplateSourceBindingRepository,
     PostgresThemeRepository,
+    PostgresUserSourcePreferenceRepository,
     connect_postgres,
 )
 
@@ -565,6 +573,176 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
         self.assertEqual(connection.calls[2][1], (True,))
         self.assertEqual(connection.commit_count, 1)
+
+    def test_source_repository_saves_loads_and_filters_sources(self):
+        created_at = datetime(2026, 6, 13, 12, 0, tzinfo=UTC)
+        source = Source.create(
+            id="source-1",
+            locator="https://api.github.com/search/issues?q=repo:owner/repo",
+            source_type="github_issues_search",
+            source_family="technical_forum",
+            access_mode="api",
+            is_gate_free=True,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        row = {
+            "id": "source-1",
+            "locator": source.locator,
+            "source_type": "github_issues_search",
+            "source_family": "technical_forum",
+            "is_gate_free": True,
+            "access_mode": "api",
+            "requires_proxy": False,
+            "requires_auth": False,
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+            ]
+        )
+        repository = PostgresSourceRepository(connection=connection)
+
+        self.assertEqual(repository.save_sources([source]), 1)
+        self.assertEqual(repository.get_source("source-1"), source)
+        self.assertEqual(
+            repository.get_source_by_identity("github_issues_search", source.locator),
+            source,
+        )
+        self.assertEqual(
+            repository.list_sources(source_family="technical_forum"),
+            [source],
+        )
+        self.assertIn(
+            "ON CONFLICT (source_type, locator) DO NOTHING",
+            connection.calls[0][0],
+        )
+        self.assertEqual(connection.calls[0][1][0], "source-1")
+        self.assertEqual(
+            connection.calls[2][1],
+            ("github_issues_search", source.locator),
+        )
+        self.assertEqual(connection.calls[3][1], ("technical_forum",))
+        self.assertEqual(connection.commit_count, 1)
+
+    def test_template_source_binding_repository_saves_lists_and_deletes(self):
+        created_at = datetime(2026, 6, 13, 12, 0, tzinfo=UTC)
+        binding = TemplateSourceBinding.create(
+            id="binding-1",
+            template_niche_id="template-1",
+            source_id="source-1",
+            default_limit=25,
+            default_options={"adapter": "json"},
+            tier=1,
+            signal_quality_score=0.95,
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        row = {
+            "id": "binding-1",
+            "template_niche_id": "template-1",
+            "source_id": "source-1",
+            "company_id": None,
+            "default_enabled": True,
+            "default_limit_value": 25,
+            "default_scan_frequency": None,
+            "default_buyer_voice_verified": False,
+            "default_options": {"adapter": "json"},
+            "tier": 1,
+            "signal_quality_score": 0.95,
+            "recommended_cadence": None,
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(rows=[row]),
+                FakeCursor(rowcount=1),
+            ]
+        )
+        repository = PostgresTemplateSourceBindingRepository(connection=connection)
+
+        self.assertEqual(repository.save_template_source_bindings([binding]), 1)
+        self.assertEqual(
+            repository.list_template_source_bindings(
+                "template-1",
+                default_enabled=True,
+            ),
+            [binding],
+        )
+        self.assertTrue(repository.delete_template_source_binding("binding-1"))
+        self.assertIn(
+            "ON CONFLICT (template_niche_id, source_id) DO NOTHING",
+            connection.calls[0][0],
+        )
+        self.assertEqual(json.loads(connection.calls[0][1][8]), {"adapter": "json"})
+        self.assertEqual(connection.calls[1][1], ("template-1", True))
+        self.assertEqual(connection.calls[2][1], ("binding-1",))
+        self.assertEqual(connection.commit_count, 2)
+
+    def test_user_source_preference_repository_upserts_loads_and_deletes(self):
+        created_at = datetime(2026, 6, 13, 12, 0, tzinfo=UTC)
+        preference = UserSourcePreference.create(
+            id="preference-1",
+            user_niche_id="user-niche-1",
+            source_id="source-1",
+            enabled=False,
+            muted=True,
+            cadence_override="weekly",
+            priority_override=2,
+            limit_override=10,
+            options_override={"topic": "bugs"},
+            created_at=created_at,
+            updated_at=created_at,
+        )
+        row = {
+            "id": "preference-1",
+            "user_niche_id": "user-niche-1",
+            "source_id": "source-1",
+            "enabled": False,
+            "muted": True,
+            "cadence_override": "weekly",
+            "priority_override": 2,
+            "limit_override": 10,
+            "options_override": {"topic": "bugs"},
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        connection = FakeConnection(
+            [
+                FakeCursor(rowcount=1),
+                FakeCursor(row=row),
+                FakeCursor(rows=[row]),
+                FakeCursor(rowcount=1),
+            ]
+        )
+        repository = PostgresUserSourcePreferenceRepository(connection=connection)
+
+        self.assertTrue(repository.save_user_source_preference(preference))
+        self.assertEqual(
+            repository.get_user_source_preference("user-niche-1", "source-1"),
+            preference,
+        )
+        self.assertEqual(
+            repository.list_user_source_preferences("user-niche-1"),
+            [preference],
+        )
+        self.assertTrue(repository.delete_user_source_preference("preference-1"))
+        self.assertIn(
+            "ON CONFLICT (user_niche_id, source_id) DO UPDATE",
+            connection.calls[0][0],
+        )
+        self.assertEqual(json.loads(connection.calls[0][1][8]), {"topic": "bugs"})
+        self.assertEqual(connection.calls[1][1], ("user-niche-1", "source-1"))
+        self.assertEqual(connection.calls[2][1], ("user-niche-1",))
+        self.assertEqual(connection.calls[3][1], ("preference-1",))
+        self.assertEqual(connection.commit_count, 2)
 
     @unittest.skip("PostgresNicheCompanyRepository API changed — save_competitors replaced by save_niche_companies")
     def test_competitor_repository_saves_and_loads_competitors(self):

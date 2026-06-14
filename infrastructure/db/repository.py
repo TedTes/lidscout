@@ -2782,6 +2782,73 @@ class PostgresPipelineRunMetricsRepository(
         return [_pipeline_run_metrics_from_row(row) for row in rows]
 
 
+class PostgresSourceRepository(_PostgresRepository, SourceRepository):
+    """Postgres-backed canonical source repository."""
+
+    def save_sources(self, sources: list[Source]) -> int:
+        inserted_count = 0
+        for source in sources:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO sources (
+                    id, locator, source_type, source_family, is_gate_free,
+                    access_mode, requires_proxy, requires_auth, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (source_type, locator) DO NOTHING
+                """,
+                (
+                    source.id,
+                    source.locator,
+                    source.source_type,
+                    source.source_family,
+                    source.is_gate_free,
+                    source.access_mode,
+                    source.requires_proxy,
+                    source.requires_auth,
+                    source.created_at,
+                    source.updated_at,
+                ),
+            )
+            inserted_count += _rowcount(cursor)
+        self.connection.commit()
+        return inserted_count
+
+    def get_source(self, source_id: str) -> Source | None:
+        row = self.connection.execute(
+            "SELECT * FROM sources WHERE id = %s",
+            (source_id,),
+        ).fetchone()
+        return _source_from_row(row) if row else None
+
+    def get_source_by_identity(self, source_type: str, locator: str) -> Source | None:
+        row = self.connection.execute(
+            "SELECT * FROM sources WHERE source_type = %s AND locator = %s",
+            (source_type.strip().lower(), locator.strip()),
+        ).fetchone()
+        return _source_from_row(row) if row else None
+
+    def list_sources(
+        self,
+        *,
+        source_type: str | None = None,
+        source_family: str | None = None,
+    ) -> list[Source]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if source_type is not None:
+            clauses.append("source_type = %s")
+            params.append(source_type.strip().lower())
+        if source_family is not None:
+            clauses.append("source_family = %s")
+            params.append(source_family.strip().lower())
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = self.connection.execute(
+            f"SELECT * FROM sources {where} ORDER BY source_type, locator",
+            tuple(params),
+        ).fetchall()
+        return [_source_from_row(row) for row in rows]
+
+
 class PostgresSourceLocatorRepository(_PostgresRepository, SourceLocatorRepository):
     """Postgres-backed source locator repository."""
 
@@ -3397,6 +3464,21 @@ def _source_locator_from_row(row: sqlite3.Row) -> SourceLocator:
         enabled=bool(row["enabled"]),
         limit=row["limit_value"],
         options=_from_json(row["options"]),
+    )
+
+
+def _source_from_row(row: sqlite3.Row) -> Source:
+    return Source(
+        id=str(row["id"]),
+        locator=row["locator"],
+        source_type=row["source_type"],
+        source_family=row["source_family"],
+        is_gate_free=bool(row.get("is_gate_free", False)),
+        access_mode=row.get("access_mode", "unknown"),
+        requires_proxy=bool(row.get("requires_proxy", False)),
+        requires_auth=bool(row.get("requires_auth", False)),
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
     )
 
 
