@@ -214,7 +214,7 @@ def _resolve_user_source(
         source_type=source.source_type,
         source_family=source.source_family,
         is_gate_free=source.is_gate_free,
-        enabled=user_source.active,
+        enabled=user_source.enabled,
         muted=user_source.muted,
         limit=user_source.limit or (binding.default_limit if binding else None),
         scan_frequency=scan_frequency,

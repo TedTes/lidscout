@@ -766,7 +766,7 @@ async def list_market_sources(
             )
             for s in sources
         ],
-        "summary": _source_coverage_summary(sources),
+        "summary": _source_coverage_summary(sources, stats_by_source),
     }
 
 
@@ -925,13 +925,46 @@ async def delete_source(
     source, user_niche = _get_owned_niche_source(source_id, dependencies, current_user)
     if _is_catalog_backed_source(source):
         _save_user_source_binding(
-            replace(source, enabled=False),
+            source,
             user_niche,
             dependencies,
             muted=True,
         )
         return {"id": source_id, "deleted": True}
     raise HTTPException(status_code=404, detail="Source not found")
+
+
+@router.post("/markets/{market_id}/sources/{source_id}/exclude")
+async def exclude_market_source(
+    market_id: str,
+    source_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Exclude one source from the current user's adopted niche."""
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    source = _get_display_source_for_user_niche(source_id, user_niche, dependencies)
+    _save_user_source_binding(source, user_niche, dependencies, muted=True)
+    return _serialize_display_source_for_user_niche(source_id, user_niche, dependencies)
+
+
+@router.post("/markets/{market_id}/sources/{source_id}/restore")
+async def restore_market_source(
+    market_id: str,
+    source_id: str,
+    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Restore one source previously excluded from the current user's adopted niche."""
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    source = _get_display_source_for_user_niche(source_id, user_niche, dependencies)
+    _save_user_source_binding(
+        replace(source, enabled=True),
+        user_niche,
+        dependencies,
+        muted=False,
+    )
+    return _serialize_display_source_for_user_niche(source_id, user_niche, dependencies)
 
 
 @router.get("/reports/latest")
@@ -2307,6 +2340,33 @@ def _get_owned_niche_source(
     raise HTTPException(status_code=404, detail="Source not found")
 
 
+def _get_display_source_for_user_niche(
+    source_id: str,
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies,
+) -> NicheSource:
+    for source in _list_market_display_sources(user_niche, dependencies):
+        if source.id == source_id:
+            return source
+    raise HTTPException(status_code=404, detail="Source not found")
+
+
+def _serialize_display_source_for_user_niche(
+    source_id: str,
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies,
+) -> dict[str, Any]:
+    source = _get_display_source_for_user_niche(source_id, user_niche, dependencies)
+    return _serialize_niche_source(
+        source,
+        _catalog_source_stats_for_display_source(
+            dependencies,
+            user_niche.id,
+            source,
+        ),
+    )
+
+
 def _agent_planner_input(
     market_id: str,
     dependencies: SignalApiDependencies,
@@ -2970,6 +3030,8 @@ def _effective_source_to_niche_source(
             "user_source_id": source.user_source_id,
             "user_source_preference_id": source.user_source_preference_id,
             "user_source_priority": source.priority,
+            "muted": source.muted,
+            "excluded": source.muted,
         },
         tier=source.tier,
         signal_quality_score=source.signal_quality_score,
@@ -3104,9 +3166,11 @@ def _source_user_options_override(options: dict[str, Any]) -> dict[str, Any]:
         "user_source_preference_id",
         "user_source_priority",
         "access_mode",
+        "excluded",
         "is_gate_free",
         "last_error",
         "limit",
+        "muted",
         "recommended_cadence",
         "requires_auth",
         "requires_proxy",
@@ -3203,6 +3267,7 @@ def _serialize_niche_source(
         allow_proxy_sources=allow_proxy_sources,
         allow_auth_sources=allow_auth_sources,
     )
+    excluded = _source_is_excluded(source)
     return {
         "id": source.id,
         "company_id": source.company_id,
@@ -3213,6 +3278,8 @@ def _serialize_niche_source(
         "source_type": source.source_type,
         "source_family": source.source_family,
         "enabled": source.enabled,
+        "muted": excluded,
+        "excluded": excluded,
         "limit": source.limit,
         "scan_frequency": source.scan_frequency,
         "last_scanned_at": (
@@ -3250,7 +3317,10 @@ def _source_management_hint(
     quality_label: str,
     scan_eligibility: Any,
 ) -> dict[str, Any]:
-    if not source.enabled:
+    excluded = _source_is_excluded(source)
+    if excluded:
+        recommended_action = "restore"
+    elif not source.enabled:
         recommended_action = "enable_or_remove"
     elif not scan_eligibility.eligible or quality_label in {"blocked", "noisy"}:
         recommended_action = "fix_or_replace"
@@ -3261,9 +3331,15 @@ def _source_management_hint(
     return {
         "can_enable": not source.enabled,
         "can_disable": source.enabled,
+        "can_exclude": not excluded,
+        "can_restore": excluded,
         "can_delete": True,
         "recommended_action": recommended_action,
     }
+
+
+def _source_is_excluded(source: NicheSource) -> bool:
+    return bool(source.options.get("excluded") or source.options.get("muted"))
 
 
 def _serialize_source_replacement_suggestion(
@@ -3408,31 +3484,64 @@ def _option_float(options: dict[str, Any], key: str) -> float | None:
         raise HTTPException(status_code=400, detail=f"{key} must be a number") from exc
 
 
-def _source_coverage_summary(sources: list[NicheSource]) -> dict[str, Any]:
+def _source_coverage_summary(
+    sources: list[NicheSource],
+    stats_by_source: dict[str, NicheSourceRunStats] | None = None,
+) -> dict[str, Any]:
+    stats_by_source = stats_by_source or {}
     by_family: dict[str, dict[str, Any]] = {}
     company_ids: set[str] = set()
     active_count = 0
+    excluded_count = 0
+    paused_count = 0
+    failing_count = 0
+    last_scanned_at: datetime | None = None
 
     for source in sources:
         family = source.source_family or "unknown"
+        stats = stats_by_source.get(source.id)
+        excluded = _source_is_excluded(source)
+        failing = bool(
+            source.last_error
+            or source.health_status == "failing"
+            or (stats and stats.last_status == "failing")
+        )
+        active = bool(source.enabled and not excluded)
+        paused = bool(not source.enabled and not excluded)
         entry = by_family.setdefault(
             family,
             {
                 "source_family": family,
                 "source_count": 0,
                 "active_count": 0,
+                "excluded_count": 0,
+                "paused_count": 0,
                 "error_count": 0,
+                "failing_count": 0,
                 "company_count": 0,
             },
         )
         entry["source_count"] += 1
-        if source.enabled:
+        if active:
             active_count += 1
             entry["active_count"] += 1
-        if source.last_error or source.health_status == "failing":
+        if excluded:
+            excluded_count += 1
+            entry["excluded_count"] += 1
+        if paused:
+            paused_count += 1
+            entry["paused_count"] += 1
+        if failing:
+            failing_count += 1
             entry["error_count"] += 1
+            entry["failing_count"] += 1
         if source.company_id:
             company_ids.add(source.company_id)
+        scanned_at = stats.last_scanned_at if stats and stats.last_scanned_at else source.last_scanned_at
+        if scanned_at and (
+            last_scanned_at is None or scanned_at > last_scanned_at
+        ):
+            last_scanned_at = scanned_at
 
     for family, entry in by_family.items():
         entry_company_ids = {
@@ -3442,13 +3551,23 @@ def _source_coverage_summary(sources: list[NicheSource]) -> dict[str, Any]:
         }
         entry["company_count"] = len(entry_company_ids)
 
+    if active_count < 1:
+        coverage_status = "no_active_sources"
+    elif failing_count or paused_count or excluded_count:
+        coverage_status = "degraded"
+    else:
+        coverage_status = "healthy"
+
     return {
         "source_count": len(sources),
         "active_count": active_count,
-        "disabled_count": len(sources) - active_count,
-        "error_count": sum(
-            1 for source in sources if source.last_error or source.health_status == "failing"
-        ),
+        "excluded_count": excluded_count,
+        "paused_count": paused_count,
+        "disabled_count": excluded_count + paused_count,
+        "error_count": failing_count,
+        "failing_count": failing_count,
+        "last_scanned_at": last_scanned_at.isoformat() if last_scanned_at else None,
+        "coverage_status": coverage_status,
         "company_count": len(company_ids),
         "by_family": sorted(
             by_family.values(),

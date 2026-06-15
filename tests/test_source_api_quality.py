@@ -6,13 +6,16 @@ from api.routes.signals import (
     SignalApiDependencies,
     create_market_source,
     delete_source,
+    exclude_market_source,
     get_pipeline_diagnostics,
     list_market_sources,
+    restore_market_source,
     update_source,
 )
 from domain.niche import (
     TemplateSourceBinding,
     UserNiche,
+    UserSource,
     UserSourcePreference,
     UserSourceRunStats,
 )
@@ -286,6 +289,181 @@ def test_catalog_source_update_and_delete_write_user_sources() -> None:
     assert user_source is not None
     assert user_source.muted is True
     assert user_source.enabled is False
+
+
+def test_market_source_exclude_and_restore_are_user_scoped() -> None:
+    user = User(id="user-1", email="user@example.com")
+    other_user = User(id="user-2", email="other@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-2",
+            user_id=other_user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+                source_type="hackernews",
+                source_family="technical_forum",
+                access_mode="api",
+                is_gate_free=True,
+            )
+        ]
+    )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+                default_enabled=True,
+            )
+        ]
+    )
+    user_source_repository = InMemoryUserSourceRepository()
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_repository=user_source_repository,
+    )
+
+    excluded = asyncio.run(
+        exclude_market_source(
+            "market-1",
+            "source-1",
+            dependencies,
+            current_user=user,
+        )
+    )
+    market_1_sources = asyncio.run(
+        list_market_sources("market-1", dependencies, current_user=user)
+    )
+    market_2_sources = asyncio.run(
+        list_market_sources("market-2", dependencies, current_user=other_user)
+    )
+
+    assert excluded["enabled"] is True
+    assert excluded["muted"] is True
+    assert excluded["excluded"] is True
+    assert market_1_sources["sources"][0]["excluded"] is True
+    assert market_1_sources["summary"]["excluded_count"] == 1
+    assert market_1_sources["summary"]["active_count"] == 0
+    assert market_1_sources["summary"]["coverage_status"] == "no_active_sources"
+    assert market_2_sources["sources"][0]["excluded"] is False
+    assert market_2_sources["summary"]["active_count"] == 1
+    user_source = user_source_repository.get_user_source("market-1", "source-1")
+    assert user_source is not None
+    assert user_source.muted is True
+    assert user_source.enabled is True
+
+    restored = asyncio.run(
+        restore_market_source(
+            "market-1",
+            "source-1",
+            dependencies,
+            current_user=user,
+        )
+    )
+    market_1_sources = asyncio.run(
+        list_market_sources("market-1", dependencies, current_user=user)
+    )
+
+    assert restored["enabled"] is True
+    assert restored["muted"] is False
+    assert restored["excluded"] is False
+    assert market_1_sources["summary"]["excluded_count"] == 0
+    assert market_1_sources["summary"]["active_count"] == 1
+
+
+def test_market_source_restore_reactivates_legacy_deleted_binding() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+                source_type="hackernews",
+                source_family="technical_forum",
+            )
+        ]
+    )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+            )
+        ]
+    )
+    user_source_repository = InMemoryUserSourceRepository()
+    user_source_repository.save_user_sources(
+        [
+            UserSource.create(
+                id="user-source-1",
+                user_niche_id="market-1",
+                source_id="source-1",
+                template_source_binding_id="binding-1",
+                enabled=False,
+                muted=True,
+            )
+        ]
+    )
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_repository=user_source_repository,
+    )
+
+    restored = asyncio.run(
+        restore_market_source(
+            "market-1",
+            "source-1",
+            dependencies,
+            current_user=user,
+        )
+    )
+
+    user_source = user_source_repository.get_user_source("market-1", "source-1")
+    assert restored["enabled"] is True
+    assert restored["excluded"] is False
+    assert user_source is not None
+    assert user_source.enabled is True
+    assert user_source.muted is False
 
 
 def test_create_market_source_writes_canonical_and_user_source() -> None:

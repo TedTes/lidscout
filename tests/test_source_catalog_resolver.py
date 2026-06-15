@@ -247,6 +247,49 @@ def test_resolver_filters_muted_sources_unless_requested() -> None:
     assert resolved[0].enabled is True
 
 
+def test_resolver_filters_muted_user_sources_while_preserving_enabled_state() -> None:
+    source = Source.create(
+        id="source-1",
+        locator="https://hn.algolia.com/api/v1/search_by_date?query=vercel",
+        source_type="hackernews",
+        source_family="technical_forum",
+    )
+    binding = TemplateSourceBinding.create(
+        id="binding-1",
+        template_niche_id="template-1",
+        source_id="source-1",
+    )
+    user_source = UserSource.create(
+        id="user-source-1",
+        user_niche_id="user-niche-1",
+        source_id="source-1",
+        template_source_binding_id="binding-1",
+        enabled=True,
+        muted=True,
+    )
+    resolver = _resolver(
+        sources=[source],
+        bindings=[binding],
+        user_sources=[user_source],
+    )
+
+    assert resolver.list_effective_sources(
+        template_niche_id="template-1",
+        user_niche_id="user-niche-1",
+        enabled=True,
+    ) == []
+    resolved = resolver.list_effective_sources(
+        template_niche_id="template-1",
+        user_niche_id="user-niche-1",
+        enabled=True,
+        include_muted=True,
+    )
+
+    assert len(resolved) == 1
+    assert resolved[0].enabled is True
+    assert resolved[0].muted is True
+
+
 def test_resolver_skips_bindings_without_canonical_source() -> None:
     binding = TemplateSourceBinding.create(
         id="binding-1",
