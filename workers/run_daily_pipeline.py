@@ -470,7 +470,7 @@ def _persist_planned_agent_actions(config: PipelineConfig) -> None:
     user_niche = config.user_niche_repository.get_user_niche(config.user_niche_id)
     if user_niche is None:
         return
-    sources = _resolved_niche_sources_for_user_niche(config, user_niche, enabled=None)
+    sources = _resolved_sources_for_user_niche(config, user_niche, enabled=None)
     planner_input = AgentPlannerInput(
         user_niche=user_niche,
         preferences=(
@@ -982,7 +982,7 @@ def _configured_sources(
     if user_niche is None:
         return []
 
-    niche_sources = _catalog_niche_sources(
+    catalog_sources = _catalog_sources(
         source_repository=source_repository,
         template_source_binding_repository=template_source_binding_repository,
         user_source_repository=user_source_repository,
@@ -990,9 +990,9 @@ def _configured_sources(
         user_niche=user_niche,
         enabled=True,
     )
-    if niche_sources:
+    if catalog_sources:
         filtered = _apply_agent_source_preferences(
-            niche_sources,
+            catalog_sources,
             agent_preferences_repository,
             user_niche_id,
         )
@@ -1014,13 +1014,13 @@ def _configured_sources(
     return []
 
 
-def _resolved_niche_sources_for_user_niche(
+def _resolved_sources_for_user_niche(
     config: PipelineConfig,
     user_niche: UserNiche,
     *,
     enabled: bool | None,
 ) -> list[NicheSource]:
-    catalog_sources = _catalog_niche_sources_for_user_niche(
+    catalog_sources = _catalog_sources_for_user_niche(
         config,
         user_niche,
         enabled=enabled,
@@ -1028,7 +1028,7 @@ def _resolved_niche_sources_for_user_niche(
     return catalog_sources
 
 
-def _catalog_niche_sources_for_user_niche(
+def _catalog_sources_for_user_niche(
     config: PipelineConfig,
     user_niche: UserNiche,
     *,
@@ -1039,7 +1039,7 @@ def _catalog_niche_sources_for_user_niche(
         or config.template_source_binding_repository is None
     ):
         return []
-    return _catalog_niche_sources(
+    return _catalog_sources(
         source_repository=config.source_repository,
         template_source_binding_repository=config.template_source_binding_repository,
         user_source_repository=config.user_source_repository,
@@ -1049,7 +1049,7 @@ def _catalog_niche_sources_for_user_niche(
     )
 
 
-def _catalog_niche_sources(
+def _catalog_sources(
     *,
     source_repository: SourceRepository | None,
     template_source_binding_repository: TemplateSourceBindingRepository | None,
