@@ -541,6 +541,34 @@ class SignalApiService {
     }
   }
 
+  async excludeMarketSource(marketId: string, sourceId: string): Promise<MonitoredSource> {
+    try {
+      const response = await api.post<MonitoredSource>(
+        `/markets/${marketId}/sources/${sourceId}/exclude`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to exclude source');
+      }
+      throw error;
+    }
+  }
+
+  async restoreMarketSource(marketId: string, sourceId: string): Promise<MonitoredSource> {
+    try {
+      const response = await api.post<MonitoredSource>(
+        `/markets/${marketId}/sources/${sourceId}/restore`
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.detail || 'Failed to restore source');
+      }
+      throw error;
+    }
+  }
+
   async getSignals(params?: {
     company_id?: string;
     market_id?: string;

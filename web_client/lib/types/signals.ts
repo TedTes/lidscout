@@ -213,6 +213,8 @@ export type MonitoredSource = {
   source_type: string;
   source_family: string | null;
   enabled: boolean;
+  muted?: boolean;
+  excluded?: boolean;
   limit: number | null;
   scan_frequency: string | null;
   last_scanned_at: string | null;
@@ -227,12 +229,15 @@ export type MonitoredSource = {
   management?: {
     can_enable: boolean;
     can_disable: boolean;
+    can_exclude?: boolean;
+    can_restore?: boolean;
     can_delete: boolean;
     recommended_action:
       | 'enable_or_remove'
       | 'fix_or_replace'
       | 'keep_monitoring'
-      | 'monitor_next_scan';
+      | 'monitor_next_scan'
+      | 'restore';
   };
   replacement_suggestions?: SourceReplacementSuggestion[];
   is_gate_free?: boolean;
@@ -272,15 +277,23 @@ export type SourceFamilySummary = {
   source_family: string;
   source_count: number;
   active_count: number;
+  excluded_count?: number;
+  paused_count?: number;
   error_count: number;
+  failing_count?: number;
   company_count: number;
 };
 
 export type SourceCoverageSummary = {
   source_count: number;
   active_count: number;
+  excluded_count?: number;
+  paused_count?: number;
   disabled_count: number;
   error_count: number;
+  failing_count?: number;
+  last_scanned_at?: string | null;
+  coverage_status?: 'healthy' | 'degraded' | 'no_active_sources';
   company_count: number;
   by_family: SourceFamilySummary[];
 };

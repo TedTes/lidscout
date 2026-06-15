@@ -1,25 +1,26 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { Chip, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
-import { NicheCompany, Market, MonitoredSource, SourceCoverageSummary } from '@/lib/types/signals';
+import { Market, MonitoredSource, SourceCoverageSummary } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
 type Status = 'loading' | 'ready' | 'error';
+type SourceHealth = 'active' | 'failing' | 'paused' | 'excluded';
 
 const FAMILY_LABELS: Record<string, string> = {
-  reviews: 'Reviews',
-  social: 'Social',
-  technical_forum: 'Technical forums',
-  owned_site: 'Owned content',
-  other: 'Other',
+  reviews:          'Reviews',
+  social:           'Social',
+  technical_forum:  'Technical forums',
+  technical_forums: 'Technical forums',
+  owned_site:       'Owned content',
+  other:            'Other',
 };
-
 function familyLabel(family: string | null) {
-  return FAMILY_LABELS[family ?? 'other'] ?? family?.replace(/_/g, ' ') ?? FAMILY_LABELS.other;
+  return FAMILY_LABELS[family ?? 'other'] ?? family?.replace(/_/g, ' ') ?? 'Other';
 }
 
 function relativeTime(iso: string | null): string | null {
@@ -33,20 +34,14 @@ function relativeTime(iso: string | null): string | null {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function sourceHealth(source: MonitoredSource): 'active' | 'failing' | 'paused' {
+function sourceHealth(source: MonitoredSource): SourceHealth {
+  if (source.excluded || source.muted) return 'excluded';
   if (!source.enabled) return 'paused';
   if (source.health?.last_status === 'failing' || source.last_error) return 'failing';
   return 'active';
 }
 
-function IconPlus() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
+const HEALTH_ORDER: Record<SourceHealth, number> = { active: 0, failing: 1, paused: 2, excluded: 3 };
 
 function IconCopy() {
   return (
@@ -62,25 +57,21 @@ export default function NicheSourcesPage({ params }: Props) {
   const [niche, setNiche] = useState<Market | null>(null);
   const [sources, setSources] = useState<MonitoredSource[]>([]);
   const [summary, setSummary] = useState<SourceCoverageSummary | null>(null);
-  const [companies, setCompanies] = useState<NicheCompany[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState<string | null>(null);
-  const [showAddSource, setShowAddSource] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = async () => {
     setStatus('loading');
     setError(null);
     try {
-      const [market, sourcesRes, companiesRes] = await Promise.all([
+      const [market, sourcesRes] = await Promise.all([
         signalApi.getMarket(marketId),
-        signalApi.getSources({ market_id: marketId }),
-        signalApi.getMarketCompanies(marketId),
+        signalApi.getMarketSources(marketId),
       ]);
-      const loadedSources = sourcesRes.sources;
       setNiche(market);
-      setSources(loadedSources);
+      setSources(sourcesRes.sources);
       setSummary(sourcesRes.summary ?? null);
-      setCompanies(companiesRes.companies);
       setStatus('ready');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sources');
@@ -92,11 +83,6 @@ export default function NicheSourcesPage({ params }: Props) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
-
-  const activeCount = sources.filter(s => sourceHealth(s) === 'active').length;
-  const errorCount = sources.filter(s => sourceHealth(s) === 'failing').length;
-
-  const HEALTH_ORDER: Record<'active' | 'failing' | 'paused', number> = { active: 0, paused: 1, failing: 2 };
 
   const groupedSources = useMemo(() => {
     const groups = new Map<string, MonitoredSource[]>();
@@ -112,96 +98,88 @@ export default function NicheSourcesPage({ params }: Props) {
       ] as [string, MonitoredSource[]]);
   }, [sources]);
 
-  const [copied, setCopied] = useState(false);
-
   const copySources = () => {
     const lines = sources.map(s => {
-      const health = sourceHealth(s);
-      const icon = health === 'active' ? '✅' : health === 'failing' ? '❌' : '⏸️';
+      const h = sourceHealth(s);
+      const icon = h === 'active' ? '✅' : h === 'failing' ? '❌' : '⊘';
       return `${icon} ${s.locator}  [${familyLabel(s.source_family)}${s.company_name ? ` · ${s.company_name}` : ''}]${s.last_error ? `  ⚠ ${s.last_error}` : ''}`;
     });
-    const header = `${niche?.name ?? 'Niche'} sources (${sources.length} total · ${activeCount} active · ${errorCount} failing)\n\n`;
+    const active = sources.filter(s => sourceHealth(s) === 'active').length;
+    const failing = sources.filter(s => sourceHealth(s) === 'failing').length;
+    const header = `${niche?.name ?? 'Market'} sources (${sources.length} total · ${active} active · ${failing} failing)\n\n`;
     navigator.clipboard.writeText(header + lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const removeSource = (id: string) => {
-    setSources(prev => prev.filter(s => s.id !== id));
-    setSummary(null);
-  };
-
-  const toggleSource = async (source: MonitoredSource) => {
-    const updated = await signalApi.updateSource(source.id, { enabled: !source.enabled });
+  const updateSource = (updated: MonitoredSource) => {
     setSources(prev => prev.map(s => s.id === updated.id ? updated : s));
     setSummary(null);
   };
 
+  const activeCount = summary?.active_count ?? sources.filter(s => sourceHealth(s) === 'active').length;
+  const failingCount = summary?.failing_count ?? summary?.error_count ?? sources.filter(s => sourceHealth(s) === 'failing').length;
+  const pausedCount = summary?.paused_count ?? sources.filter(s => sourceHealth(s) === 'paused').length;
+  const excludedCount = summary?.excluded_count ?? sources.filter(s => sourceHealth(s) === 'excluded').length;
+  const totalCount = summary?.source_count ?? sources.length;
+
   return (
     <DashboardShell
       title="Research coverage"
-      subtitle={`Operational source coverage for ${niche?.name ?? 'this niche'}.`}
-      actions={
-        <NicheViewSwitcher
-          marketId={marketId}
-        />
-      }
+      subtitle={`Source coverage for ${niche?.name ?? 'this market'}.`}
+      actions={<NicheViewSwitcher marketId={marketId} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading sources" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
       {status === 'ready' && (
-        <div className="space-y-5 animate-fade-in">
-          {/* Add source form */}
-          {showAddSource && (
-            <AddSourcePanel
-              companies={companies}
-              marketId={marketId}
-              onAdd={async source => {
-                setSources(prev => [source, ...prev]);
-                setSummary(null);
-                setShowAddSource(false);
-              }}
-              onCancel={() => setShowAddSource(false)}
-            />
+        <div className="space-y-4 animate-fade-in">
+
+          {/* ── Summary band ── */}
+          {totalCount > 0 && (
+            <div className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-800/70 bg-slate-900/30 px-5 py-3.5">
+              <SummaryPill label="Total" value={totalCount} />
+              <span className="h-4 w-px bg-slate-800/70" />
+              <SummaryPill label="Active" value={activeCount} dotCls="bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.6)]" />
+              {failingCount > 0 && (
+                <SummaryPill label="Failing" value={failingCount} dotCls="bg-rose-400" />
+              )}
+              {pausedCount > 0 && (
+                <SummaryPill label="Paused" value={pausedCount} dotCls="bg-amber-400" />
+              )}
+              {excludedCount > 0 && (
+                <SummaryPill label="Excluded" value={excludedCount} dotCls="bg-slate-600" />
+              )}
+            </div>
           )}
 
-          {/* ── Monitored sources ── */}
+          {/* ── Sources list ── */}
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40">
-            <div className="border-b border-slate-800/70 px-5 py-4">
-              <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-800/70 px-5 py-4">
+              <div>
                 <h2 className="text-sm font-semibold text-slate-300">Monitored sources</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddSource(v => !v)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300 transition hover:bg-violet-500/15 hover:text-violet-200"
-                    aria-label="Add source"
-                    title="Add source"
-                  >
-                    <IconPlus />
-                  </button>
-                  {sources.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={copySources}
-                    title="Copy all sources to clipboard"
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${copied ? 'border-emerald-500/30 text-emerald-400' : 'border-slate-700/60 text-slate-500 hover:border-slate-600 hover:text-slate-300'}`}
-                  >
-                    <IconCopy />
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
-                  )}
-                </div>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Sources from this market&apos;s template. Exclude any that aren&apos;t relevant to you — the shared template is not affected.
+                </p>
               </div>
-              <p className="mt-0.5 text-xs text-slate-600">Diagnostic view of what the research agent is watching.</p>
+              {sources.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copySources}
+                  title="Copy all sources to clipboard"
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${copied ? 'border-emerald-500/30 text-emerald-400' : 'border-slate-700/60 text-slate-500 hover:border-slate-600 hover:text-slate-300'}`}
+                >
+                  <IconCopy />
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              )}
             </div>
 
             {sources.length === 0 ? (
               <div className="p-5">
                 <EmptyPanel
-                  title="No sources monitored yet"
-                  detail="Use the + button to add a source manually."
+                  title="No sources configured"
+                  detail="Sources are configured from your market template. Run a scan to activate coverage."
                 />
               </div>
             ) : (
@@ -209,10 +187,12 @@ export default function NicheSourcesPage({ params }: Props) {
                 {groupedSources.map(([family, familySources]) => (
                   <div key={family} className="p-5">
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">{familyLabel(family)}</h3>
-                      <span className="text-xs text-slate-700">
-                        {summary?.by_family.find(item => item.source_family === family)?.active_count ?? familySources.filter(source => source.enabled).length}
-                        {' active · '}
+                      <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">
+                        {familyLabel(family)}
+                      </h3>
+                      <span className="text-[11px] text-slate-700">
+                        {familySources.filter(s => sourceHealth(s) === 'active').length} active
+                        {' · '}
                         {familySources.length} total
                       </span>
                     </div>
@@ -220,9 +200,9 @@ export default function NicheSourcesPage({ params }: Props) {
                       {familySources.map(source => (
                         <SourceRow
                           key={source.id}
+                          marketId={marketId}
                           source={source}
-                          onToggle={() => toggleSource(source)}
-                          onRemoved={() => removeSource(source.id)}
+                          onUpdated={updateSource}
                         />
                       ))}
                     </div>
@@ -237,104 +217,102 @@ export default function NicheSourcesPage({ params }: Props) {
   );
 }
 
-function SourceRow({
-  source,
-  onToggle,
-  onRemoved,
-}: {
-  source: MonitoredSource;
-  onToggle: () => Promise<void>;
-  onRemoved: () => void;
-}) {
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [toggling, setToggling] = useState(false);
+function SummaryPill({ label, value, dotCls }: { label: string; value: number; dotCls?: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      {dotCls && <span className={`h-1.5 w-1.5 rounded-full ${dotCls}`} />}
+      <span className="text-xs text-slate-500">{label}</span>
+      <span className="text-sm font-semibold text-slate-200">{value}</span>
+    </div>
+  );
+}
 
+function SourceRow({
+  marketId,
+  source,
+  onUpdated,
+}: {
+  marketId: string;
+  source: MonitoredSource;
+  onUpdated: (s: MonitoredSource) => void;
+}) {
+  const [busy, setBusy] = useState(false);
   const health = sourceHealth(source);
   const scannedAt = relativeTime(source.health?.last_scanned_at ?? source.last_scanned_at);
   const lastError = source.health?.last_error ?? source.last_error;
 
-  const handleRemove = async () => {
-    setRemoving(true);
+  const handleExclude = async () => {
+    setBusy(true);
     try {
-      await signalApi.deleteSource(source.id);
-      onRemoved();
-    } catch {
-      setRemoving(false);
-      setConfirmRemove(false);
+      const updated = await signalApi.excludeMarketSource(marketId, source.id);
+      onUpdated(updated);
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleToggle = async () => {
-    setToggling(true);
+  const handleRestore = async () => {
+    setBusy(true);
     try {
-      await onToggle();
+      const updated = await signalApi.restoreMarketSource(marketId, source.id);
+      onUpdated(updated);
     } finally {
-      setToggling(false);
+      setBusy(false);
     }
   };
 
   return (
-    <div className={`rounded-lg border px-4 py-3 transition ${health === 'failing' ? 'border-rose-500/20 bg-rose-500/[0.03]' : 'border-slate-800/70 bg-slate-950/25'}`}>
+    <div className={`rounded-lg border px-4 py-3 transition ${
+      health === 'failing'  ? 'border-rose-500/20 bg-rose-500/[0.03]' :
+      health === 'excluded' ? 'border-slate-800/40 bg-slate-950/15 opacity-60' :
+      'border-slate-800/70 bg-slate-950/25'
+    }`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        {/* Left: URL + chips + status */}
+        {/* Left */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <HealthBadge health={health} />
             {source.company_name
               ? <Chip label={source.company_name} />
-              : <Chip label="Niche-wide" />}
+              : <Chip label="Market-wide" />}
             <Chip label={familyLabel(source.source_family)} />
           </div>
           <p className="mt-2 truncate font-mono text-xs text-slate-500">{source.locator}</p>
-          {lastError && (
+          {lastError && health !== 'excluded' && (
             <p className="mt-1 text-xs text-rose-400">{lastError}</p>
           )}
-          {source.health && (
-            <p className="mt-1 text-[11px] text-slate-700">
-              Last run: {source.health.last_fetched_count} fetched · {source.health.last_relevant_count} relevant · {source.health.last_extracted_count} extracted
-            </p>
-          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            {scannedAt && (
+              <span className="text-[11px] text-slate-700">Scanned {scannedAt}</span>
+            )}
+            {source.health && source.health.last_fetched_count > 0 && (
+              <span className="text-[11px] text-slate-700">
+                {source.health.last_fetched_count} fetched
+                {source.health.last_relevant_count > 0 && ` · ${source.health.last_relevant_count} relevant`}
+                {source.health.last_extracted_count > 0 && ` · ${source.health.last_extracted_count} extracted`}
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Right: scan time + actions */}
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          {scannedAt && (
-            <span className="text-[11px] text-slate-700">Scanned {scannedAt}</span>
-          )}
-          {confirmRemove ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-500">Remove?</span>
-              <button
-                onClick={handleRemove}
-                disabled={removing}
-                className="rounded px-2 py-1 text-[11px] font-semibold text-rose-400 transition hover:bg-rose-500/10 disabled:opacity-50"
-              >
-                {removing ? 'Removing…' : 'Confirm'}
-              </button>
-              <button
-                onClick={() => setConfirmRemove(false)}
-                className="rounded px-2 py-1 text-[11px] text-slate-600 transition hover:text-slate-400"
-              >
-                Cancel
-              </button>
-            </div>
+        {/* Right: action */}
+        <div className="shrink-0">
+          {health === 'excluded' ? (
+            <button
+              onClick={handleRestore}
+              disabled={busy}
+              className="rounded-lg border border-slate-700/60 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition hover:border-violet-500/30 hover:text-violet-300 disabled:opacity-40"
+            >
+              {busy ? '…' : 'Restore'}
+            </button>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={handleToggle}
-                disabled={toggling}
-                className="rounded-lg border border-slate-700/80 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition hover:text-slate-100 disabled:opacity-50"
-              >
-                {source.enabled ? 'Pause' : 'Enable'}
-              </button>
-              <button
-                onClick={() => setConfirmRemove(true)}
-                className="rounded-lg border border-slate-700/80 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:border-rose-500/30 hover:text-rose-400"
-              >
-                Remove
-              </button>
-            </div>
+            <button
+              onClick={handleExclude}
+              disabled={busy}
+              className="rounded-lg border border-slate-700/60 px-2.5 py-1 text-[11px] font-medium text-slate-500 transition hover:border-rose-500/20 hover:text-rose-400 disabled:opacity-40"
+            >
+              {busy ? '…' : 'Exclude'}
+            </button>
           )}
         </div>
       </div>
@@ -342,7 +320,7 @@ function SourceRow({
   );
 }
 
-function HealthBadge({ health }: { health: 'active' | 'failing' | 'paused' }) {
+function HealthBadge({ health }: { health: SourceHealth }) {
   if (health === 'failing') {
     return (
       <span className="inline-flex items-center gap-1 rounded-md bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-400">
@@ -351,10 +329,18 @@ function HealthBadge({ health }: { health: 'active' | 'failing' | 'paused' }) {
       </span>
     );
   }
-  if (health === 'paused') {
+  if (health === 'excluded') {
     return (
       <span className="inline-flex items-center gap-1 rounded-md bg-slate-800/70 px-2 py-0.5 text-[11px] font-medium text-slate-500">
         <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
+        Excluded
+      </span>
+    );
+  }
+  if (health === 'paused') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
         Paused
       </span>
     );
@@ -364,113 +350,5 @@ function HealthBadge({ health }: { health: 'active' | 'failing' | 'paused' }) {
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]" />
       Active
     </span>
-  );
-}
-
-function AddSourcePanel({
-  companies,
-  marketId,
-  onAdd,
-  onCancel,
-}: {
-  companies: NicheCompany[];
-  marketId: string;
-  onAdd: (source: MonitoredSource) => void;
-  onCancel: () => void;
-}) {
-  const [locator, setLocator] = useState('');
-  const [sourceType, setSourceType] = useState('web');
-  const [companyId, setCompanyId] = useState('');
-  const [limit, setLimit] = useState('10');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      const request = {
-        locator,
-        source_type: sourceType,
-        limit: limit ? Number(limit) : null,
-        options: {},
-      };
-      const source = companyId
-        ? await signalApi.createCompanySource(companyId, { ...request, market_id: marketId })
-        : await signalApi.createMarketSource(marketId, request);
-      onAdd(source);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add source');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-5">
-      <h2 className="text-sm font-semibold text-slate-300">Add source</h2>
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_150px_160px_100px]">
-        <Field label="URL or API endpoint" value={locator} onChange={setLocator} required placeholder="https://…" />
-        <Field label="Type" value={sourceType} onChange={setSourceType} required />
-        <label className="block">
-          <span className="text-xs font-medium text-slate-500">Scope</span>
-          <select
-            value={companyId}
-            onChange={e => setCompanyId(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-sm text-slate-300 outline-none focus:border-violet-500/40"
-          >
-            <option value="">Niche-wide</option>
-            {companies.map(company => (
-              <option key={company.id} value={company.id}>{company.name}</option>
-            ))}
-          </select>
-        </label>
-        <Field label="Limit" value={limit} onChange={setLimit} />
-      </div>
-      {error && <p className="mt-3 text-xs text-rose-400">{error}</p>}
-      <div className="mt-4 flex gap-2">
-        <button
-          disabled={submitting || !locator.trim()}
-          className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? 'Adding…' : 'Add source'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-200"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
-      <input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className="mt-1 w-full rounded-lg border border-slate-700/70 bg-slate-950/40 px-3 py-2 text-sm text-slate-300 outline-none placeholder:text-slate-700 focus:border-violet-500/40"
-      />
-    </label>
   );
 }
