@@ -44,7 +44,46 @@ function sourceHealth(source: MonitoredSource): SourceHealth {
 const HEALTH_ORDER: Record<SourceHealth, number> = { active: 0, failing: 1, paused: 2, excluded: 3 };
 
 function sourceHref(locator: string) {
-  return /^https?:\/\//i.test(locator) ? locator : `https://${locator}`;
+  const href = /^https?:\/\//i.test(locator) ? locator : `https://${locator}`;
+  try {
+    const url = new URL(href);
+    const host = url.hostname.toLowerCase();
+    if (host === 'hn.algolia.com' && url.pathname.startsWith('/api/')) {
+      const search = new URL('https://hn.algolia.com/');
+      const query = url.searchParams.get('query');
+      if (query) search.searchParams.set('query', query);
+      search.searchParams.set('sort', 'byDate');
+      search.searchParams.set('dateRange', 'all');
+      if (url.searchParams.get('tags') === 'comment') {
+        search.searchParams.set('type', 'comment');
+      }
+      return search.toString();
+    }
+    if (host === 'api.github.com' && url.pathname === '/search/issues') {
+      const repo = url.searchParams.get('q')?.match(/(?:^|\s)repo:([^\s]+)/)?.[1];
+      if (repo) return `https://github.com/${repo}/issues`;
+    }
+    if (host === 'api.stackexchange.com' && url.pathname.includes('/search/advanced')) {
+      const site = url.searchParams.get('site') ?? 'stackoverflow';
+      const query = url.searchParams.get('q') ?? '';
+      const base =
+        site === 'stackoverflow'
+          ? 'https://stackoverflow.com/search'
+          : `https://${site}.stackexchange.com/search`;
+      const search = new URL(base);
+      if (query) search.searchParams.set('q', query);
+      return search.toString();
+    }
+    if (url.pathname.endsWith('/latest.json')) {
+      return `${url.origin}${url.pathname.replace(/\/latest\.json$/, '/latest')}`;
+    }
+    if (url.pathname.endsWith('.json')) {
+      return `${url.origin}${url.pathname.replace(/\.json$/, '')}`;
+    }
+    return href;
+  } catch {
+    return href;
+  }
 }
 
 function compareSources(a: MonitoredSource, b: MonitoredSource) {
