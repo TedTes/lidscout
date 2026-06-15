@@ -1,5 +1,8 @@
 import asyncio
 
+import pytest
+from fastapi import HTTPException
+
 from api.routes.signals import (
     NicheSourceRequest,
     NicheSourceUpdateRequest,
@@ -10,6 +13,7 @@ from api.routes.signals import (
     get_pipeline_diagnostics,
     list_markets,
     list_market_sources,
+    list_sources,
     restore_market_source,
     update_source,
 )
@@ -116,6 +120,14 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     assert item["health"]["signal_yield_rate"] == 0.375
     assert item["management"]["recommended_action"] == "keep_monitoring"
     assert item["management"]["can_disable"] is True
+
+
+def test_global_sources_endpoint_is_deprecated() -> None:
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(list_sources())
+
+    assert exc.value.status_code == 410
+    assert "markets/{market_id}/sources" in exc.value.detail
 
 
 def test_market_sources_include_contribution_rollups() -> None:

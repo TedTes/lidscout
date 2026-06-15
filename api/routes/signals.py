@@ -1775,11 +1775,11 @@ async def list_sources(
     enabled: bool | None = None,
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
 ) -> dict[str, Any]:
-    """Return monitored sources (placeholder — use /markets/{id}/sources)."""
-    return {
-        "sources": [],
-        "summary": _source_coverage_summary([]),
-    }
+    """Deprecated global source listing endpoint."""
+    raise HTTPException(
+        status_code=410,
+        detail="Use GET /markets/{market_id}/sources instead",
+    )
 
 
 @router.post("/companies/{company_id}/sources")

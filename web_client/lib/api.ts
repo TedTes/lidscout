@@ -484,22 +484,6 @@ class SignalApiService {
     }
   }
 
-  async getSources(params?: {
-    company_id?: string;
-    market_id?: string;
-    enabled?: boolean;
-  }): Promise<MonitoredSourcesResponse> {
-    try {
-      const response = await api.get<MonitoredSourcesResponse>('/sources', { params });
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load monitored sources');
-      }
-      throw error;
-    }
-  }
-
   async createCompanySource(
     companyId: string,
     request: {
