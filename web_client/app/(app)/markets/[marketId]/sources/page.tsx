@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import { Chip, EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
+import { EmptyPanel, ErrorPanel, LoadingPanel } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { Market, MonitoredSource, SourceCoverageSummary } from '@/lib/types/signals';
 
@@ -42,6 +42,16 @@ function sourceHealth(source: MonitoredSource): SourceHealth {
 }
 
 const HEALTH_ORDER: Record<SourceHealth, number> = { active: 0, failing: 1, paused: 2, excluded: 3 };
+
+function sourceHref(locator: string) {
+  return /^https?:\/\//i.test(locator) ? locator : `https://${locator}`;
+}
+
+function compareSources(a: MonitoredSource, b: MonitoredSource) {
+  const healthDelta = HEALTH_ORDER[sourceHealth(a)] - HEALTH_ORDER[sourceHealth(b)];
+  if (healthDelta !== 0) return healthDelta;
+  return a.locator.localeCompare(b.locator);
+}
 
 function IconCopy() {
   return (
@@ -84,19 +94,10 @@ export default function NicheSourcesPage({ params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marketId]);
 
-  const groupedSources = useMemo(() => {
-    const groups = new Map<string, MonitoredSource[]>();
-    sources.forEach(source => {
-      const family = source.source_family ?? 'other';
-      groups.set(family, [...(groups.get(family) ?? []), source]);
-    });
-    return [...groups.entries()]
-      .sort(([a], [b]) => familyLabel(a).localeCompare(familyLabel(b)))
-      .map(([family, members]) => [
-        family,
-        [...members].sort((a, b) => HEALTH_ORDER[sourceHealth(a)] - HEALTH_ORDER[sourceHealth(b)]),
-      ] as [string, MonitoredSource[]]);
-  }, [sources]);
+  const sortedSources = useMemo(
+    () => [...sources].sort(compareSources),
+    [sources],
+  );
 
   const copySources = () => {
     const lines = sources.map(s => {
@@ -183,30 +184,14 @@ export default function NicheSourcesPage({ params }: Props) {
                 />
               </div>
             ) : (
-              <div className="divide-y divide-slate-800/70">
-                {groupedSources.map(([family, familySources]) => (
-                  <div key={family} className="p-5">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-600">
-                        {familyLabel(family)}
-                      </h3>
-                      <span className="text-[11px] text-slate-700">
-                        {familySources.filter(s => sourceHealth(s) === 'active').length} active
-                        {' · '}
-                        {familySources.length} total
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {familySources.map(source => (
-                        <SourceRow
-                          key={source.id}
-                          marketId={marketId}
-                          source={source}
-                          onUpdated={updateSource}
-                        />
-                      ))}
-                    </div>
-                  </div>
+              <div className="space-y-2 p-5">
+                {sortedSources.map(source => (
+                  <SourceRow
+                    key={source.id}
+                    marketId={marketId}
+                    source={source}
+                    onUpdated={updateSource}
+                  />
                 ))}
               </div>
             )}
@@ -285,12 +270,22 @@ function SourceRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <HealthBadge health={health} />
-            {source.company_name
-              ? <Chip label={source.company_name} />
-              : <Chip label="Market-wide" />}
-            <Chip label={familyLabel(source.source_family)} />
           </div>
-          <p className="mt-2 truncate font-mono text-xs text-slate-500">{source.locator}</p>
+          <a
+            href={sourceHref(source.locator)}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 block break-all font-mono text-xs leading-5 text-slate-400 underline-offset-2 transition hover:text-violet-300 hover:underline"
+          >
+            {source.locator}
+          </a>
+          {(source.company_name || source.scan_frequency || source.limit !== null) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-700">
+              {source.company_name && <span>{source.company_name}</span>}
+              {source.scan_frequency && <span>{source.scan_frequency}</span>}
+              {source.limit !== null && <span>Limit {source.limit}</span>}
+            </div>
+          )}
           {lastError && health !== 'excluded' && (
             <p className="mt-1 text-xs text-rose-400">{lastError}</p>
           )}
