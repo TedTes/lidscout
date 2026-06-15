@@ -600,6 +600,12 @@ def _json_obj(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
 def _niche_from_row(row: dict[str, Any]) -> Niche:
     return Niche(
         id=str(row["id"]),
@@ -641,7 +647,7 @@ def _template_source_binding_from_row(row: dict[str, Any]) -> TemplateSourceBind
         ),
         default_options=_json_obj(row.get("default_options")),
         tier=row.get("tier"),
-        signal_quality_score=row.get("signal_quality_score"),
+        signal_quality_score=_optional_float(row.get("signal_quality_score")),
         recommended_cadence=row.get("recommended_cadence"),
         created_at=row.get("created_at"),
         updated_at=row.get("updated_at"),

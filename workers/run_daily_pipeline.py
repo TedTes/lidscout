@@ -1119,7 +1119,11 @@ def _niche_source_priority_score(
     stats: NicheSourceRunStats | None,
     preferences: object | None = None,
 ) -> float:
-    quality = source.signal_quality_score if source.signal_quality_score is not None else 0.5
+    quality = (
+        float(source.signal_quality_score)
+        if source.signal_quality_score is not None
+        else 0.5
+    )
     if stats is not None and stats.total_runs > 0:
         quality = (0.7 * quality) + (0.3 * source_observed_quality_score(stats))
 

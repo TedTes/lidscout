@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 import json
 import unittest
 from unittest.mock import patch
@@ -657,7 +658,7 @@ class PostgresRepositoryTests(unittest.TestCase):
             "default_buyer_voice_verified": False,
             "default_options": {"adapter": "json"},
             "tier": 1,
-            "signal_quality_score": 0.95,
+            "signal_quality_score": Decimal("0.95"),
             "recommended_cadence": None,
             "created_at": created_at,
             "updated_at": created_at,

@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 from typing import Any
 
 from domain.agent import AgentPreferences
@@ -1249,7 +1250,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                     id="binding-high",
                     template_niche_id="niche-1",
                     source_id="source-high",
-                    signal_quality_score=0.7,
+                    signal_quality_score=Decimal("0.7"),
                 ),
             ]
         )
