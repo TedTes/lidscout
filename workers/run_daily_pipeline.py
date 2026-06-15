@@ -593,7 +593,7 @@ def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
                 metadata={
                     "locator": detail.source.locator,
                     "source_type": detail.source.options.get("source_type"),
-                    "niche_source_id": detail.source.options.get("niche_source_id"),
+                    "source_id": detail.source.options.get("source_id"),
                     "fetched_count": detail.fetched_count,
                 },
             )
@@ -631,7 +631,7 @@ def _record_user_source_health(
     for detail in details:
         source_id = detail.source.options.get("source_id")
         binding_id = detail.source.options.get("template_source_binding_id")
-        relevance_key = detail.source.options.get("niche_source_id")
+        relevance_key = source_id
         if not isinstance(source_id, str):
             continue
         if binding_id is not None and not isinstance(binding_id, str):
@@ -751,7 +751,7 @@ def _filter_relevant_posts(
     source_stats: dict[str, SourceRelevanceStats] = {}
 
     for post in posts:
-        source_id = _post_niche_source_id(post)
+        source_id = _post_source_id(post)
         rule_result = rule_filter.evaluate(post)
         if not rule_result.is_relevant:
             rule_filtered_count += 1
@@ -839,8 +839,8 @@ def _filter_relevant_posts(
     )
 
 
-def _post_niche_source_id(post: RawPost) -> str | None:
-    source_id = post.metadata.get("niche_source_id")
+def _post_source_id(post: RawPost) -> str | None:
+    source_id = post.metadata.get("source_id") or post.metadata.get("niche_source_id")
     if not isinstance(source_id, str):
         return None
     normalized = source_id.strip()
@@ -901,7 +901,7 @@ def _post_event_metadata(post: RawPost) -> dict[str, object]:
     return {
         "title": post.title[:120] if post.title else "",
         "source_label": _post_source_label(post),
-        "niche_source_id": _post_niche_source_id(post),
+        "source_id": _post_source_id(post),
         "url": post.url,
         "post_date": post.created_at.isoformat() if post.created_at else None,
     }
@@ -913,10 +913,10 @@ def _build_source_post_list(
 ) -> list[dict[str, object]]:
     result = []
     for detail in details:
-        source_id = detail.source.options.get("niche_source_id")
+        source_id = detail.source.options.get("source_id")
         source_type = str(detail.source.options.get("source_type", "") or "")
         source_label = _SOURCE_TYPE_LABELS.get(source_type) or source_type.replace("_", " ").title() or "Source"
-        source_posts = [p for p in posts if p.metadata.get("niche_source_id") == source_id]
+        source_posts = [p for p in posts if _post_source_id(p) == source_id]
         result.append({
             "source_id": source_id,
             "source_type": source_type,
@@ -1145,7 +1145,7 @@ def _niche_source_input(
 ) -> SourceInput:
     options: dict = {
         **source.options,
-        "niche_source_id": source.id,
+        "source_id": source.id,
         "source_type": source.source_type,
         "source_family": source.source_family,
         "market_id": str(source.niche_id),
@@ -1308,7 +1308,7 @@ def _persist_accumulated_findings(
             Finding.from_signal(
                 user_niche_id=config.user_niche_id,
                 signal=signal,
-                source_id=_post_niche_source_id(post) if post else None,
+                source_id=_post_source_id(post) if post else None,
                 post_title=post.title if post else None,
                 source_url=post.url if post else None,
                 embedding=embeddings.get(signal.id),
@@ -1516,7 +1516,7 @@ def _finding_metadata(post: RawPost | None) -> dict[str, object]:
         "market_name",
         "competitor_id",
         "competitor_name",
-        "niche_source_id",
+        "source_id",
     )
     return {
         key: post.metadata[key]

@@ -459,7 +459,7 @@ def _source_metadata(source: SourceInput, domain: str) -> dict[str, Any]:
         "competitor_domain",
         "competitor_category",
         "monitored_source_id",
-        "niche_source_id",
+        "source_id",
         "market_id",
         "market_name",
         "market_target_user",

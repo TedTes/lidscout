@@ -319,7 +319,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                     locator="https://example.com/reviews",
                     limit=1,
                     options={
-                        "niche_source_id": "source-1",
+                        "source_id": "source-1",
                         "source_type": "review_search",
                         "source_family": "reviews",
                         "market_id": "niche-1",
@@ -378,7 +378,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 SourceInput.create(
                     locator="https://example.com/reviews",
                     limit=1,
-                    options={"niche_source_id": "source-1"},
+                    options={"source_id": "source-1"},
                 )
             ],
         )
@@ -417,7 +417,7 @@ class DailyPipelineWorkerTests(unittest.TestCase):
                 SourceInput.create(
                     locator="https://example.com/two",
                     limit=2,
-                    options={"niche_source_id": "source-1"},
+                    options={"source_id": "source-1"},
                 )
             ],
         )
