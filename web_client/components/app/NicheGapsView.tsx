@@ -364,8 +364,12 @@ export default function NicheWorkspacePage({ params }: Props) {
     if (scanTriggering) return;
     setScanTriggering(true);
     try {
-      await signalApi.triggerMarketPipeline(marketId);
-      setScanQueued(true);
+      const result = await signalApi.triggerMarketPipeline(marketId);
+      if (['queued', 'already_queued', 'already_running'].includes(result.status)) {
+        setScanQueued(true);
+      } else {
+        refreshData();
+      }
     } catch { /* ignore */ }
     setScanTriggering(false);
   };

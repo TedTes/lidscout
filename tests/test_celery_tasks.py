@@ -44,6 +44,8 @@ class RunPipelineForMarketTaskTests(unittest.TestCase):
         mock_result = MagicMock()
         mock_summary = {"extracted_count": 5, "email_sent": True}
         with (
+            patch("workers.tasks._acquire_market_run_lock", return_value=True),
+            patch("workers.tasks._release_market_run_lock"),
             patch("workers.jobs.run_configured_daily_pipeline", return_value=mock_result),
             patch("workers.jobs._pipeline_job_summary", return_value=mock_summary),
         ):
@@ -53,9 +55,13 @@ class RunPipelineForMarketTaskTests(unittest.TestCase):
 
     def test_does_not_retry_on_value_error(self):
         """Config errors (missing REPORT_RECIPIENT) should not consume retry budget."""
-        with patch(
-            "workers.jobs.run_configured_daily_pipeline",
-            side_effect=ValueError("REPORT_RECIPIENT is required"),
+        with (
+            patch("workers.tasks._acquire_market_run_lock", return_value=True),
+            patch("workers.tasks._release_market_run_lock"),
+            patch(
+                "workers.jobs.run_configured_daily_pipeline",
+                side_effect=ValueError("REPORT_RECIPIENT is required"),
+            ),
         ):
             from workers.tasks import run_pipeline_for_market
             result = run_pipeline_for_market.apply(args=["market-abc"])
@@ -72,6 +78,8 @@ class RunPipelineForMarketTaskTests(unittest.TestCase):
             return MagicMock()
 
         with (
+            patch("workers.tasks._acquire_market_run_lock", return_value=True),
+            patch("workers.tasks._release_market_run_lock"),
             patch("workers.jobs.run_configured_daily_pipeline", side_effect=flaky),
             patch("workers.jobs._pipeline_job_summary", return_value={}),
         ):
@@ -79,6 +87,17 @@ class RunPipelineForMarketTaskTests(unittest.TestCase):
             result = run_pipeline_for_market.apply(args=["market-abc"])
         self.assertEqual(call_count["n"], 2)
         self.assertTrue(result.successful())
+
+    def test_skips_when_market_run_lock_is_held(self):
+        with (
+            patch("workers.tasks._acquire_market_run_lock", return_value=False),
+            patch("workers.jobs.run_configured_daily_pipeline") as run_pipeline,
+        ):
+            from workers.tasks import run_pipeline_for_market
+            result = run_pipeline_for_market.apply(args=["market-abc"]).get()
+
+        self.assertEqual(result, {"skipped": "already_running"})
+        run_pipeline.assert_not_called()
 
 
 class IdempotencyTests(unittest.TestCase):
@@ -102,6 +121,8 @@ class IdempotencyTests(unittest.TestCase):
             return MagicMock()
 
         with (
+            patch("workers.tasks._acquire_market_run_lock", return_value=True),
+            patch("workers.tasks._release_market_run_lock"),
             patch("workers.jobs.run_configured_daily_pipeline", side_effect=count_calls),
             patch("workers.jobs._pipeline_job_summary", return_value={}),
         ):

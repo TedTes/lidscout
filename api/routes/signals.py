@@ -1,6 +1,6 @@
 """API endpoints for market signal workflows."""
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 from typing import Any
 
@@ -1932,9 +1932,127 @@ async def trigger_market_pipeline(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Enqueue a background pipeline run for one owned niche."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    _enqueue_pipeline(market_id)
+    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
+    cooldown_status = _manual_scan_cooldown_status(user_niche.id, dependencies)
+    if cooldown_status is not None:
+        return cooldown_status
+    if not _acquire_manual_scan_enqueue_lock(user_niche.id):
+        return {"status": "already_queued"}
+    _enqueue_pipeline(user_niche.id)
     return {"status": "queued"}
+
+
+def _manual_scan_cooldown_status(
+    user_niche_id: str,
+    dependencies: SignalApiDependencies,
+) -> dict[str, Any] | None:
+    cooldown_seconds = max(
+        get_app_config().PIPELINE_MANUAL_TRIGGER_COOLDOWN_SECONDS,
+        0,
+    )
+    if cooldown_seconds <= 0:
+        return None
+
+    now = datetime.now(tz=UTC)
+    cutoff = now - timedelta(seconds=cooldown_seconds)
+    latest_scan_at = _latest_source_scan_at(user_niche_id, dependencies)
+    if latest_scan_at is not None and latest_scan_at >= cutoff:
+        remaining = cooldown_seconds - int((now - latest_scan_at).total_seconds())
+        return {
+            "status": "recent",
+            "cooldown_seconds": max(remaining, 0),
+            "last_scanned_at": latest_scan_at.isoformat(),
+        }
+
+    latest_run_started_at = _latest_activity_at(
+        dependencies,
+        user_niche_id,
+        "run_started",
+    )
+    if latest_run_started_at is not None and latest_run_started_at >= cutoff:
+        remaining = cooldown_seconds - int((now - latest_run_started_at).total_seconds())
+        return {
+            "status": "already_running",
+            "cooldown_seconds": max(remaining, 0),
+            "last_started_at": latest_run_started_at.isoformat(),
+        }
+    return None
+
+
+def _latest_source_scan_at(
+    user_niche_id: str,
+    dependencies: SignalApiDependencies,
+) -> datetime | None:
+    stats = dependencies.user_source_run_stats_repository.list_user_source_run_stats(
+        user_niche_id,
+    )
+    scanned_at_values = [
+        _ensure_aware_datetime(item.last_scanned_at)
+        for item in stats
+        if item.last_scanned_at is not None
+    ]
+    return max(scanned_at_values) if scanned_at_values else None
+
+
+def _latest_activity_at(
+    dependencies: SignalApiDependencies,
+    user_niche_id: str,
+    event_type: str,
+) -> datetime | None:
+    activity = dependencies.agent_activity_repository.list_agent_activity(
+        user_niche_id=user_niche_id,
+        event_type=event_type,
+        limit=1,
+    )
+    if not activity:
+        return None
+    return _ensure_aware_datetime(activity[0].created_at)
+
+
+def _ensure_aware_datetime(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _acquire_manual_scan_enqueue_lock(user_niche_id: str) -> bool:
+    cooldown_seconds = max(
+        get_app_config().PIPELINE_MANUAL_TRIGGER_COOLDOWN_SECONDS,
+        0,
+    )
+    if cooldown_seconds <= 0:
+        return True
+    try:
+        from infrastructure.redis import get_redis_client
+        client = get_redis_client()
+    except Exception as exc:
+        log_event(
+            logger,
+            "manual_scan_lock_unavailable",
+            level=logging.WARNING,
+            user_niche_id=user_niche_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return True
+    if client is None:
+        return True
+    try:
+        acquired = client.set(
+            f"lidscout:pipeline:manual-trigger:{user_niche_id}",
+            "1",
+            nx=True,
+            ex=max(cooldown_seconds, 60),
+        )
+    except Exception as exc:
+        log_event(
+            logger,
+            "manual_scan_lock_unavailable",
+            level=logging.WARNING,
+            user_niche_id=user_niche_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return True
+    return bool(acquired)
 
 
 def _enqueue_pipeline(market_id: str) -> None:

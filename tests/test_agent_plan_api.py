@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from api.routes.signals import (
@@ -20,7 +21,7 @@ from api.routes.signals import (
 from domain.agent import AgentAction, AgentFollowUp
 from domain.cluster import SignalCluster
 from domain.finding import Finding
-from domain.niche import UserNiche, UserSource
+from domain.niche import UserNiche, UserSource, UserSourceRunStats
 from domain.opportunity import Opportunity
 from domain.signal import Signal
 from domain.source import Source
@@ -218,7 +219,10 @@ def test_trigger_market_pipeline_enqueues_owned_market() -> None:
     dependencies = SignalApiDependencies()
     _seed_market_with_follow_up(dependencies)
 
-    with patch("api.routes.signals._enqueue_pipeline") as enqueue:
+    with (
+        patch("api.routes.signals._enqueue_pipeline") as enqueue,
+        patch("api.routes.signals._acquire_manual_scan_enqueue_lock", return_value=True),
+    ):
         response = asyncio.run(
             trigger_market_pipeline(
                 "market-1",
@@ -229,6 +233,56 @@ def test_trigger_market_pipeline_enqueues_owned_market() -> None:
 
     assert response == {"status": "queued"}
     enqueue.assert_called_once_with("market-1")
+
+
+def test_trigger_market_pipeline_skips_recent_scan() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+    scanned_at = datetime.now(tz=UTC)
+    dependencies.user_source_run_stats_repository.upsert_user_source_run_stats(
+        UserSourceRunStats.create(
+            user_niche_id="market-1",
+            source_id="source-1",
+            total_runs=1,
+            success_count=1,
+            last_status="healthy",
+            last_scanned_at=scanned_at,
+        )
+    )
+
+    with patch("api.routes.signals._enqueue_pipeline") as enqueue:
+        response = asyncio.run(
+            trigger_market_pipeline(
+                "market-1",
+                dependencies,
+                User(id="user-1", email="user@example.com"),
+            )
+        )
+
+    assert response["status"] == "recent"
+    assert response["last_scanned_at"] == scanned_at.isoformat()
+    assert response["cooldown_seconds"] > 0
+    enqueue.assert_not_called()
+
+
+def test_trigger_market_pipeline_skips_when_enqueue_lock_is_held() -> None:
+    dependencies = SignalApiDependencies()
+    _seed_market_with_follow_up(dependencies)
+
+    with (
+        patch("api.routes.signals._enqueue_pipeline") as enqueue,
+        patch("api.routes.signals._acquire_manual_scan_enqueue_lock", return_value=False),
+    ):
+        response = asyncio.run(
+            trigger_market_pipeline(
+                "market-1",
+                dependencies,
+                User(id="user-1", email="user@example.com"),
+            )
+        )
+
+    assert response == {"status": "already_queued"}
+    enqueue.assert_not_called()
 
 
 def test_less_like_this_feedback_updates_agent_preferences() -> None:

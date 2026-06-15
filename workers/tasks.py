@@ -10,6 +10,7 @@ from shared.config import get_app_config
 
 logger = logging.getLogger(__name__)
 _COORDINATOR_LOCK_KEY = "lidscout:pipeline:coordinator:lock"
+_MARKET_RUN_LOCK_PREFIX = "lidscout:pipeline:market-run:"
 
 
 @shared_task(
@@ -25,6 +26,10 @@ def run_pipeline_for_market(self, market_id: str) -> dict:
     if _root not in _sys.path:
         _sys.path.insert(0, _root)
     from workers.jobs import run_configured_daily_pipeline, _pipeline_job_summary
+    run_lock_key = _market_run_lock_key(market_id)
+    if not _acquire_market_run_lock(run_lock_key):
+        logger.info("pipeline skipped market_id=%s reason=already_running", market_id)
+        return {"skipped": "already_running"}
     logger.info("pipeline starting market_id=%s attempt=%d", market_id, self.request.retries + 1)
     try:
         result = run_configured_daily_pipeline(market_id=market_id)
@@ -43,6 +48,8 @@ def run_pipeline_for_market(self, market_id: str) -> dict:
             market_id, self.request.retries + 1, delay, exc,
         )
         raise self.retry(exc=exc, countdown=delay)
+    finally:
+        _release_market_run_lock(run_lock_key)
 
 
 @shared_task(
@@ -96,3 +103,43 @@ def _acquire_coordinator_lock() -> bool | None:
         logger.warning("daily coordinator lock unavailable error=%s", exc)
         return None
     return True if acquired else False
+
+
+def _market_run_lock_key(market_id: str) -> str:
+    return f"{_MARKET_RUN_LOCK_PREFIX}{market_id}"
+
+
+def _market_run_lock_ttl_seconds() -> int:
+    config = get_app_config()
+    return max(
+        config.PIPELINE_COORDINATOR_LOCK_SECONDS,
+        config.PIPELINE_MANUAL_TRIGGER_COOLDOWN_SECONDS,
+        60,
+    )
+
+
+def _acquire_market_run_lock(lock_key: str) -> bool:
+    client = get_redis_client()
+    if client is None:
+        return True
+    try:
+        acquired = client.set(
+            lock_key,
+            "1",
+            nx=True,
+            ex=_market_run_lock_ttl_seconds(),
+        )
+    except Exception as exc:
+        logger.warning("pipeline run lock unavailable error=%s", exc)
+        return True
+    return bool(acquired)
+
+
+def _release_market_run_lock(lock_key: str) -> None:
+    client = get_redis_client()
+    if client is None:
+        return
+    try:
+        client.delete(lock_key)
+    except Exception as exc:
+        logger.warning("pipeline run lock release failed error=%s", exc)
