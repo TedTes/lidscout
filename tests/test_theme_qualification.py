@@ -74,7 +74,6 @@ def test_requires_source_diversity_unless_high_signal_exception():
         [
             _finding("post-1", metadata={"source_quality_score": "0.9"}),
             _finding("post-2", metadata={"source_quality_score": "0.9"}),
-            _finding("post-3", metadata={"source_quality_score": "0.9"}),
         ],
     )
 

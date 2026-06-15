@@ -57,7 +57,7 @@ def qualify_theme_for_opportunity(
         return result(False, "insufficient_evidence")
 
     has_source_diversity = source_count >= 2
-    high_signal_exception = high_signal_source_count > 0 and finding_count >= 3
+    high_signal_exception = high_signal_source_count > 0 and finding_count >= 2
     if not has_source_diversity and not high_signal_exception:
         return result(False, "insufficient_source_diversity")
 

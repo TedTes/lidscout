@@ -33,6 +33,7 @@ from infrastructure.llm import EmbeddingClient, LLMClient
 from workers.run_daily_pipeline import (
     PipelineConfig,
     SourceRelevanceStats,
+    _assign_accumulated_findings_to_themes,
     _configured_sources,
     _synthesize_accumulated_theme_opportunities,
     run_daily_pipeline,
@@ -135,6 +136,7 @@ class FakeEmailNotifier(EmailNotifier):
 class FakeFindingRepository:
     def __init__(self):
         self.findings: list[Finding] = []
+        self.assigned_finding_ids: set[str] = set()
 
     def save_findings(self, findings: list[Finding]) -> int:
         self.findings.extend(findings)
@@ -154,12 +156,22 @@ class FakeFindingRepository:
         user_niche_id: str | None = None,
         unassigned_only: bool = False,
     ) -> list[Finding]:
-        if user_niche_id is None:
-            return self.findings
+        findings = self.findings
+        if user_niche_id is not None:
+            findings = [
+                finding
+                for finding in findings
+                if finding.user_niche_id == user_niche_id
+            ]
+        if unassigned_only:
+            findings = [
+                finding
+                for finding in findings
+                if finding.id not in self.assigned_finding_ids
+            ]
         return [
             finding
-            for finding in self.findings
-            if finding.user_niche_id == user_niche_id
+            for finding in findings
         ]
 
 
@@ -440,6 +452,64 @@ class DailyPipelineWorkerTests(unittest.TestCase):
             theme_repository.assignments[0].theme_id,
             theme_repository.assignments[1].theme_id,
         )
+
+    def test_assigns_historical_unassigned_findings_with_current_findings(self):
+        """A prior singleton can become a visible theme when a matching finding arrives."""
+        finding_repository = FakeFindingRepository()
+        theme_repository = FakeThemeRepository()
+        historical = Finding.create(
+            id="finding-old",
+            user_niche_id="market-1",
+            post_id="old-post",
+            pain="Export workflows are painful",
+            evidence_text="CSV export needs manual cleanup.",
+            structured_embedding_text="Export workflows are painful CSV export needs manual cleanup.",
+            urgency="high",
+            severity="medium",
+            confidence=0.86,
+            affected_user="finance team",
+            job_to_be_done="export reports",
+            current_workaround="manual CSV",
+            category="reporting",
+            embedding=[1.0, 0.0],
+        )
+        current = Finding.create(
+            id="finding-new",
+            user_niche_id="market-1",
+            post_id="new-post",
+            pain="Report exports need manual cleanup",
+            evidence_text="Finance teams clean exported reports by hand.",
+            structured_embedding_text="Report exports need manual cleanup Finance teams clean exported reports by hand.",
+            urgency="medium",
+            severity="medium",
+            confidence=0.84,
+            affected_user="finance team",
+            job_to_be_done="export reports",
+            current_workaround="manual CSV",
+            category="reporting",
+            embedding=[1.0, 0.0],
+        )
+        finding_repository.save_findings([historical])
+        config = PipelineConfig(
+            finding_repository=finding_repository,
+            theme_repository=theme_repository,
+            llm_client=SequentialLLMClient([]),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=None,
+            recipient="",
+            send_email=False,
+            user_niche_id="market-1",
+        )
+
+        assigned_theme_ids = _assign_accumulated_findings_to_themes(
+            config,
+            [current],
+        )
+
+        self.assertEqual(len(theme_repository.themes), 1)
+        self.assertEqual(len(theme_repository.assignments), 2)
+        self.assertEqual(theme_repository.themes[0].finding_count, 2)
+        self.assertEqual(assigned_theme_ids, [theme_repository.themes[0].id])
 
     def test_synthesizes_opportunities_from_qualified_accumulated_themes(self):
         theme = Theme.create(

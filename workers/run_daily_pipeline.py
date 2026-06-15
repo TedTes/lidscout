@@ -73,6 +73,7 @@ _JSON_SOURCE_ITEMS_PATH = {
     "stackoverflow": "items",
     "stackoverflow_search": "items",
 }
+_MAX_UNASSIGNED_FINDINGS_FOR_THEME_BACKFILL = 100
 
 
 @dataclass(frozen=True)
@@ -193,13 +194,22 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
     relevant_count = len(relevance_result.posts)
     filtered_count = relevance_result.rule_filtered_count + relevance_result.llm_filtered_count
     if filtered_count > 0:
+        rejection_breakdown = _relevance_rejection_breakdown(
+            relevance_result.source_stats,
+        )
         _record_agent_activity(
             config.agent_activity_repository,
             user_niche_id=config.user_niche_id,
             event_type="posts_filtered",
             title=f"Filtered {filtered_count} irrelevant post(s)",
             detail=f"{relevant_count} post(s) passed relevance check. {filtered_count} removed as noise.",
-            metadata={"relevant_count": relevant_count, "filtered_count": filtered_count},
+            metadata={
+                "relevant_count": relevant_count,
+                "filtered_count": filtered_count,
+                "rule_filtered_count": relevance_result.rule_filtered_count,
+                "llm_filtered_count": relevance_result.llm_filtered_count,
+                "rejection_breakdown": rejection_breakdown,
+            },
         )
 
     signals, no_signal_count, extraction_failed_count = _extract_signals(
@@ -610,12 +620,22 @@ def _record_source_health(
     details: list[SourceFetchDetail],
     relevance_stats: dict[str, SourceRelevanceStats] | None = None,
 ) -> None:
-    _record_user_source_health(
-        config.user_source_run_stats_repository,
-        config.user_niche_id,
-        details,
-        relevance_stats,
-    )
+    try:
+        _record_user_source_health(
+            config.user_source_run_stats_repository,
+            config.user_niche_id,
+            details,
+            relevance_stats,
+        )
+    except Exception as exc:
+        _record_agent_activity(
+            config.agent_activity_repository,
+            user_niche_id=config.user_niche_id,
+            event_type="source_health_record_failed",
+            title="Source health update skipped",
+            detail=str(exc),
+            metadata={"error_type": type(exc).__name__},
+        )
 
 
 def _record_user_source_health(
@@ -873,6 +893,15 @@ def _record_source_relevance_decision(
     if decision == "failed":
         stats.failed_count += 1
         stats.record_rejection(rejection_category)
+
+
+def _relevance_rejection_breakdown(
+    source_stats: dict[str, SourceRelevanceStats],
+) -> dict[str, int]:
+    merged: dict[str, int] = {}
+    for stats in source_stats.values():
+        merged = _merge_count_maps(merged, stats.rejection_breakdown)
+    return merged
 
 
 _SOURCE_TYPE_LABELS: dict[str, str] = {
@@ -1330,8 +1359,10 @@ def _assign_accumulated_findings_to_themes(
     if (
         config.theme_repository is None
         or config.user_niche_id is None
-        or not findings
     ):
+        return []
+    findings = _findings_for_theme_assignment(config, findings)
+    if not findings:
         return []
     assignment_service = ThemeAssignmentService(llm_client=config.llm_client)
 
@@ -1375,6 +1406,23 @@ def _assign_accumulated_findings_to_themes(
     assigned_theme_ids = sorted({a.theme_id for a in assignments})
     config.theme_repository.refresh_theme_rollups(assigned_theme_ids)
     return assigned_theme_ids if saved_count else []
+
+
+def _findings_for_theme_assignment(
+    config: PipelineConfig,
+    current_findings: list[Finding],
+) -> list[Finding]:
+    findings_by_id = {finding.id: finding for finding in current_findings}
+    if config.finding_repository is not None and config.user_niche_id is not None:
+        historical_unassigned = config.finding_repository.list_findings(
+            user_niche_id=config.user_niche_id,
+            unassigned_only=True,
+        )
+        for finding in historical_unassigned[
+            :_MAX_UNASSIGNED_FINDINGS_FOR_THEME_BACKFILL
+        ]:
+            findings_by_id.setdefault(finding.id, finding)
+    return list(findings_by_id.values())
 
 
 def _requalify_accumulated_themes(

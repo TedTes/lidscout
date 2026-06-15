@@ -10,8 +10,6 @@ from domain.competitor import Competitor
 from domain.finding import Finding
 from domain.market import Market
 from domain.niche import (
-    NicheSource,
-    NicheSourceRunStats,
     TemplateSourceBinding,
     UserSource,
     UserSourcePreference,
@@ -1027,10 +1025,13 @@ class PostgresRepositoryTests(unittest.TestCase):
             "opportunity_id": "opportunity-1",
             "action": "save",
             "reason": None,
+            "comment": None,
             "created_at": created_at,
+            "updated_at": created_at,
         }
         connection = FakeConnection(
             [
+                FakeCursor(rowcount=0),
                 FakeCursor(rowcount=1),
                 FakeCursor(rows=[row]),
             ]
@@ -1042,8 +1043,9 @@ class PostgresRepositoryTests(unittest.TestCase):
             repository.list_agent_feedback(user_niche_id="workspace-tools"),
             [feedback],
         )
-        self.assertIn("INSERT INTO agent_feedback", connection.calls[0][0])
-        self.assertIn("SELECT * FROM agent_feedback", connection.calls[1][0])
+        self.assertIn("DELETE FROM agent_feedback", connection.calls[0][0])
+        self.assertIn("INSERT INTO agent_feedback", connection.calls[1][0])
+        self.assertIn("SELECT * FROM agent_feedback", connection.calls[2][0])
         self.assertEqual(connection.commit_count, 1)
 
     def test_agent_activity_repository_saves_and_loads_activity(self):
@@ -1082,253 +1084,6 @@ class PostgresRepositoryTests(unittest.TestCase):
         self.assertIn("SELECT * FROM agent_activity", connection.calls[1][0])
         self.assertIn("workspace-tools", connection.calls[1][1])
         self.assertEqual(connection.commit_count, 1)
-
-    @unittest.skip("PostgresNicheSourceRepository API changed — MonitoredSource replaced by NicheSource")
-    def test_monitored_source_repository_saves_and_loads_enabled_sources(self):
-        source = MonitoredSource.create(
-            id="source-1",
-            competitor_id="competitor-1",
-            market_id="market-1",
-            locator="https://acme.example/reviews",
-            source_type="reviews",
-            limit=10,
-            options={"section": "reviews"},
-        )
-        row = {
-            "id": "source-1",
-            "competitor_id": "competitor-1",
-            "market_id": "market-1",
-            "locator": "https://acme.example/reviews",
-            "source_type": "reviews",
-            "enabled": True,
-            "limit_value": 10,
-            "scan_frequency": None,
-            "last_scanned_at": None,
-            "last_error": None,
-            "options": {"section": "reviews"},
-        }
-        connection = FakeConnection(
-            [
-                FakeCursor(rowcount=1),
-                FakeCursor(row=row),
-                FakeCursor(rows=[row]),
-                FakeCursor(rowcount=1),
-            ]
-        )
-        repository = PostgresNicheSourceRepository(connection=connection)
-
-        self.assertEqual(repository.save_monitored_sources([source]), 1)
-        self.assertEqual(repository.get_monitored_source("source-1"), source)
-        self.assertEqual(
-            repository.list_monitored_sources(
-                competitor_id="competitor-1",
-                market_id="market-1",
-                enabled=True,
-            ),
-            [source],
-        )
-        self.assertIn("ON CONFLICT (id) DO NOTHING", connection.calls[0][0])
-        self.assertEqual(json.loads(connection.calls[0][1][-1]), {"section": "reviews"})
-        self.assertEqual(connection.calls[2][1], ("competitor-1", "market-1", True))
-        self.assertIn("market_id = %s", connection.calls[2][0])
-        updated_source = MonitoredSource.create(
-            id="source-1",
-            competitor_id="competitor-1",
-            market_id="market-1",
-            locator="https://acme.example/reviews",
-            source_type="forum",
-            enabled=False,
-            limit=25,
-            options={"section": "support"},
-        )
-        self.assertTrue(repository.update_monitored_source(updated_source))
-        self.assertIn("UPDATE monitored_sources", connection.calls[3][0])
-        self.assertEqual(connection.calls[3][1][0], "forum")
-        self.assertEqual(connection.calls[3][1][1], "competitor-1")
-        self.assertEqual(connection.calls[3][1][2], "market-1")
-        self.assertEqual(connection.calls[3][1][3], False)
-        self.assertEqual(connection.calls[3][1][4], 25)
-        self.assertEqual(json.loads(connection.calls[3][1][-2]), {"section": "support"})
-        self.assertEqual(connection.calls[3][1][-1], "source-1")
-        self.assertEqual(connection.commit_count, 2)
-
-    def test_niche_source_repository_persists_run_stats(self):
-        scanned_at = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
-        updated_at = datetime(2026, 6, 2, 12, 1, tzinfo=UTC)
-        stats = NicheSourceRunStats.create(
-            niche_source_id="source-1",
-            total_runs=2,
-            success_count=1,
-            failure_count=1,
-            consecutive_failures=1,
-            posts_fetched_count=30,
-            relevant_posts_count=6,
-            rule_filtered_count=12,
-            llm_filtered_count=5,
-            relevance_failed_count=1,
-            extracted_signals_count=3,
-            gap_count=1,
-            last_status="failing",
-            last_error="blocked",
-            last_rule_filtered_count=4,
-            last_llm_filtered_count=2,
-            last_relevance_failed_count=1,
-            rejection_breakdown={"wrong_subject": 7, "tutorial_or_template": 5},
-            last_rejection_breakdown={"wrong_subject": 3, "tutorial_or_template": 2},
-            last_scanned_at=scanned_at,
-            updated_at=updated_at,
-        )
-        row = {
-            "niche_source_id": "source-1",
-            "total_runs": 2,
-            "success_count": 1,
-            "failure_count": 1,
-            "consecutive_failures": 1,
-            "posts_fetched_count": 30,
-            "relevant_posts_count": 6,
-            "rule_filtered_count": 12,
-            "llm_filtered_count": 5,
-            "relevance_failed_count": 1,
-            "extracted_signals_count": 3,
-            "gap_count": 1,
-            "last_status": "failing",
-            "last_error": "blocked",
-            "last_fetched_count": 0,
-            "last_relevant_count": 0,
-            "last_rule_filtered_count": 4,
-            "last_llm_filtered_count": 2,
-            "last_relevance_failed_count": 1,
-            "last_extracted_count": 0,
-            "last_gap_count": 0,
-            "rejection_breakdown": {"wrong_subject": 7, "tutorial_or_template": 5},
-            "last_rejection_breakdown": {"wrong_subject": 3, "tutorial_or_template": 2},
-            "last_scanned_at": scanned_at,
-            "updated_at": updated_at,
-        }
-        connection = FakeConnection([
-            FakeCursor(rowcount=1),
-            FakeCursor(row=row),
-            FakeCursor(rows=[row]),
-        ])
-        repository = PostgresNicheSourceRepository(connection=connection)
-
-        self.assertTrue(repository.upsert_niche_source_run_stats(stats))
-        self.assertEqual(repository.get_niche_source_run_stats("source-1"), stats)
-        self.assertEqual(repository.list_niche_source_run_stats(["source-1"]), [stats])
-        self.assertIn("INSERT INTO niche_source_health_stats", connection.calls[0][0])
-        self.assertIn("ON CONFLICT (niche_source_id)", connection.calls[0][0])
-        self.assertEqual(connection.calls[0][1][0], "source-1")
-        self.assertEqual(connection.calls[1][1], ("source-1",))
-        self.assertEqual(connection.calls[2][1], ("source-1",))
-        self.assertEqual(connection.commit_count, 1)
-
-    def test_niche_source_repository_updates_quality_score(self):
-        connection = FakeConnection([FakeCursor(rowcount=1)])
-        repository = PostgresNicheSourceRepository(connection=connection)
-
-        self.assertTrue(
-            repository.update_niche_source_quality(
-                "source-1",
-                0.74,
-                buyer_voice_verified=True,
-            )
-        )
-
-        self.assertIn("UPDATE niche_sources", connection.calls[0][0])
-        self.assertEqual(connection.calls[0][1], (0.74, True, "source-1"))
-        self.assertEqual(connection.commit_count, 1)
-
-    def test_niche_source_repository_updates_source(self):
-        source = NicheSource.create(
-            id="source-1",
-            niche_id="niche-1",
-            locator="https://example.com/forum.json",
-            source_type="discourse_json",
-            source_family="forum",
-            is_gate_free=True,
-            enabled=False,
-            limit=15,
-            scan_frequency="daily",
-            buyer_voice_verified=True,
-            health_status="productive",
-            options={"adapter": "json", "source_family": "forum"},
-            tier=2,
-            signal_quality_score=0.82,
-            access_mode="json",
-            recommended_cadence="daily",
-        )
-        connection = FakeConnection([FakeCursor(rowcount=1)])
-        repository = PostgresNicheSourceRepository(connection=connection)
-
-        self.assertTrue(repository.update_niche_source(source))
-
-        self.assertIn("UPDATE niche_sources", connection.calls[0][0])
-        self.assertEqual(connection.calls[0][1][0], None)
-        self.assertEqual(connection.calls[0][1][1], "https://example.com/forum.json")
-        self.assertEqual(connection.calls[0][1][2], "discourse_json")
-        self.assertEqual(json.loads(connection.calls[0][1][12]), source.options)
-        self.assertEqual(connection.calls[0][1][-1], "source-1")
-        self.assertEqual(connection.commit_count, 1)
-
-    @unittest.skip("PostgresSourceHealthRepository removed — health tracked on NicheSource")
-    def test_source_health_repository_saves_and_loads_health(self):
-        scanned_at = datetime(2026, 5, 25, 16, 20, tzinfo=UTC)
-        health = SourceHealth.create(
-            monitored_source_id="source-1",
-            total_runs=1,
-            success_count=1,
-            posts_fetched_count=5,
-            relevant_posts_count=2,
-            extracted_signals_count=1,
-            opportunity_count=1,
-            last_status="healthy",
-            last_fetched_count=5,
-            last_relevant_count=2,
-            last_extracted_count=1,
-            last_opportunity_count=1,
-            last_scanned_at=scanned_at,
-            updated_at=scanned_at,
-        )
-        row = {
-            "monitored_source_id": "source-1",
-            "total_runs": 1,
-            "success_count": 1,
-            "failure_count": 0,
-            "consecutive_failures": 0,
-            "posts_fetched_count": 5,
-            "relevant_posts_count": 2,
-            "extracted_signals_count": 1,
-            "opportunity_count": 1,
-            "last_status": "healthy",
-            "last_error": None,
-            "last_fetched_count": 5,
-            "last_relevant_count": 2,
-            "last_extracted_count": 1,
-            "last_opportunity_count": 1,
-            "last_scanned_at": scanned_at,
-            "updated_at": scanned_at,
-        }
-        connection = FakeConnection(
-            [
-                FakeCursor(rowcount=1),
-                FakeCursor(row=row),
-                FakeCursor(rows=[row]),
-            ]
-        )
-        repository = PostgresSourceHealthRepository(connection=connection)
-
-        self.assertTrue(repository.save_source_health(health))
-        self.assertEqual(repository.get_source_health("source-1"), health)
-        self.assertEqual(
-            repository.list_source_health(status="healthy"),
-            [health],
-        )
-        self.assertIn("INSERT INTO source_health", connection.calls[0][0])
-        self.assertIn("ON CONFLICT (monitored_source_id)", connection.calls[0][0])
-        self.assertEqual(connection.calls[0][1][0], "source-1")
-        self.assertEqual(connection.calls[2][1], ("healthy",))
-        self.assertEqual(connection.commit_count, 1)
-
 
 if __name__ == "__main__":
     unittest.main()
