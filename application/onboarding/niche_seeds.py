@@ -1024,6 +1024,11 @@ NICHE_SEEDS: list[dict] = [
         ],
         "sources": [
             {"locator": "https://hn.algolia.com/api/v1/search_by_date?query=shipstation&tags=comment", "source_type": "hackernews", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://hn.algolia.com/api/v1/search_by_date?query=shipbob+fulfillment&tags=comment", "source_type": "hackernews", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.github.com/search/issues?q=shipstation+shipping+is%3Aissue&sort=updated&order=desc", "source_type": "github_issues_search", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.github.com/search/issues?q=easypost+shipping+is%3Aissue&sort=updated&order=desc", "source_type": "github_issues_search", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.stackexchange.com/2.3/search/advanced?q=ecommerce+shipping+labels+fulfillment&site=stackoverflow&order=desc&sort=creation&pagesize=25", "source_type": "stackoverflow_search", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.stackexchange.com/2.3/search/advanced?q=shipstation+api+shipping+labels&site=stackoverflow&order=desc&sort=creation&pagesize=25", "source_type": "stackoverflow_search", "source_family": "technical_forum", "is_gate_free": True},
             {"locator": "https://www.g2.com/categories/shipping", "source_type": "g2", "source_family": "reviews", "is_gate_free": False},
             {"locator": "https://www.capterra.com/shipping-software/", "source_type": "capterra", "source_family": "reviews", "is_gate_free": False},
             {"locator": "https://www.reddit.com/r/shopify", "source_type": "reddit", "source_family": "social", "is_gate_free": False},
