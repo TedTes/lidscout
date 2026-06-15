@@ -367,8 +367,6 @@ export default function NicheWorkspacePage({ params }: Props) {
       const result = await signalApi.triggerMarketPipeline(marketId);
       if (['queued', 'already_queued', 'already_running'].includes(result.status)) {
         setScanQueued(true);
-      } else {
-        refreshData();
       }
     } catch { /* ignore */ }
     setScanTriggering(false);
@@ -388,7 +386,7 @@ export default function NicheWorkspacePage({ params }: Props) {
         <div className="animate-fade-in">
           {needsSetup ? (
             <ColdStartPanel coldStart={coldStart!} marketId={marketId} />
-          ) : isRunningFirstScan || (scanQueued && opportunities.length === 0) || (scanTriggering && opportunities.length === 0) ? (
+          ) : isRunningFirstScan || (scanQueued && opportunities.length === 0) ? (
             <div className="flex min-h-[420px] items-center justify-center py-6 sm:min-h-[520px]">
               <CenteredScanProgress
                 progressActivity={currentProgressActivity}
@@ -407,7 +405,8 @@ export default function NicheWorkspacePage({ params }: Props) {
               </div>
               <button
                 onClick={handleRunScan}
-                className="rounded-xl border border-violet-500/30 bg-violet-500/15 px-8 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/20"
+                disabled={scanTriggering}
+                className="rounded-xl border border-violet-500/30 bg-violet-500/15 px-8 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/20 disabled:cursor-default disabled:opacity-60"
               >
                 Run scan
               </button>
@@ -425,11 +424,7 @@ export default function NicheWorkspacePage({ params }: Props) {
                     isRunning={pipelineStatus === 'running'}
                   />
                   {pipelineStatus !== 'running' && (
-                    scanTriggering ? (
-                      <button disabled className="rounded-lg border border-slate-700/50 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                        Starting…
-                      </button>
-                    ) : scanQueued ? (
+                    scanQueued ? (
                       <button disabled className="flex items-center gap-1.5 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] px-3 py-1.5 text-xs font-semibold text-violet-400/60">
                         <span className="h-1 w-1 animate-pulse rounded-full bg-violet-400" />
                         Queued
@@ -437,7 +432,8 @@ export default function NicheWorkspacePage({ params }: Props) {
                     ) : (
                       <button
                         onClick={handleRunScan}
-                        className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300"
+                        disabled={scanTriggering}
+                        className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:border-violet-500/30 hover:bg-violet-500/10 hover:text-violet-300 disabled:cursor-default disabled:opacity-60"
                       >
                         Run scan
                       </button>
@@ -823,10 +819,6 @@ function LiveAgentPanel({
           <button disabled className="w-full cursor-default rounded-lg border border-slate-700/50 py-2 text-sm font-semibold text-slate-500">
             Scanning…
           </button>
-        ) : scanTriggering ? (
-          <button disabled className="w-full cursor-default rounded-lg border border-violet-500/20 bg-violet-500/[0.06] py-2 text-sm font-semibold text-violet-400/60">
-            Starting…
-          </button>
         ) : scanQueued ? (
           <button disabled className="flex w-full items-center justify-center gap-2 cursor-default rounded-lg border border-violet-500/20 bg-violet-500/[0.06] py-2 text-sm font-semibold text-violet-400/60">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
@@ -835,7 +827,8 @@ function LiveAgentPanel({
         ) : (
           <button
             onClick={onRunScan}
-            className="w-full rounded-lg border border-violet-500/25 bg-violet-500/10 py-2 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/15"
+            disabled={scanTriggering}
+            className="w-full rounded-lg border border-violet-500/25 bg-violet-500/10 py-2 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/15 disabled:cursor-default disabled:opacity-60"
           >
             Run scan
           </button>
