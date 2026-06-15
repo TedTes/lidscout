@@ -1065,7 +1065,7 @@ def _effective_source_to_niche_source(
     }
     if source.user_source_preference_id:
         options["user_source_preference_id"] = source.user_source_preference_id
-    return NicheSource.create(
+    niche_source = NicheSource.create(
         id=source.source_id,
         niche_id=niche_id,
         company_id=None,
@@ -1085,6 +1085,7 @@ def _effective_source_to_niche_source(
         requires_auth=source.requires_auth,
         recommended_cadence=source.recommended_cadence,
     )
+    return replace(niche_source, enabled=source.enabled)
 
 
 def _prioritize_sources_without_run_stats(
