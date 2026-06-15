@@ -13,6 +13,7 @@ from infrastructure.db import (
     PostgresNicheRepository,
     PostgresOpportunityRepository,
     PostgresPipelineRunMetricsRepository,
+    PostgresPostRepository,
     PostgresSourceRepository,
     PostgresTemplateSourceBindingRepository,
     PostgresThemeRepository,
@@ -39,6 +40,7 @@ def build_signal_api_dependencies(
 
     connection = connection or connect_postgres(database_url)
     return SignalApiDependencies(
+        post_repository=PostgresPostRepository(connection=connection),
         opportunity_repository=PostgresOpportunityRepository(connection=connection),
         finding_repository=PostgresFindingRepository(connection=connection),
         theme_repository=PostgresThemeRepository(connection=connection),

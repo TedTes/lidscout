@@ -14,7 +14,10 @@ from api.routes.signals import (
     dismiss_market_agent_action,
     execute_market_agent_actions,
     get_market_agent_plan,
+    list_opportunities,
+    list_signals,
     list_market_agent_actions,
+    list_themes,
     propose_market_agent_actions,
     trigger_market_pipeline,
 )
@@ -23,6 +26,7 @@ from domain.cluster import SignalCluster
 from domain.finding import Finding
 from domain.niche import UserNiche, UserSource, UserSourceRunStats
 from domain.opportunity import Opportunity
+from domain.post import RawPost
 from domain.signal import Signal
 from domain.source import Source
 from domain.theme import Theme
@@ -283,6 +287,193 @@ def test_trigger_market_pipeline_skips_when_enqueue_lock_is_held() -> None:
 
     assert response == {"status": "already_queued"}
     enqueue.assert_not_called()
+
+
+def test_workspace_views_hide_records_from_muted_sources() -> None:
+    dependencies = SignalApiDependencies()
+    dependencies.theme_repository = FakeThemeRepository()
+    _seed_market_with_follow_up(dependencies)
+    dependencies.source_repository.save_sources(
+        [
+            Source.create(
+                id="source-2",
+                locator="https://example.com/muted",
+                source_type="web",
+                source_family="forum",
+                is_gate_free=True,
+            )
+        ]
+    )
+    dependencies.user_source_repository.save_user_sources(
+        [
+            UserSource.create(
+                user_niche_id="market-1",
+                source_id="source-2",
+                muted=True,
+            )
+        ]
+    )
+    dependencies.post_repository.save_posts(
+        [
+            RawPost.create(
+                source="web",
+                source_id="visible",
+                title="Visible post",
+                metadata={"source_id": "source-1"},
+            ),
+            RawPost.create(
+                source="web",
+                source_id="muted",
+                title="Muted post",
+                metadata={"source_id": "source-2"},
+            ),
+        ]
+    )
+    dependencies.signal_repository.save_signals(
+        [
+            Signal.create(
+                id="signal-visible",
+                post_id="web:visible",
+                niche_id="niche-1",
+                pain="Visible source pain.",
+            ),
+            Signal.create(
+                id="signal-muted",
+                post_id="web:muted",
+                niche_id="niche-1",
+                pain="Muted source pain.",
+            ),
+        ]
+    )
+    dependencies.theme_repository.save_themes(
+        [
+            Theme.create(
+                id="theme-visible",
+                user_niche_id="market-1",
+                title="Visible theme",
+                summary="Visible source summary.",
+            ),
+            Theme.create(
+                id="theme-muted",
+                user_niche_id="market-1",
+                title="Muted theme",
+                summary="Muted source summary.",
+            ),
+        ]
+    )
+    dependencies.theme_repository.add_findings(
+        "theme-visible",
+        [
+            Finding.create(
+                id="finding-visible",
+                user_niche_id="market-1",
+                post_id="web:visible",
+                pain="Visible source pain.",
+                evidence_text="Visible source pain.",
+                structured_embedding_text="Visible source pain.",
+                urgency="medium",
+                severity="medium",
+                confidence=0.8,
+                niche_id="niche-1",
+                source_id="source-1",
+            )
+        ],
+    )
+    dependencies.theme_repository.add_findings(
+        "theme-muted",
+        [
+            Finding.create(
+                id="finding-muted",
+                user_niche_id="market-1",
+                post_id="web:muted",
+                pain="Muted source pain.",
+                evidence_text="Muted source pain.",
+                structured_embedding_text="Muted source pain.",
+                urgency="medium",
+                severity="medium",
+                confidence=0.8,
+                niche_id="niche-1",
+                source_id="source-2",
+            )
+        ],
+    )
+    dependencies.opportunity_repository.save_opportunities(
+        [
+            Opportunity.create(
+                id="opportunity-visible",
+                cluster_id="cluster-visible",
+                title="Visible opportunity",
+                target_user="ops teams",
+                pain_summary="Visible source pain.",
+                why_it_matters="It repeats.",
+                suggested_wedge="Solve visible source pain.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["signal-visible"],
+                unmet_need_type="time",
+            ),
+            Opportunity.create(
+                id="opportunity-muted",
+                cluster_id="cluster-muted",
+                title="Muted opportunity",
+                target_user="ops teams",
+                pain_summary="Muted source pain.",
+                why_it_matters="It repeats.",
+                suggested_wedge="Solve muted source pain.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["signal-muted"],
+                unmet_need_type="time",
+            ),
+            Opportunity.create(
+                id="opportunity-visible-theme",
+                cluster_id=None,
+                source_theme_id="theme-visible",
+                title="Capacity forecast assistant",
+                target_user="ops teams",
+                pain_summary="Planning handoffs lack forecast context.",
+                why_it_matters="Teams cannot prioritize inventory commitments.",
+                suggested_wedge="Create a lightweight capacity forecast workspace.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["signal-visible"],
+                unmet_need_type="time",
+            ),
+            Opportunity.create(
+                id="opportunity-muted-theme",
+                cluster_id=None,
+                source_theme_id="theme-muted",
+                title="Muted theme opportunity",
+                target_user="ops teams",
+                pain_summary="Muted source pain.",
+                why_it_matters="It repeats.",
+                suggested_wedge="Solve muted source pain.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["signal-muted"],
+                unmet_need_type="time",
+            ),
+        ]
+    )
+
+    signals_response = asyncio.run(
+        list_signals(dependencies=dependencies, market_id="market-1"),
+    )
+    themes_response = asyncio.run(
+        list_themes(dependencies=dependencies, market_id="market-1"),
+    )
+    opportunities_response = asyncio.run(
+        list_opportunities(dependencies=dependencies, market_id="market-1"),
+    )
+
+    assert [signal["id"] for signal in signals_response["signals"]] == [
+        "signal-visible"
+    ]
+    assert [theme["id"] for theme in themes_response["themes"]] == ["theme-visible"]
+    opportunity_ids = {
+        opportunity["id"] for opportunity in opportunities_response["opportunities"]
+    }
+    assert opportunity_ids == {"opportunity-visible", "opportunity-visible-theme"}
 
 
 def test_less_like_this_feedback_updates_agent_preferences() -> None:

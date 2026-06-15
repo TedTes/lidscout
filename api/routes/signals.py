@@ -96,6 +96,7 @@ from infrastructure.db import (
     InMemoryNicheRepository,
     InMemoryOpportunityRepository,
     InMemoryPipelineRunMetricsRepository,
+    InMemoryPostRepository,
     InMemoryScoreRepository,
     InMemorySignalRepository,
     InMemorySourceRepository,
@@ -232,6 +233,7 @@ class NicheSourceUpdateRequest(BaseModel):
 class SignalApiDependencies:
     """Runtime dependencies for signal API routes."""
 
+    post_repository: PostRepository = field(default_factory=InMemoryPostRepository)
     signal_repository: SignalRepository = field(default_factory=InMemorySignalRepository)
     score_repository: ScoreRepository = field(default_factory=InMemoryScoreRepository)
     cluster_repository: ClusterRepository = field(default_factory=InMemoryClusterRepository)
@@ -320,6 +322,12 @@ async def list_signals(
     if market_id is not None:
         niche_id = _template_niche_id(market_id, dependencies)
         signals = [s for s in signals if s.niche_id == niche_id]
+        active_source_ids = _active_source_ids_for_market(market_id, dependencies)
+        signals = [
+            signal
+            for signal in signals
+            if _signal_is_visible_for_sources(signal, active_source_ids, dependencies)
+        ]
     return {"signals": [_serialize_signal(s) for s in signals]}
 
 
@@ -351,11 +359,13 @@ async def list_clusters(
     all_signals = dependencies.signal_repository.list_signals()
     if company_id is not None or market_id is not None:
         niche_id = _template_niche_id(market_id, dependencies)
+        active_source_ids = _active_source_ids_for_market(market_id, dependencies)
         scoped_signal_ids = {
             s.id
             for s in all_signals
             if (company_id is None or s.niche_company_id == company_id)
             and (niche_id is None or s.niche_id == niche_id)
+            and _signal_is_visible_for_sources(s, active_source_ids, dependencies)
         }
         clusters = [
             c for c in clusters
@@ -393,9 +403,24 @@ async def list_themes(
                 for finding in dependencies.theme_repository.list_findings_for_theme(theme.id)
             )
         ]
+    active_source_ids = _active_source_ids_for_market(market_id, dependencies)
+    if active_source_ids is not None:
+        themes = [
+            theme
+            for theme in themes
+            if any(
+                _finding_is_visible_for_sources(finding, active_source_ids)
+                for finding in dependencies.theme_repository.list_findings_for_theme(theme.id)
+            )
+        ]
     return {
         "themes": [
-            _serialize_theme(theme, dependencies, market_id=market_id)
+            _serialize_theme(
+                theme,
+                dependencies,
+                market_id=market_id,
+                active_source_ids=active_source_ids,
+            )
             for theme in themes
         ]
     }
@@ -418,6 +443,7 @@ async def list_opportunities(
     """
     opportunities = dependencies.opportunity_repository.list_opportunities()
     all_signals = dependencies.signal_repository.list_signals()
+    active_source_ids = _active_source_ids_for_market(market_id, dependencies)
     if company_id is not None or market_id is not None:
         niche_id = _template_niche_id(market_id, dependencies)
         scoped_signal_ids = {
@@ -425,11 +451,13 @@ async def list_opportunities(
             for s in all_signals
             if (company_id is None or s.niche_company_id == company_id)
             and (niche_id is None or s.niche_id == niche_id)
+            and _signal_is_visible_for_sources(s, active_source_ids, dependencies)
         }
         scoped_theme_ids = _scoped_theme_ids(
             dependencies,
             company_id=company_id,
             market_id=market_id,
+            active_source_ids=active_source_ids,
         )
         opportunities = [
             o for o in opportunities
@@ -437,6 +465,17 @@ async def list_opportunities(
             or (
                 o.source_theme_id is not None
                 and o.source_theme_id in scoped_theme_ids
+            )
+        ]
+    if market_id is not None and active_source_ids is not None:
+        opportunities = [
+            opportunity
+            for opportunity in opportunities
+            if _opportunity_is_visible_for_sources(
+                opportunity,
+                dependencies,
+                active_source_ids,
+                all_signals,
             )
         ]
 
@@ -2304,6 +2343,97 @@ def _template_niche_id(market_id: str | None, dependencies: SignalApiDependencie
     return str(user_niche.template_niche_id) if user_niche.template_niche_id else market_id
 
 
+def _active_source_ids_for_market(
+    market_id: str | None,
+    dependencies: SignalApiDependencies,
+) -> set[str] | None:
+    if market_id is None:
+        return None
+    user_niche = dependencies.user_niche_repository.get_user_niche(market_id)
+    if user_niche is None or user_niche.template_niche_id is None:
+        return None
+    resolver = SourceCatalogResolver(
+        source_repository=dependencies.source_repository,
+        template_source_binding_repository=(
+            dependencies.template_source_binding_repository
+        ),
+        user_source_repository=dependencies.user_source_repository,
+        user_source_preference_repository=(
+            dependencies.user_source_preference_repository
+        ),
+    )
+    return {
+        source.source_id
+        for source in resolver.list_effective_sources(
+            template_niche_id=user_niche.template_niche_id,
+            user_niche_id=user_niche.id,
+            enabled=True,
+            include_muted=False,
+        )
+    }
+
+
+def _finding_is_visible_for_sources(
+    finding: Finding,
+    active_source_ids: set[str] | None,
+) -> bool:
+    if active_source_ids is None or finding.source_id is None:
+        return True
+    return finding.source_id in active_source_ids
+
+
+def _signal_source_id(
+    signal: Signal,
+    dependencies: SignalApiDependencies,
+) -> str | None:
+    post = dependencies.post_repository.get_post(signal.post_id)
+    if post is None:
+        return None
+    source_id = post.metadata.get("source_id") or post.metadata.get("niche_source_id")
+    if not isinstance(source_id, str):
+        return None
+    source_id = source_id.strip()
+    return source_id or None
+
+
+def _signal_is_visible_for_sources(
+    signal: Signal,
+    active_source_ids: set[str] | None,
+    dependencies: SignalApiDependencies,
+) -> bool:
+    if active_source_ids is None:
+        return True
+    source_id = _signal_source_id(signal, dependencies)
+    return source_id is None or source_id in active_source_ids
+
+
+def _opportunity_is_visible_for_sources(
+    opportunity: Opportunity,
+    dependencies: SignalApiDependencies,
+    active_source_ids: set[str],
+    all_signals: list[Signal],
+) -> bool:
+    if opportunity.source_theme_id and dependencies.theme_repository is not None:
+        findings = dependencies.theme_repository.list_findings_for_theme(
+            opportunity.source_theme_id,
+        )
+        if any(
+            _finding_is_visible_for_sources(finding, active_source_ids)
+            for finding in findings
+        ):
+            return True
+    signals_by_id = {signal.id: signal for signal in all_signals}
+    return any(
+        signal_id in signals_by_id
+        and _signal_is_visible_for_sources(
+            signals_by_id[signal_id],
+            active_source_ids,
+            dependencies,
+        )
+        for signal_id in opportunity.evidence_signal_ids
+    )
+
+
 def _get_owned_user_niche(
     market_id: str,
     dependencies: SignalApiDependencies,
@@ -2494,16 +2624,22 @@ def _scoped_theme_ids(
     *,
     company_id: str | None = None,
     market_id: str | None = None,
+    active_source_ids: set[str] | None = None,
 ) -> set[str]:
     if dependencies.theme_repository is None:
         return set()
     themes = dependencies.theme_repository.list_themes(user_niche_id=market_id)
-    if company_id is None:
-        return {theme.id for theme in themes}
     matching_theme_ids = set()
     for theme in themes:
         findings = dependencies.theme_repository.list_findings_for_theme(theme.id)
-        if any(finding.company_id == company_id for finding in findings):
+        visible_findings = [
+            finding
+            for finding in findings
+            if _finding_is_visible_for_sources(finding, active_source_ids)
+        ]
+        if company_id is None and visible_findings:
+            matching_theme_ids.add(theme.id)
+        elif any(finding.company_id == company_id for finding in visible_findings):
             matching_theme_ids.add(theme.id)
     return matching_theme_ids
 
@@ -4101,12 +4237,18 @@ def _serialize_theme(
     dependencies: SignalApiDependencies,
     *,
     market_id: str | None = None,
+    active_source_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     findings = (
         dependencies.theme_repository.list_findings_for_theme(theme.id)
         if dependencies.theme_repository is not None
         else []
     )
+    findings = [
+        finding
+        for finding in findings
+        if _finding_is_visible_for_sources(finding, active_source_ids)
+    ]
     company_ids = sorted(
         {
             finding.company_id
@@ -4135,7 +4277,7 @@ def _serialize_theme(
         "qualification_rejection_reason": theme.qualification_reason,
         "signal_ids": [finding.id for finding in findings],
         "finding_ids": [finding.id for finding in findings],
-        "frequency": theme.finding_count or len(findings),
+        "frequency": len(findings),
         "average_score": round(theme.average_confidence * 10, 1),
         "top_examples": top_examples,
         "company_ids": company_ids,
@@ -4145,13 +4287,13 @@ def _serialize_theme(
             market_id,
             [],
         ),
-        "company_count": theme.company_count or len(company_ids),
+        "company_count": len(company_ids),
         "market_company_count": (
             _market_company_count(dependencies, market_id)
             if market_id is not None
             else None
         ),
-        "evidence_source_count": theme.source_count or len(source_keys),
+        "evidence_source_count": len(source_keys),
         "source_family_breakdown": _source_family_breakdown_for_findings(findings),
         "evidence_items": [
             _serialize_finding_evidence_item(
