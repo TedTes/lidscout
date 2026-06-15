@@ -12,6 +12,7 @@ from api.routes.signals import (
     restore_market_source,
     update_source,
 )
+from domain.finding import Finding
 from domain.niche import (
     TemplateSourceBinding,
     UserNiche,
@@ -19,7 +20,11 @@ from domain.niche import (
     UserSourcePreference,
     UserSourceRunStats,
 )
+from domain.opportunity import Opportunity
+from domain.post import RawPost
+from domain.signal import Signal
 from domain.source import Source
+from domain.theme import Theme
 from domain.user import User
 from infrastructure.db import (
     InMemorySourceRepository,
@@ -110,6 +115,187 @@ def test_market_sources_include_quality_status_and_health_stats() -> None:
     assert item["health"]["signal_yield_rate"] == 0.375
     assert item["management"]["recommended_action"] == "keep_monitoring"
     assert item["management"]["can_disable"] is True
+
+
+def test_market_sources_include_contribution_rollups() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://example.com/source-1",
+                source_type="web",
+                source_family="forum",
+                is_gate_free=True,
+            ),
+            Source.create(
+                id="source-2",
+                locator="https://example.com/source-2",
+                source_type="web",
+                source_family="forum",
+                is_gate_free=True,
+            ),
+        ]
+    )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+            ),
+            TemplateSourceBinding.create(
+                id="binding-2",
+                template_niche_id="template-1",
+                source_id="source-2",
+            ),
+        ]
+    )
+    findings = [
+        Finding.create(
+            id="finding-1",
+            user_niche_id="market-1",
+            post_id="web:source-1-a",
+            pain="Exports are slow.",
+            evidence_text="Exports are slow.",
+            structured_embedding_text="Exports are slow.",
+            urgency="medium",
+            severity="medium",
+            confidence=0.8,
+            niche_id="template-1",
+            source_id="source-1",
+        ),
+        Finding.create(
+            id="finding-2",
+            user_niche_id="market-1",
+            post_id="web:source-1-b",
+            pain="Exports need retries.",
+            evidence_text="Exports need retries.",
+            structured_embedding_text="Exports need retries.",
+            urgency="medium",
+            severity="medium",
+            confidence=0.8,
+            niche_id="template-1",
+            source_id="source-1",
+        ),
+        Finding.create(
+            id="finding-3",
+            user_niche_id="market-1",
+            post_id="web:source-2-a",
+            pain="Imports lack previews.",
+            evidence_text="Imports lack previews.",
+            structured_embedding_text="Imports lack previews.",
+            urgency="medium",
+            severity="medium",
+            confidence=0.8,
+            niche_id="template-1",
+            source_id="source-2",
+        ),
+    ]
+    themes = [
+        Theme.create(
+            id="theme-1",
+            user_niche_id="market-1",
+            title="Export reliability",
+            summary="Exports need better reliability.",
+        ),
+        Theme.create(
+            id="theme-2",
+            user_niche_id="market-1",
+            title="Import previews",
+            summary="Imports need preview workflows.",
+        ),
+    ]
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        finding_repository=FakeFindingRepository(findings),
+        theme_repository=FakeThemeRepository(
+            themes,
+            {"theme-1": findings[:2], "theme-2": findings[2:]},
+        ),
+    )
+    dependencies.post_repository.save_posts(
+        [
+            RawPost.create(
+                source="web",
+                source_id="source-1-a",
+                metadata={"source_id": "source-1"},
+            )
+        ]
+    )
+    dependencies.signal_repository.save_signals(
+        [
+            Signal.create(
+                id="signal-1",
+                post_id="web:source-1-a",
+                niche_id="template-1",
+                pain="Exports are slow.",
+            )
+        ]
+    )
+    dependencies.opportunity_repository.save_opportunities(
+        [
+            Opportunity.create(
+                id="opportunity-signal",
+                cluster_id="cluster-1",
+                title="Reliable exports",
+                target_user="engineering teams",
+                pain_summary="Exports are slow.",
+                why_it_matters="Teams wait on exports.",
+                suggested_wedge="Retry failed exports automatically.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["signal-1"],
+                unmet_need_type="time",
+            ),
+            Opportunity.create(
+                id="opportunity-theme",
+                cluster_id=None,
+                source_theme_id="theme-2",
+                title="Import preview workflow",
+                target_user="engineering teams",
+                pain_summary="Imports lack previews.",
+                why_it_matters="Teams catch errors late.",
+                suggested_wedge="Preview imports before commit.",
+                evidence_count=1,
+                confidence=0.7,
+                evidence_signal_ids=["finding-3"],
+                unmet_need_type="time",
+            ),
+        ]
+    )
+
+    response = asyncio.run(
+        list_market_sources("market-1", dependencies, current_user=user)
+    )
+
+    sources = {source["id"]: source for source in response["sources"]}
+    assert sources["source-1"]["contribution"] == {
+        "findings_count": 2,
+        "themes_count": 1,
+        "opportunities_count": 1,
+    }
+    assert sources["source-1"]["findings_count"] == 2
+    assert sources["source-2"]["contribution"] == {
+        "findings_count": 1,
+        "themes_count": 1,
+        "opportunities_count": 1,
+    }
 
 
 def test_market_sources_can_be_resolved_from_source_catalog() -> None:
@@ -715,3 +901,98 @@ def test_deletes_owned_source() -> None:
     user_source = user_source_repository.get_user_source("market-1", "source-1")
     assert user_source is not None
     assert user_source.muted is True
+
+
+class FakeFindingRepository:
+    def __init__(self, findings: list[Finding]) -> None:
+        self.findings = findings
+
+    def save_findings(self, findings: list[Finding]) -> int:
+        self.findings.extend(findings)
+        return len(findings)
+
+    def get_seen_post_ids(
+        self,
+        user_niche_id: str,
+        post_ids: list[str],
+    ) -> set[str]:
+        post_id_set = set(post_ids)
+        return {
+            finding.post_id
+            for finding in self.findings
+            if finding.user_niche_id == user_niche_id
+            and finding.post_id in post_id_set
+        }
+
+    def list_findings(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        unassigned_only: bool = False,
+    ) -> list[Finding]:
+        findings = self.findings
+        if user_niche_id is not None:
+            findings = [
+                finding
+                for finding in findings
+                if finding.user_niche_id == user_niche_id
+            ]
+        return findings
+
+
+class FakeThemeRepository:
+    def __init__(
+        self,
+        themes: list[Theme],
+        findings_by_theme: dict[str, list[Finding]],
+    ) -> None:
+        self.themes = themes
+        self.findings_by_theme = findings_by_theme
+
+    def save_themes(self, themes: list[Theme]) -> int:
+        self.themes.extend(themes)
+        return len(themes)
+
+    def save_theme_findings(self, assignments: list[object]) -> int:
+        return len(assignments)
+
+    def list_themes(
+        self,
+        *,
+        user_niche_id: str | None = None,
+        status: str | None = None,
+    ) -> list[Theme]:
+        themes = self.themes
+        if user_niche_id is not None:
+            themes = [theme for theme in themes if theme.user_niche_id == user_niche_id]
+        if status is not None:
+            themes = [theme for theme in themes if theme.status == status]
+        return themes
+
+    def list_changed_themes(
+        self,
+        *,
+        user_niche_id: str,
+        since: object,
+    ) -> list[Theme]:
+        return [
+            theme for theme in self.themes if theme.user_niche_id == user_niche_id
+        ]
+
+    def find_similar_themes(
+        self,
+        user_niche_id: str,
+        embedding: list[float],
+        *,
+        top_k: int = 5,
+        min_similarity: float = 0.70,
+    ) -> list[Theme]:
+        return [
+            theme for theme in self.themes if theme.user_niche_id == user_niche_id
+        ][:top_k]
+
+    def list_findings_for_theme(self, theme_id: str) -> list[Finding]:
+        return self.findings_by_theme.get(theme_id, [])
+
+    def refresh_theme_rollups(self, theme_ids: list[str]) -> int:
+        return len(theme_ids)

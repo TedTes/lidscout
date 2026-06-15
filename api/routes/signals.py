@@ -787,6 +787,11 @@ async def list_market_sources(
         user_niche,
         sources,
     )
+    contributions_by_source = _source_contribution_stats_by_source_id(
+        dependencies,
+        user_niche,
+        sources,
+    )
     app_config = get_app_config()
     allow_auth_sources = bool(app_config.REDDIT_CLIENT_ID and app_config.REDDIT_CLIENT_SECRET)
     replacement_service = SourceReplacementSuggestionService()
@@ -796,6 +801,7 @@ async def list_market_sources(
                 s,
                 stats_by_source.get(s.id),
                 allow_auth_sources=allow_auth_sources,
+                contribution=contributions_by_source.get(s.id),
                 replacement_suggestions=replacement_service.suggest_for_source(
                     s,
                     niche=user_niche,
@@ -3341,6 +3347,86 @@ def _source_stats_by_display_source_id(
     return stats_by_source
 
 
+def _source_contribution_stats_by_source_id(
+    dependencies: SignalApiDependencies,
+    user_niche: UserNiche,
+    sources: list[NicheSource],
+) -> dict[str, dict[str, int]]:
+    source_ids = {source.id for source in sources}
+    contributions = {
+        source_id: {
+            "findings_count": 0,
+            "themes_count": 0,
+            "opportunities_count": 0,
+        }
+        for source_id in source_ids
+    }
+    if not source_ids:
+        return contributions
+
+    findings_by_id: dict[str, Finding] = {}
+    if dependencies.finding_repository is not None:
+        for finding in dependencies.finding_repository.list_findings(
+            user_niche_id=user_niche.id,
+        ):
+            if finding.source_id in source_ids:
+                findings_by_id[finding.id] = finding
+    elif dependencies.theme_repository is not None:
+        for theme in dependencies.theme_repository.list_themes(
+            user_niche_id=user_niche.id,
+        ):
+            for finding in dependencies.theme_repository.list_findings_for_theme(
+                theme.id,
+            ):
+                if finding.source_id in source_ids:
+                    findings_by_id[finding.id] = finding
+
+    for finding in findings_by_id.values():
+        if finding.source_id in contributions:
+            contributions[finding.source_id]["findings_count"] += 1
+
+    theme_sources_by_id: dict[str, set[str]] = {}
+    if dependencies.theme_repository is not None:
+        for theme in dependencies.theme_repository.list_themes(
+            user_niche_id=user_niche.id,
+        ):
+            theme_source_ids = {
+                finding.source_id
+                for finding in dependencies.theme_repository.list_findings_for_theme(
+                    theme.id,
+                )
+                if finding.source_id in source_ids
+            }
+            if not theme_source_ids:
+                continue
+            theme_sources_by_id[theme.id] = theme_source_ids
+            for source_id in theme_source_ids:
+                contributions[source_id]["themes_count"] += 1
+
+    signals_by_id = {
+        signal.id: signal
+        for signal in dependencies.signal_repository.list_signals()
+        if signal.niche_id in {None, user_niche.template_niche_id}
+    }
+    for opportunity in dependencies.opportunity_repository.list_opportunities():
+        opportunity_source_ids: set[str] = set()
+        if opportunity.source_theme_id:
+            opportunity_source_ids.update(
+                theme_sources_by_id.get(opportunity.source_theme_id, set())
+            )
+        for signal_id in opportunity.evidence_signal_ids:
+            signal = signals_by_id.get(signal_id)
+            if signal is None:
+                continue
+            source_id = _signal_source_id(signal, dependencies)
+            if source_id in source_ids:
+                opportunity_source_ids.add(source_id)
+        for source_id in opportunity_source_ids:
+            contributions[source_id]["opportunities_count"] += 1
+
+    return contributions
+
+
 def _catalog_source_stats_for_display_source(
     dependencies: SignalApiDependencies,
     user_niche_id: str,
@@ -3393,6 +3479,7 @@ def _serialize_niche_source(
     *,
     allow_proxy_sources: bool = False,
     allow_auth_sources: bool = False,
+    contribution: dict[str, int] | None = None,
     replacement_suggestions: list[SourceReplacementSuggestion] | None = None,
 ) -> dict[str, Any]:
     lifecycle = _source_lifecycle(source)
@@ -3404,6 +3491,11 @@ def _serialize_niche_source(
         allow_auth_sources=allow_auth_sources,
     )
     excluded = _source_is_excluded(source)
+    contribution = contribution or {
+        "findings_count": 0,
+        "themes_count": 0,
+        "opportunities_count": 0,
+    }
     return {
         "id": source.id,
         "company_id": source.company_id,
@@ -3423,6 +3515,10 @@ def _serialize_niche_source(
         ),
         "last_error": source.last_error,
         "health": _serialize_niche_source_health(stats),
+        "contribution": contribution,
+        "findings_count": contribution["findings_count"],
+        "themes_count": contribution["themes_count"],
+        "opportunities_count": contribution["opportunities_count"],
         "lifecycle": lifecycle["label"],
         "lifecycle_reason": lifecycle["reason"],
         "quality_status": quality.label,

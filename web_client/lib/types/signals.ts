@@ -220,6 +220,10 @@ export type MonitoredSource = {
   last_scanned_at: string | null;
   last_error: string | null;
   health: SourceHealth | null;
+  contribution?: SourceContribution;
+  findings_count?: number;
+  themes_count?: number;
+  opportunities_count?: number;
   lifecycle?: string;
   lifecycle_reason?: string;
   quality_status?: 'productive' | 'noisy' | 'blocked' | 'untested' | 'stale';
@@ -249,6 +253,12 @@ export type MonitoredSource = {
   requires_auth?: boolean;
   recommended_cadence?: string | null;
   options: Record<string, unknown>;
+};
+
+export type SourceContribution = {
+  findings_count: number;
+  themes_count: number;
+  opportunities_count: number;
 };
 
 export type SourceHealth = {
