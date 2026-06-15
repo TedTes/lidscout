@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 
-type NicheView = 'gaps' | 'patterns' | 'evidence';
+type NicheView = 'gaps' | 'patterns' | 'evidence' | 'sources';
 
 const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => string }> = [
   { id: 'gaps',     label: 'Opportunities', href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
   { id: 'patterns', label: 'Patterns',      href: marketId => `/markets/${encodeURIComponent(marketId)}/evidence?view=patterns` },
   { id: 'evidence', label: 'Evidence',      href: marketId => `/markets/${encodeURIComponent(marketId)}/evidence?view=findings` },
+  { id: 'sources',  label: 'Sources',       href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
 ];
 
 export function NicheViewSwitcher({

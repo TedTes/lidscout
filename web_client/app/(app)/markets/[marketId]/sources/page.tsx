@@ -127,7 +127,7 @@ export default function NicheSourcesPage({ params }: Props) {
     <DashboardShell
       title="Research coverage"
       subtitle={`Source coverage for ${niche?.name ?? 'this market'}.`}
-      actions={<NicheViewSwitcher marketId={marketId} />}
+      actions={<NicheViewSwitcher marketId={marketId} active="sources" />}
     >
       {status === 'loading' && <LoadingPanel label="Loading sources" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
