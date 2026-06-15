@@ -104,8 +104,8 @@ class Opportunity:
         return cleaned
 
     @staticmethod
-    def _clean_optional(value: str | None) -> str | None:
+    def _clean_optional(value: object | None) -> str | None:
         if value is None:
             return None
-        cleaned = value.strip()
+        cleaned = str(value).strip()
         return cleaned or None
