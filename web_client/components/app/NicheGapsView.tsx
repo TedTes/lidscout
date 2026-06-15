@@ -20,6 +20,7 @@ import {
   Market,
   MonitoredSource,
   Opportunity,
+  SourceCoverageSummary,
 } from '@/lib/types/signals';
 
 type Props = { params: { marketId: string } };
@@ -313,6 +314,7 @@ export default function NicheWorkspacePage({ params }: Props) {
   }, [opportunities, feedbackFilter, savedIds, dismissedIds]);
 
   const title = niche?.name ?? (status === 'loading' ? '' : fallbackTitleFromId(marketId));
+  const sourceSummary = niche?.source_summary ?? niche?.source_coverage ?? null;
   const searchableSources = useMemo(
     () => scanSources.filter(source => source.enabled && source.scan_eligible !== false),
     [scanSources]
@@ -377,7 +379,12 @@ export default function NicheWorkspacePage({ params }: Props) {
   return (
     <DashboardShell
       title={title}
-      actions={<NicheViewSwitcher marketId={marketId} active="gaps" />}
+      actions={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SourceCoverageBadge summary={sourceSummary} marketId={marketId} />
+          <NicheViewSwitcher marketId={marketId} active="gaps" />
+        </div>
+      }
     >
       {status === 'loading' && <LoadingPanel label="Loading opportunities" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
@@ -521,6 +528,48 @@ export default function NicheWorkspacePage({ params }: Props) {
         </div>
       )}
     </DashboardShell>
+  );
+}
+
+function SourceCoverageBadge({
+  summary,
+  marketId,
+}: {
+  summary: SourceCoverageSummary | null | undefined;
+  marketId: string;
+}) {
+  if (!summary) return null;
+  const status = summary.coverage_status ?? 'healthy';
+  const meta = {
+    healthy: {
+      label: 'Sources healthy',
+      cls: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+      dot: 'bg-emerald-400',
+    },
+    degraded: {
+      label: 'Coverage degraded',
+      cls: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
+      dot: 'bg-amber-400',
+    },
+    no_active_sources: {
+      label: 'No active sources',
+      cls: 'border-rose-500/25 bg-rose-500/10 text-rose-300',
+      dot: 'bg-rose-400',
+    },
+  }[status];
+
+  return (
+    <Link
+      href={`/markets/${encodeURIComponent(marketId)}/sources`}
+      className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition hover:bg-slate-900/70 ${meta.cls}`}
+      title="Review source coverage"
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+      <span>{meta.label}</span>
+      <span className="text-slate-500">
+        {summary.active_count}/{summary.source_count}
+      </span>
+    </Link>
   );
 }
 

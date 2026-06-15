@@ -8,6 +8,7 @@ from api.routes.signals import (
     delete_source,
     exclude_market_source,
     get_pipeline_diagnostics,
+    list_markets,
     list_market_sources,
     restore_market_source,
     update_source,
@@ -296,6 +297,93 @@ def test_market_sources_include_contribution_rollups() -> None:
         "themes_count": 1,
         "opportunities_count": 1,
     }
+
+
+def test_markets_include_source_health_summary() -> None:
+    user = User(id="user-1", email="user@example.com")
+    user_niche_repository = InMemoryUserNicheRepository()
+    user_niche_repository.save_user_niche(
+        UserNiche.create(
+            id="market-1",
+            user_id=user.id,
+            job="Track developer tooling",
+            buyer="Engineering teams",
+            category="devtools",
+            template_niche_id="template-1",
+        )
+    )
+    source_repository = InMemorySourceRepository()
+    source_repository.save_sources(
+        [
+            Source.create(
+                id="source-1",
+                locator="https://example.com/source-1",
+                source_type="web",
+                source_family="forum",
+                is_gate_free=True,
+            ),
+            Source.create(
+                id="source-2",
+                locator="https://example.com/source-2",
+                source_type="web",
+                source_family="forum",
+                is_gate_free=True,
+            ),
+        ]
+    )
+    binding_repository = InMemoryTemplateSourceBindingRepository()
+    binding_repository.save_template_source_bindings(
+        [
+            TemplateSourceBinding.create(
+                id="binding-1",
+                template_niche_id="template-1",
+                source_id="source-1",
+            ),
+            TemplateSourceBinding.create(
+                id="binding-2",
+                template_niche_id="template-1",
+                source_id="source-2",
+            ),
+        ]
+    )
+    user_source_repository = InMemoryUserSourceRepository()
+    user_source_repository.save_user_sources(
+        [
+            UserSource.create(
+                user_niche_id="market-1",
+                source_id="source-2",
+                muted=True,
+            )
+        ]
+    )
+    user_source_run_stats_repository = InMemoryUserSourceRunStatsRepository()
+    user_source_run_stats_repository.upsert_user_source_run_stats(
+        UserSourceRunStats.create(
+            user_niche_id="market-1",
+            source_id="source-1",
+            total_runs=2,
+            failure_count=2,
+            consecutive_failures=2,
+            last_status="failing",
+            last_error="Timed out",
+        )
+    )
+    dependencies = SignalApiDependencies(
+        user_niche_repository=user_niche_repository,
+        source_repository=source_repository,
+        template_source_binding_repository=binding_repository,
+        user_source_repository=user_source_repository,
+        user_source_run_stats_repository=user_source_run_stats_repository,
+    )
+
+    response = asyncio.run(list_markets(dependencies, current_user=user))
+
+    summary = response["markets"][0]["source_summary"]
+    assert summary["source_count"] == 2
+    assert summary["active_count"] == 1
+    assert summary["excluded_count"] == 1
+    assert summary["failing_count"] == 1
+    assert summary["coverage_status"] == "degraded"
 
 
 def test_market_sources_can_be_resolved_from_source_catalog() -> None:

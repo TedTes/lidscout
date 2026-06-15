@@ -572,7 +572,7 @@ async def apply_template(
     user_id = _current_user_id(current_user) or "anonymous"
     existing = _find_user_niche_for_template(dependencies, user_id, niche.id)
     if existing is not None:
-        return _serialize_market(existing)
+        return _serialize_market(existing, dependencies)
 
     user_niche = UserNiche.create(
         user_id=user_id,
@@ -583,7 +583,7 @@ async def apply_template(
     )
     dependencies.user_niche_repository.save_user_niche(user_niche)
     _enqueue_pipeline(user_niche.id)
-    return _serialize_market(user_niche)
+    return _serialize_market(user_niche, dependencies)
 
 
 @router.get("/markets")
@@ -597,7 +597,7 @@ async def list_markets(
         return {"markets": []}
     return {
         "markets": [
-            _serialize_market(un)
+            _serialize_market(un, dependencies)
             for un in _dedupe_user_niches_for_display(
                 dependencies.user_niche_repository.list_user_niches(user_id)
             )
@@ -623,7 +623,7 @@ async def create_market(
         category=category,
     )
     if existing is not None:
-        return _serialize_market(existing)
+        return _serialize_market(existing, dependencies)
 
     niche = Niche.create(
         job=request.name,
@@ -657,7 +657,7 @@ async def create_market(
     dependencies.user_niche_repository.save_user_niche(user_niche)
     _save_generated_user_sources(auto_sources, user_niche, dependencies)
     _enqueue_pipeline(user_niche.id)
-    return _serialize_market(user_niche)
+    return _serialize_market(user_niche, dependencies)
 
 
 @router.get("/markets/{market_id}")
@@ -668,7 +668,7 @@ async def get_market(
 ) -> dict[str, Any]:
     """Return one watched market."""
     user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
-    return _serialize_market(user_niche)
+    return _serialize_market(user_niche, dependencies)
 
 
 @router.patch("/markets/{market_id}")
@@ -706,7 +706,7 @@ async def update_market(
 
     if not dependencies.user_niche_repository.update_user_niche(user_niche):
         raise HTTPException(status_code=404, detail="Market not found")
-    return _serialize_market(user_niche)
+    return _serialize_market(user_niche, dependencies)
 
 
 @router.delete("/markets/{market_id}")
@@ -3067,7 +3067,15 @@ def _serialize_niche_template(
     }
 
 
-def _serialize_market(user_niche: UserNiche) -> dict[str, Any]:
+def _serialize_market(
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies | None = None,
+) -> dict[str, Any]:
+    source_summary = (
+        _market_source_coverage_summary(user_niche, dependencies)
+        if dependencies is not None
+        else None
+    )
     return {
         "id": user_niche.id,
         "name": user_niche.job,
@@ -3077,7 +3085,24 @@ def _serialize_market(user_niche: UserNiche) -> dict[str, Any]:
         "target_user": user_niche.buyer,
         "idea_prompt": None,
         "created_at": user_niche.created_at.isoformat() if user_niche.created_at else None,
+        "source_summary": source_summary,
+        "source_coverage": source_summary,
     }
+
+
+def _market_source_coverage_summary(
+    user_niche: UserNiche,
+    dependencies: SignalApiDependencies,
+) -> dict[str, Any]:
+    if user_niche.template_niche_id is None:
+        return _source_coverage_summary([])
+    sources = _list_market_display_sources(user_niche, dependencies)
+    stats_by_source = _source_stats_by_display_source_id(
+        dependencies,
+        user_niche,
+        sources,
+    )
+    return _source_coverage_summary(sources, stats_by_source)
 
 
 def _serialize_signal(

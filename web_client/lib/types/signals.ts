@@ -121,6 +121,8 @@ export type Market = {
   target_user: string | null;
   idea_prompt: string | null;
   created_at: string | null;
+  source_summary?: SourceCoverageSummary | null;
+  source_coverage?: SourceCoverageSummary | null;
 };
 
 export type NicheTemplate = {
