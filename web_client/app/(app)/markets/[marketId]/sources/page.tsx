@@ -227,6 +227,10 @@ function SummaryPill({ label, value, dotCls }: { label: string; value: number; d
   );
 }
 
+function plural(n: number, singular: string, pluralForm = `${singular}s`) {
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
 function SourceRow({
   marketId,
   source,
@@ -240,6 +244,15 @@ function SourceRow({
   const health = sourceHealth(source);
   const scannedAt = relativeTime(source.health?.last_scanned_at ?? source.last_scanned_at);
   const lastError = source.health?.last_error ?? source.last_error;
+  const contribution = source.contribution ?? {
+    findings_count: source.findings_count ?? 0,
+    themes_count: source.themes_count ?? 0,
+    opportunities_count: source.opportunities_count ?? 0,
+  };
+  const hasContribution =
+    contribution.findings_count > 0 ||
+    contribution.themes_count > 0 ||
+    contribution.opportunities_count > 0;
 
   const handleExclude = async () => {
     setBusy(true);
@@ -284,6 +297,15 @@ function SourceRow({
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             {scannedAt && (
               <span className="text-[11px] text-slate-700">Scanned {scannedAt}</span>
+            )}
+            {hasContribution && (
+              <span className="text-[11px] text-slate-700">
+                {plural(contribution.findings_count, 'finding')}
+                {' · '}
+                {plural(contribution.themes_count, 'theme')}
+                {' · '}
+                {plural(contribution.opportunities_count, 'opportunity', 'opportunities')}
+              </span>
             )}
             {source.health && source.health.last_fetched_count > 0 && (
               <span className="text-[11px] text-slate-700">
