@@ -61,6 +61,32 @@ class FakeSourceAdapter:
         ]
 
 
+class RecordingSourceAdapter:
+    def __init__(self, locators: set[str]):
+        self.locators = locators
+        self.fetched_locators: list[str] = []
+
+    def can_handle(self, source: SourceInput) -> bool:
+        return source.locator in self.locators
+
+    def fetch_source(self, source: SourceInput, default_limit: int = 25) -> list[RawPost]:
+        self.fetched_locators.append(source.locator)
+        return [
+            RawPost.create(
+                source="web",
+                source_id=source.locator,
+                title="Review page",
+                body="This post does not contain a qualifying pain signal.",
+                url=source.locator,
+                metadata={
+                    key: value
+                    for key, value in source.options.items()
+                    if isinstance(value, str)
+                },
+            )
+        ]
+
+
 class SequentialLLMClient(LLMClient):
     def __init__(self, responses: list[str]):
         self.responses = responses
@@ -764,6 +790,99 @@ class DailyPipelineWorkerTests(unittest.TestCase):
         self.assertEqual(stats.success_count, 1)
         self.assertEqual(stats.posts_fetched_count, 1)
         self.assertEqual(stats.relevant_posts_count, 1)
+
+    def test_pipeline_skips_muted_catalog_sources(self):
+        user_niche_repository = InMemoryUserNicheRepository()
+        user_niche_repository.save_user_niche(
+            UserNiche.create(
+                id="market-1",
+                user_id="user-1",
+                job="Build internal tools",
+                buyer="Ops teams",
+                category="devtools",
+                template_niche_id="niche-1",
+            )
+        )
+        source_repository = InMemorySourceRepository()
+        source_repository.save_sources(
+            [
+                Source.create(
+                    id="source-1",
+                    locator="https://example.com/reviews",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
+                ),
+                Source.create(
+                    id="source-2",
+                    locator="https://example.com/muted",
+                    source_type="web",
+                    source_family="forum",
+                    is_gate_free=True,
+                ),
+            ]
+        )
+        template_source_binding_repository = InMemoryTemplateSourceBindingRepository()
+        template_source_binding_repository.save_template_source_bindings(
+            [
+                TemplateSourceBinding.create(
+                    id="binding-1",
+                    template_niche_id="niche-1",
+                    source_id="source-1",
+                    default_limit=1,
+                ),
+                TemplateSourceBinding.create(
+                    id="binding-2",
+                    template_niche_id="niche-1",
+                    source_id="source-2",
+                    default_limit=1,
+                ),
+            ]
+        )
+        user_source_repository = InMemoryUserSourceRepository()
+        user_source_repository.save_user_sources(
+            [
+                UserSource.create(
+                    user_niche_id="market-1",
+                    source_id="source-2",
+                    template_source_binding_id="binding-2",
+                    enabled=True,
+                    muted=True,
+                )
+            ]
+        )
+        adapter = RecordingSourceAdapter(
+            {"https://example.com/reviews", "https://example.com/muted"}
+        )
+        config = PipelineConfig(
+            source_repository=source_repository,
+            template_source_binding_repository=template_source_binding_repository,
+            user_source_repository=user_source_repository,
+            user_niche_repository=user_niche_repository,
+            llm_client=SequentialLLMClient(
+                [
+                    """
+                    {
+                      "has_signal": false,
+                      "is_about_competitor": false,
+                      "competitor_match_reason": null,
+                      "signal": null
+                    }
+                    """
+                ]
+            ),
+            embedding_client=FakeEmbeddingClient(),
+            email_client=EmailClient(FakeEmailNotifier()),
+            recipient="founder@example.com",
+            source_adapters=[adapter],
+            user_niche_id="market-1",
+        )
+
+        result = run_daily_pipeline(config)
+
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.fetch_failed_count, 0)
+        self.assertEqual(adapter.fetched_locators, ["https://example.com/reviews"])
 
     @unittest.skip("PipelineConfig API changed — source_health_repository/monitored_source_repository removed")
     def test_runs_pipeline_from_enabled_monitored_sources(self):
