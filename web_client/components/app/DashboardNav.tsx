@@ -482,7 +482,7 @@ export default function DashboardNav() {
 
   useEffect(() => {
     if (activeId && markets.length > 0 && !markets.find(m => m.id === activeId)) {
-      signalApi.getMarkets()
+      signalApi.getMarkets({ force: true })
         .then(response => setMarkets(response.markets))
         .catch(() => {});
     }

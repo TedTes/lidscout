@@ -168,10 +168,17 @@ class InteractionApiService {
 
 class SignalApiService {
   private _marketCache = new Map<string, { data: Market; exp: number }>();
+  private _marketsCache: { data: MarketsResponse; exp: number } | null = null;
+  private _marketsInFlight: Promise<MarketsResponse> | null = null;
 
-  async getMarket(marketId: string): Promise<Market> {
+  private invalidateMarketListCache() {
+    this._marketsCache = null;
+    this._marketsInFlight = null;
+  }
+
+  async getMarket(marketId: string, options?: { force?: boolean }): Promise<Market> {
     const hit = this._marketCache.get(marketId);
-    if (hit && hit.exp > Date.now()) return hit.data;
+    if (!options?.force && hit && hit.exp > Date.now()) return hit.data;
     try {
       const response = await api.get<Market>(`/markets/${marketId}`);
       this._marketCache.set(marketId, { data: response.data, exp: Date.now() + 30_000 });
@@ -182,10 +189,30 @@ class SignalApiService {
     }
   }
 
-  async getMarkets(): Promise<MarketsResponse> {
+  async getMarkets(options?: { force?: boolean }): Promise<MarketsResponse> {
+    const now = Date.now();
+    if (!options?.force && this._marketsCache && this._marketsCache.exp > now) {
+      return this._marketsCache.data;
+    }
+    if (!options?.force && this._marketsInFlight) {
+      return this._marketsInFlight;
+    }
+
+    const request = api.get<MarketsResponse>('/markets')
+      .then(response => {
+        this._marketsCache = {
+          data: response.data,
+          exp: Date.now() + 30_000,
+        };
+        return response.data;
+      })
+      .finally(() => {
+        this._marketsInFlight = null;
+      });
+    this._marketsInFlight = request;
+
     try {
-      const response = await api.get<MarketsResponse>('/markets');
-      return response.data;
+      return await request;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load niches');
@@ -299,6 +326,8 @@ class SignalApiService {
   }): Promise<Market> {
     try {
       const response = await api.post<Market>('/markets', request);
+      this.invalidateMarketListCache();
+      this._marketCache.set(response.data.id, { data: response.data, exp: Date.now() + 30_000 });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -311,6 +340,8 @@ class SignalApiService {
   async applyTemplate(templateId: string): Promise<Market> {
     try {
       const response = await api.post<Market>(`/templates/${templateId}/apply`);
+      this.invalidateMarketListCache();
+      this._marketCache.set(response.data.id, { data: response.data, exp: Date.now() + 30_000 });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -574,6 +605,8 @@ class SignalApiService {
   ): Promise<Market> {
     try {
       const response = await api.patch<Market>(`/markets/${marketId}`, request);
+      this.invalidateMarketListCache();
+      this._marketCache.set(marketId, { data: response.data, exp: Date.now() + 30_000 });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -586,6 +619,8 @@ class SignalApiService {
   async deleteMarket(marketId: string): Promise<{ id: string; deleted: boolean }> {
     try {
       const response = await api.delete<{ id: string; deleted: boolean }>(`/markets/${marketId}`);
+      this.invalidateMarketListCache();
+      this._marketCache.delete(marketId);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

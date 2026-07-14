@@ -590,6 +590,7 @@ async def apply_template(
 async def list_markets(
     dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
     current_user: User = Depends(get_current_user),
+    include_source_summary: bool = Query(False),
 ) -> dict[str, Any]:
     """Return watched markets or niches for the current user."""
     user_id = _current_user_id(current_user)
@@ -597,7 +598,11 @@ async def list_markets(
         return {"markets": []}
     return {
         "markets": [
-            _serialize_market(un, dependencies)
+            _serialize_market(
+                un,
+                dependencies,
+                include_source_summary=include_source_summary,
+            )
             for un in _dedupe_user_niches_for_display(
                 dependencies.user_niche_repository.list_user_niches(user_id)
             )
@@ -3070,10 +3075,12 @@ def _serialize_niche_template(
 def _serialize_market(
     user_niche: UserNiche,
     dependencies: SignalApiDependencies | None = None,
+    *,
+    include_source_summary: bool = True,
 ) -> dict[str, Any]:
     source_summary = (
         _market_source_coverage_summary(user_niche, dependencies)
-        if dependencies is not None
+        if dependencies is not None and include_source_summary
         else None
     )
     return {

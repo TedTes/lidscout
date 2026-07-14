@@ -388,7 +388,9 @@ def test_markets_include_source_health_summary() -> None:
         user_source_run_stats_repository=user_source_run_stats_repository,
     )
 
-    response = asyncio.run(list_markets(dependencies, current_user=user))
+    response = asyncio.run(
+        list_markets(dependencies, current_user=user, include_source_summary=True)
+    )
 
     summary = response["markets"][0]["source_summary"]
     assert summary["source_count"] == 2
