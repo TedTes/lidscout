@@ -1,17 +1,9 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import type { AgentAction, AgentFollowUp } from '@/lib/types/signals';
-
-const CHIPS = [
-  'Why is this credible?',
-  'What evidence is strongest?',
-  'Which users feel this most?',
-  'What would invalidate this?',
-  'Find more like this',
-];
 
 type Props = { marketId: string };
 
@@ -33,9 +25,6 @@ export default function ResearchThread({ marketId }: Props) {
   const [actions, setActions] = useState<AgentAction[]>([]);
   const [items, setItems] = useState<AgentFollowUp[]>([]);
   const [ready, setReady] = useState(false);
-  const [text, setText] = useState('');
-  const [pending, setPending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,21 +54,6 @@ export default function ResearchThread({ marketId }: Props) {
     return () => { cancelled = true; };
   }, [marketId]);
 
-  const handleAsk = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    const q = text.trim();
-    if (!q || pending) return;
-    setPending(true);
-    try {
-      const followUp = await signalApi.createMarketAgentFollowUp(marketId, { question: q });
-      setItems(prev => [...prev, followUp]);
-      setText('');
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
-    } catch { /* silent */ } finally {
-      setPending(false);
-    }
-  }, [marketId, text, pending]);
-
   const handleApprove = useCallback((action: AgentAction) => {
     setActions(prev => prev.filter(a => a.id !== action.id));
     signalApi.approveAgentAction(marketId, action.id).catch(() => {});
@@ -98,13 +72,15 @@ export default function ResearchThread({ marketId }: Props) {
       {/* header */}
       <div className="flex items-center gap-2 border-b border-white/[0.04] px-4 py-2.5">
         <span className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_5px_rgba(167,139,250,0.45)]" />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-400">Research agent</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-violet-400">Agent actions</span>
       </div>
 
       {/* thread */}
       <div className="max-h-[400px] overflow-y-auto">
         {ready && !hasContent && (
-          <p className="px-4 py-4 text-[11px] text-slate-600">Ask anything about this market.</p>
+          <p className="px-4 py-4 text-[11px] text-slate-600">
+            No agent actions right now. Improve coverage from Sources or run a scan.
+          </p>
         )}
 
         {ready && hasContent && (
@@ -164,7 +140,7 @@ export default function ResearchThread({ marketId }: Props) {
                 {fu.status === 'queued' && (
                   <p className="flex items-center gap-1.5 text-[10px] text-slate-600">
                     <span className="h-1 w-1 animate-pulse rounded-full bg-slate-600" />
-                    Pending · answers on next run
+                    Queued for next run
                   </p>
                 )}
 
@@ -173,41 +149,8 @@ export default function ResearchThread({ marketId }: Props) {
                 )}
               </div>
             ))}
-            <div ref={bottomRef} />
           </div>
         )}
-      </div>
-
-      {/* ask form */}
-      <div className="border-t border-white/[0.04] px-4 py-3 space-y-2">
-        <form onSubmit={handleAsk} className="flex items-center gap-2">
-          <input
-            value={text}
-            onChange={e => setText(e.target.value)}
-            placeholder="Ask about this market…"
-            className="min-w-0 flex-1 rounded-lg border border-slate-700/60 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:border-violet-500/40 focus:outline-none transition"
-          />
-          <button
-            type="submit"
-            disabled={pending || !text.trim()}
-            className="shrink-0 rounded-md border border-violet-500/25 bg-violet-500/10 px-3 py-1.5 text-[11px] font-semibold text-violet-300 transition hover:bg-violet-500/20 disabled:opacity-40"
-          >
-            {pending ? '…' : 'Ask'}
-          </button>
-        </form>
-
-        <div className="flex flex-wrap gap-1.5">
-          {CHIPS.map(chip => (
-            <button
-              key={chip}
-              type="button"
-              onClick={() => setText(chip)}
-              className="rounded-full border border-slate-700/50 px-2 py-0.5 text-[10px] text-slate-500 transition hover:border-violet-500/30 hover:text-violet-400"
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
       </div>
 
     </div>
