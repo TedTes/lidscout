@@ -1091,6 +1091,10 @@ NICHE_SEEDS: list[dict] = [
         "sources": [
             {"locator": "https://hn.algolia.com/api/v1/search_by_date?query=riverside+podcast&tags=comment", "source_type": "hackernews", "source_family": "technical_forum", "is_gate_free": True},
             {"locator": "https://hn.algolia.com/api/v1/search_by_date?query=descript+podcast&tags=comment", "source_type": "hackernews", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.github.com/search/issues?q=repo:Podcastindex-org/podcast-namespace+is%3Aissue&sort=updated&order=desc", "source_type": "github_issues_search", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.github.com/search/issues?q=repo:podlove/podlove-publisher+is%3Aissue&sort=updated&order=desc", "source_type": "github_issues_search", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.stackexchange.com/2.3/search/advanced?q=podcast+rss+feed+hosting+audio&site=stackoverflow&order=desc&sort=creation&pagesize=25", "source_type": "stackoverflow_search", "source_family": "technical_forum", "is_gate_free": True},
+            {"locator": "https://api.stackexchange.com/2.3/search/advanced?q=podcast+upload+audio+transcription&site=stackoverflow&order=desc&sort=creation&pagesize=25", "source_type": "stackoverflow_search", "source_family": "technical_forum", "is_gate_free": True},
             {"locator": "https://www.reddit.com/r/podcasting", "source_type": "reddit", "source_family": "social", "is_gate_free": False},
             {"locator": "https://www.reddit.com/r/podcast", "source_type": "reddit", "source_family": "social", "is_gate_free": False},
         ],
