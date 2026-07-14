@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
-import ResearchThread from '@/components/app/ResearchThread';
 import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
 import { signalApi } from '@/lib/api';
 import { readableSourceUrl } from '@/lib/sourceUrls';
@@ -419,8 +418,8 @@ export default function NicheWorkspacePage({ params }: Props) {
               </button>
             </div>
           ) : (
-            /* ── Has data: opportunities + right panel ── */
-            <div className="grid gap-5 xl:grid-cols-[1fr_272px] xl:items-start">
+            /* ── Has data: opportunities + live scan progress ── */
+            <div className={`grid gap-5 ${pipelineStatus === 'running' ? 'xl:grid-cols-[1fr_272px] xl:items-start' : ''}`}>
 
               {/* ── Opportunities list ── */}
               <div className="space-y-3">
@@ -505,10 +504,8 @@ export default function NicheWorkspacePage({ params }: Props) {
                 ))}
               </div>
 
-              {/* ── Right: agent inbox + scan progress ── */}
-              <div className="space-y-4">
-                <ResearchThread marketId={marketId} />
-                {pipelineStatus === 'running' && (
+              {pipelineStatus === 'running' && (
+                <div className="space-y-4">
                   <LiveAgentPanel
                     pipelineStatus={pipelineStatus}
                     progressActivity={currentProgressActivity}
@@ -521,8 +518,8 @@ export default function NicheWorkspacePage({ params }: Props) {
                     scanTriggering={scanTriggering}
                     scanQueued={scanQueued}
                   />
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1004,7 +1001,6 @@ function GapCard({
 }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [askSent, setAskSent] = useState(false);
 
   const saved = itemAction === 'save';
   const dismissed = itemAction === 'dismiss';
@@ -1027,17 +1023,6 @@ function GapCard({
     : [];
 
   const hasEvidenceItems = (opportunity.evidence_items?.length ?? 0) > 0;
-
-  async function handleAskDeeper() {
-    if (askSent) return;
-    try {
-      await signalApi.createMarketAgentFollowUp(marketId, {
-        question: `Tell me more about: ${opportunity.title}`,
-      });
-      setAskSent(true);
-      setTimeout(() => setAskSent(false), 3000);
-    } catch { /* silent */ }
-  }
 
   return (
     <article className={`overflow-hidden rounded-xl border bg-slate-900/40 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition hover:border-slate-700/70 ${dismissed ? 'border-slate-800/40 opacity-40' : 'border-slate-800/80'}`}>
@@ -1136,16 +1121,6 @@ function GapCard({
             label="Dismiss"
             activeClass="border-slate-600 text-slate-400"
           />
-          <button
-            onClick={handleAskDeeper}
-            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
-              askSent
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-violet-500/20 bg-violet-500/[0.06] text-violet-300 hover:bg-violet-500/12'
-            }`}
-          >
-            {askSent ? 'Sent ✓' : 'Ask deeper'}
-          </button>
           <IconFeedbackButton
             active={trainingAction === 'more_like_this'}
             onClick={() => onTrainingFeedback('more_like_this')}
