@@ -3,7 +3,6 @@ import unittest
 from domain.agent import (
     AgentActivity,
     AgentFeedback,
-    AgentFollowUp,
     AgentPreferences,
 )
 from domain.cluster import SignalCluster
@@ -23,7 +22,6 @@ from domain.source import Source, SourceLocator
 from infrastructure.db import (
     InMemoryAgentActivityRepository,
     InMemoryAgentFeedbackRepository,
-    InMemoryAgentFollowUpRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryNicheCompanyRepository,
@@ -210,33 +208,6 @@ class RepositoryInterfaceTests(unittest.TestCase):
         self.assertEqual(
             repository.list_agent_activity(event_type="source_failed"),
             [],
-        )
-
-    def test_agent_follow_up_repository_updates_status(self):
-        repository = InMemoryAgentFollowUpRepository()
-        follow_up = AgentFollowUp.create(
-            id="follow-up-1",
-            user_niche_id="workspace-tools",
-            question="What evidence supports this?",
-            metadata={"source": "user"},
-        )
-
-        self.assertTrue(repository.save_agent_follow_up(follow_up))
-        updated = repository.update_agent_follow_up(
-            "follow-up-1",
-            status="answered",
-            response="The agent found two supporting quotes.",
-            metadata={"answered_by": "agent"},
-        )
-
-        self.assertIsNotNone(updated)
-        self.assertEqual(updated.status, "answered")
-        self.assertEqual(updated.response, "The agent found two supporting quotes.")
-        self.assertEqual(updated.metadata["source"], "user")
-        self.assertEqual(updated.metadata["answered_by"], "agent")
-        self.assertEqual(
-            repository.list_agent_follow_ups(status="answered"),
-            [updated],
         )
 
     def test_source_locator_repository_persists_unique_locators(self):

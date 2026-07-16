@@ -4,7 +4,7 @@ const NOISE: Array<{ time: string; text: string; state: 'normal' | 'crossed' | '
   { time: '10:02', text: '47 tabs open ← review before standup', state: 'crossed' },
   { time: '11:48', text: 'Figma silent data loss HN thread (find again?)', state: 'faded' },
   { time: '14:20', text: 'G2 reviews Asana — something about meetings + workload', state: 'normal' },
-  { time: '14:55', text: 'Ask Sarah what she found on Notion calendar', state: 'crossed' },
+  { time: '14:55', text: 'Message Sarah about what she found on Notion calendar', state: 'crossed' },
   { time: 'Fri',   text: 'Roadmap meeting was yesterday. Start again Monday.', state: 'faded' },
 ];
 

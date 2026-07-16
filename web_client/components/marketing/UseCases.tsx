@@ -3,7 +3,7 @@ const CASES = [
     audience: 'Product teams',
     statement: 'See where the niche is weakest before your roadmap is locked.',
     body: 'Track named companies in your niche. Recurring complaints become ranked gaps with source quotes attached — ready to bring into planning. The agent learns which themes you\'ve already addressed and stops surfacing them.',
-    signals: ['Competitor-scoped findings', 'Threshold alerts when themes spike', 'Evidence links on every claim'],
+    signals: ['Company-scoped findings', 'Ranked recurring complaints', 'Evidence links on every claim'],
   },
   {
     audience: 'Founders',

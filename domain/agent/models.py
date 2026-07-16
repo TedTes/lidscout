@@ -18,21 +18,12 @@ AgentActivityType = Literal[
     "feedback_recorded",
     "preferences_updated",
     "brief_updated",
-    "alert_created",
-    "follow_up_recorded",
-    "follow_up_answered",
-    "follow_up_dismissed",
     "post_evaluating",
     "post_accepted",
     "post_filtered",
     "theme_promoted",
     "theme_rejected",
-    "actions_proposed",
-    "actions_executed",
 ]
-
-AgentAlertSeverity = Literal["info", "warning", "critical"]
-AgentAlertStatus = Literal["open", "acknowledged"]
 
 AgentFeedbackAction = Literal[
     "save",
@@ -41,97 +32,6 @@ AgentFeedbackAction = Literal[
     "less_like_this",
 ]
 
-AgentFollowUpStatus = Literal["queued", "answered", "dismissed"]
-
-AgentActionType = Literal[
-    "scan_sources",
-    "pause_source",
-    "source_needs_attention",
-    "suggest_source",
-    "answer_follow_up",
-    "send_alert",
-    "wait",
-]
-
-AgentActionStatus = Literal[
-    "proposed",
-    "approved",
-    "dismissed",
-    "completed",
-    "failed",
-]
-
-
-@dataclass(frozen=True)
-class AgentAction:
-    """A planned action the agent can propose or execute."""
-
-    id: str
-    user_niche_id: str
-    action_type: AgentActionType
-    status: AgentActionStatus
-    reason: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime | None = None
-    completed_at: datetime | None = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        user_niche_id: str,
-        action_type: str,
-        id: str | None = None,
-        status: str = "proposed",
-        reason: str | None = None,
-        metadata: dict[str, Any] | None = None,
-        created_at: datetime | None = None,
-        completed_at: datetime | None = None,
-    ) -> "AgentAction":
-        """Create a validated planned agent action."""
-        action_id = (id or f"agent-action-{uuid4().hex}").strip()
-        normalized_user_niche_id = user_niche_id.strip()
-        normalized_action_type = action_type.strip().lower()
-        normalized_status = status.strip().lower()
-
-        if not action_id:
-            raise ValueError("id is required")
-        if not normalized_user_niche_id:
-            raise ValueError("user_niche_id is required")
-        if not normalized_action_type:
-            raise ValueError("action_type is required")
-        if normalized_action_type not in {
-            "scan_sources",
-            "pause_source",
-            "source_needs_attention",
-            "suggest_source",
-            "answer_follow_up",
-            "send_alert",
-            "wait",
-        }:
-            raise ValueError("unsupported action_type")
-        if not normalized_status:
-            raise ValueError("status is required")
-        if normalized_status not in {
-            "proposed",
-            "approved",
-            "dismissed",
-            "completed",
-            "failed",
-        }:
-            raise ValueError("unsupported status")
-
-        created = created_at or datetime.now(tz=UTC)
-        return cls(
-            id=action_id,
-            user_niche_id=normalized_user_niche_id,
-            action_type=normalized_action_type,  # type: ignore[arg-type]
-            status=normalized_status,  # type: ignore[arg-type]
-            reason=_clean_optional(reason),
-            metadata=metadata or {},
-            created_at=created,
-            completed_at=completed_at,
-        )
 
 
 @dataclass(frozen=True)
@@ -289,17 +189,11 @@ class AgentActivity:
             "feedback_recorded",
             "preferences_updated",
             "brief_updated",
-            "alert_created",
-            "follow_up_recorded",
-            "follow_up_answered",
-            "follow_up_dismissed",
             "post_evaluating",
             "post_accepted",
             "post_filtered",
             "theme_promoted",
             "theme_rejected",
-            "actions_proposed",
-            "actions_executed",
         }:
             raise ValueError("unsupported activity event type")
         if not normalized_title:
@@ -314,193 +208,6 @@ class AgentActivity:
             metadata=metadata or {},
             created_at=created_at or datetime.now(tz=UTC),
         )
-
-
-@dataclass(frozen=True)
-class AgentAlert:
-    """One proactive agent alert for a niche."""
-
-    id: str
-    user_niche_id: str
-    alert_type: str
-    title: str
-    severity: AgentAlertSeverity = "info"
-    status: AgentAlertStatus = "open"
-    detail: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime | None = None
-    acknowledged_at: datetime | None = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        user_niche_id: str,
-        alert_type: str,
-        title: str,
-        id: str | None = None,
-        severity: str = "info",
-        status: str = "open",
-        detail: str | None = None,
-        metadata: dict[str, Any] | None = None,
-        created_at: datetime | None = None,
-        acknowledged_at: datetime | None = None,
-    ) -> "AgentAlert":
-        """Create a validated proactive alert."""
-        alert_id = (id or f"agent-alert-{uuid4().hex}").strip()
-        normalized_user_niche_id = user_niche_id.strip()
-        normalized_alert_type = alert_type.strip().lower()
-        normalized_title = title.strip()
-        normalized_severity = severity.strip().lower()
-        normalized_status = status.strip().lower()
-
-        if not alert_id:
-            raise ValueError("id is required")
-        if not normalized_user_niche_id:
-            raise ValueError("user_niche_id is required")
-        if not normalized_alert_type:
-            raise ValueError("alert_type is required")
-        if not normalized_title:
-            raise ValueError("title is required")
-        if normalized_severity not in {"info", "warning", "critical"}:
-            raise ValueError("severity must be info, warning, or critical")
-        if normalized_status not in {"open", "acknowledged"}:
-            raise ValueError("status must be open or acknowledged")
-
-        created = created_at or datetime.now(tz=UTC)
-        return cls(
-            id=alert_id,
-            user_niche_id=normalized_user_niche_id,
-            alert_type=normalized_alert_type,
-            title=normalized_title,
-            severity=normalized_severity,  # type: ignore[arg-type]
-            status=normalized_status,  # type: ignore[arg-type]
-            detail=_clean_optional(detail),
-            metadata=metadata or {},
-            created_at=created,
-            acknowledged_at=(
-                acknowledged_at
-                if normalized_status == "acknowledged"
-                else None
-            ),
-        )
-
-    def acknowledge(self, acknowledged_at: datetime | None = None) -> "AgentAlert":
-        """Return an acknowledged copy of this alert."""
-        return AgentAlert.create(
-            id=self.id,
-            user_niche_id=self.user_niche_id,
-            alert_type=self.alert_type,
-            title=self.title,
-            severity=self.severity,
-            status="acknowledged",
-            detail=self.detail,
-            metadata=self.metadata,
-            created_at=self.created_at,
-            acknowledged_at=acknowledged_at or datetime.now(tz=UTC),
-        )
-
-
-@dataclass(frozen=True)
-class AgentFollowUp:
-    """A user follow-up question or research instruction for the agent."""
-
-    id: str
-    user_niche_id: str
-    question: str
-    opportunity_id: str | None = None
-    cluster_id: str | None = None
-    status: AgentFollowUpStatus = "queued"
-    response: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        user_niche_id: str,
-        question: str,
-        id: str | None = None,
-        opportunity_id: str | None = None,
-        cluster_id: str | None = None,
-        status: str = "queued",
-        response: str | None = None,
-        metadata: dict[str, Any] | None = None,
-        created_at: datetime | None = None,
-        updated_at: datetime | None = None,
-    ) -> "AgentFollowUp":
-        """Create a validated follow-up intent."""
-        follow_up_id = (id or f"agent-follow-up-{uuid4().hex}").strip()
-        normalized_user_niche_id = user_niche_id.strip()
-        normalized_question = question.strip()
-        normalized_status = status.strip().lower()
-
-        if not follow_up_id:
-            raise ValueError("id is required")
-        if not normalized_user_niche_id:
-            raise ValueError("user_niche_id is required")
-        if not normalized_question:
-            raise ValueError("question is required")
-        if normalized_status not in {"queued", "answered", "dismissed"}:
-            raise ValueError("status must be queued, answered, or dismissed")
-
-        created = created_at or datetime.now(tz=UTC)
-        return cls(
-            id=follow_up_id,
-            user_niche_id=normalized_user_niche_id,
-            question=normalized_question,
-            opportunity_id=_clean_optional(opportunity_id),
-            cluster_id=_clean_optional(cluster_id),
-            status=normalized_status,  # type: ignore[arg-type]
-            response=_clean_optional(response),
-            metadata=metadata or {},
-            created_at=created,
-            updated_at=updated_at or created,
-        )
-
-    def answer(
-        self,
-        response: str,
-        *,
-        metadata: dict[str, Any] | None = None,
-        updated_at: datetime | None = None,
-    ) -> "AgentFollowUp":
-        """Return an answered copy of this follow-up."""
-        return AgentFollowUp.create(
-            id=self.id,
-            user_niche_id=self.user_niche_id,
-            question=self.question,
-            opportunity_id=self.opportunity_id,
-            cluster_id=self.cluster_id,
-            status="answered",
-            response=response,
-            metadata={**self.metadata, **(metadata or {})},
-            created_at=self.created_at,
-            updated_at=updated_at or datetime.now(tz=UTC),
-        )
-
-    def dismiss(
-        self,
-        *,
-        metadata: dict[str, Any] | None = None,
-        updated_at: datetime | None = None,
-    ) -> "AgentFollowUp":
-        """Return a dismissed copy of this follow-up."""
-        return AgentFollowUp.create(
-            id=self.id,
-            user_niche_id=self.user_niche_id,
-            question=self.question,
-            opportunity_id=self.opportunity_id,
-            cluster_id=self.cluster_id,
-            status="dismissed",
-            response=self.response,
-            metadata={**self.metadata, **(metadata or {})},
-            created_at=self.created_at,
-            updated_at=updated_at or datetime.now(tz=UTC),
-        )
-
 
 def _clean_list(values: list[str]) -> list[str]:
     cleaned: list[str] = []

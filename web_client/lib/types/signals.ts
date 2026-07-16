@@ -245,7 +245,6 @@ export type MonitoredSource = {
       | 'monitor_next_scan'
       | 'restore';
   };
-  replacement_suggestions?: SourceReplacementSuggestion[];
   is_gate_free?: boolean;
   buyer_voice_verified?: boolean;
   tier?: number | null;
@@ -310,32 +309,6 @@ export type SourceCoverageSummary = {
   by_family: SourceFamilySummary[];
 };
 
-export type SourceSuggestion = {
-  locator: string;
-  source_type: string;
-  label: string;
-  rationale: string;
-  source_family: string;
-  company_id: string | null;
-  company_name: string | null;
-  market_id: string | null;
-  market_name: string | null;
-  limit: number | null;
-  options: Record<string, unknown>;
-  template_id: string | null;
-  already_monitored: boolean;
-  rank_score: number;
-  validation_status: 'unknown' | 'valid' | 'invalid';
-  validation_error: string | null;
-};
-
-export type SourceReplacementSuggestion = {
-  candidate: SourceSuggestion;
-  trigger: 'blocked_source' | 'low_yield' | 'stale_source' | 'missing_family';
-  reason: string;
-  replaces_source_id: string | null;
-};
-
 export type CompaniesResponse = {
   companies: NicheCompany[];
 };
@@ -347,10 +320,6 @@ export type MarketsResponse = {
 export type MonitoredSourcesResponse = {
   sources: MonitoredSource[];
   summary?: SourceCoverageSummary;
-};
-
-export type SourceSuggestionsResponse = {
-  suggestions: SourceSuggestion[];
 };
 
 export type MonitoredSourceUpdateRequest = {
@@ -422,64 +391,6 @@ export type AgentMemorySummary = {
   feedback_notes: string[];
 };
 
-export type AgentActionType =
-  | 'scan_sources'
-  | 'pause_source'
-  | 'source_needs_attention'
-  | 'suggest_source'
-  | 'answer_follow_up'
-  | 'send_alert'
-  | 'wait';
-
-export type AgentActionStatus =
-  | 'proposed'
-  | 'approved'
-  | 'dismissed'
-  | 'completed'
-  | 'failed';
-
-export type AgentAction = {
-  id: string;
-  market_id: string;
-  action_type: AgentActionType;
-  status: AgentActionStatus;
-  reason: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string | null;
-  completed_at: string | null;
-};
-
-export type AgentPlan = {
-  actions: AgentAction[];
-};
-
-export type AgentActionsResponse = {
-  actions: AgentAction[];
-};
-
 export type AgentRunsResponse = {
   runs: AgentActivity[];
-};
-
-export type AgentFollowUp = {
-  id: string;
-  market_id: string;
-  question: string;
-  opportunity_id: string | null;
-  cluster_id: string | null;
-  status: 'queued' | 'answered' | 'dismissed';
-  response: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-export type AgentFollowUpsResponse = {
-  follow_ups: AgentFollowUp[];
-};
-
-export type AgentFollowUpRequest = {
-  question: string;
-  opportunity_id?: string | null;
-  cluster_id?: string | null;
 };

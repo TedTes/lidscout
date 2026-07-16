@@ -177,7 +177,6 @@ function RunCard({ run }: { run: RunGroup }) {
 // ── Standalone events ─────────────────────────────────────────────────────────
 
 const STANDALONE_META: Record<string, { label: string; dotCls: string; textCls: string }> = {
-  alert_created:      { label: 'Alert created',      dotCls: 'bg-amber-400 shadow-[0_0_5px_rgba(251,191,36,0.5)]',  textCls: 'text-amber-400' },
   source_failed:      { label: 'Source error',        dotCls: 'bg-rose-400 shadow-[0_0_5px_rgba(251,113,133,0.5)]',  textCls: 'text-rose-400' },
   feedback_recorded:  { label: 'Feedback recorded',   dotCls: 'bg-violet-400/60',                                    textCls: 'text-violet-500' },
   preferences_updated:{ label: 'Preferences updated', dotCls: 'bg-slate-500',                                         textCls: 'text-slate-500' },
@@ -276,7 +275,7 @@ export default function NicheActivityPage({ params }: Props) {
   return (
     <DashboardShell
       title="Activity"
-      subtitle={`${niche?.name ?? 'This niche'} agent run history and events.`}
+      subtitle={`${niche?.name ?? 'This watchlist'} agent run history and events.`}
       actions={<NicheViewSwitcher marketId={marketId} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading activity" />}

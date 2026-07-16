@@ -2,11 +2,8 @@
 from adapters.web import JsonUrlAdapter, RedditAdapter, StaticUrlAdapter
 from api.routes.signals import SignalApiDependencies
 from infrastructure.db import (
-    PostgresAgentActionRepository,
     PostgresAgentActivityRepository,
-    PostgresAgentAlertRepository,
     PostgresAgentFeedbackRepository,
-    PostgresAgentFollowUpRepository,
     PostgresAgentPreferencesRepository,
     PostgresFindingRepository,
     PostgresNicheCompanyRepository,
@@ -54,13 +51,6 @@ def build_signal_api_dependencies(
             connection=connection,
         ),
         agent_activity_repository=PostgresAgentActivityRepository(
-            connection=connection,
-        ),
-        agent_alert_repository=PostgresAgentAlertRepository(connection=connection),
-        agent_follow_up_repository=PostgresAgentFollowUpRepository(
-            connection=connection,
-        ),
-        agent_action_repository=PostgresAgentActionRepository(
             connection=connection,
         ),
         niche_repository=PostgresNicheRepository(connection=connection),

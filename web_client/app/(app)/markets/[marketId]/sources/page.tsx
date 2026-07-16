@@ -146,7 +146,7 @@ export default function NicheSourcesPage({ params }: Props) {
     });
     const active = sources.filter(s => sourceHealth(s) === 'active').length;
     const failing = sources.filter(s => sourceHealth(s) === 'failing').length;
-    const header = `${niche?.name ?? 'Market'} sources (${sources.length} total · ${active} active · ${failing} failing)\n\n`;
+    const header = `${niche?.name ?? 'Watchlist'} sources (${sources.length} total · ${active} active · ${failing} failing)\n\n`;
     navigator.clipboard.writeText(header + lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -166,7 +166,7 @@ export default function NicheSourcesPage({ params }: Props) {
   return (
     <DashboardShell
       title="Research coverage"
-      subtitle={`Source coverage for ${niche?.name ?? 'this market'}.`}
+      subtitle={`Source coverage for ${niche?.name ?? 'this watchlist'}.`}
       actions={<NicheViewSwitcher marketId={marketId} active="sources" />}
     >
       {status === 'loading' && <LoadingPanel label="Loading sources" />}
@@ -199,7 +199,7 @@ export default function NicheSourcesPage({ params }: Props) {
               <div>
                 <h2 className="text-sm font-semibold text-slate-300">Monitored sources</h2>
                 <p className="mt-0.5 text-xs text-slate-600">
-                  Sources from this market&apos;s template. Exclude any that aren&apos;t relevant to you — the shared template is not affected.
+                  Public sources monitored for this watchlist. Exclude any that are not relevant to you.
                 </p>
               </div>
               {sources.length > 0 && (
@@ -219,7 +219,7 @@ export default function NicheSourcesPage({ params }: Props) {
               <div className="p-5">
                 <EmptyPanel
                   title="No sources configured"
-                  detail="Sources are configured from your market template. Run a scan to activate coverage."
+                  detail="Add or apply a watchlist with public sources, then run a scan to activate coverage."
                 />
               </div>
             ) : (

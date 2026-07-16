@@ -13,7 +13,7 @@ from domain.opportunity import Opportunity
 class AgentEvaluationTests(unittest.TestCase):
     def test_feedback_aware_ranker_boosts_saved_opportunities(self):
         saved = self._opportunity("opportunity-saved", confidence=0.62)
-        baseline = self._opportunity("opportunity-baseline", confidence=0.72)
+        control = self._opportunity("opportunity-control", confidence=0.72)
         feedback = [
             AgentFeedback.create(
                 id="feedback-1",
@@ -23,7 +23,7 @@ class AgentEvaluationTests(unittest.TestCase):
             )
         ]
 
-        ranked = rank_opportunities_with_feedback([baseline, saved], feedback)
+        ranked = rank_opportunities_with_feedback([control, saved], feedback)
 
         self.assertEqual(ranked[0].id, "opportunity-saved")
 

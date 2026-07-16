@@ -3,10 +3,10 @@ from domain.agent import AgentFeedback
 from domain.opportunity import Opportunity
 
 
-def test_feedback_ranking_waits_for_enough_history() -> None:
+def test_feedback_ranking_applies_first_save_immediately() -> None:
     opportunities = [
         _opportunity("saved-low", confidence=0.6),
-        _opportunity("baseline-high", confidence=0.8),
+        _opportunity("control-high", confidence=0.8),
     ]
     feedback = [
         AgentFeedback.create(
@@ -18,13 +18,13 @@ def test_feedback_ranking_waits_for_enough_history() -> None:
 
     ranked = rank_opportunities_with_feedback(opportunities, feedback)
 
-    assert [item.id for item in ranked] == ["baseline-high", "saved-low"]
+    assert [item.id for item in ranked] == ["saved-low", "control-high"]
 
 
 def test_feedback_ranking_applies_after_threshold() -> None:
     opportunities = [
         _opportunity("saved-low", confidence=0.6),
-        _opportunity("baseline-high", confidence=0.8),
+        _opportunity("control-high", confidence=0.8),
     ]
     feedback = [
         AgentFeedback.create(
@@ -46,7 +46,7 @@ def test_feedback_ranking_applies_after_threshold() -> None:
 
     ranked = rank_opportunities_with_feedback(opportunities, feedback)
 
-    assert [item.id for item in ranked] == ["saved-low", "baseline-high"]
+    assert [item.id for item in ranked] == ["saved-low", "control-high"]
 
 
 def test_feedback_ranking_keeps_unfeedbacked_exploration_slot() -> None:

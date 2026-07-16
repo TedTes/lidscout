@@ -17,7 +17,7 @@ function IconPlus() {
   );
 }
 
-export default function NichesPage() {
+export default function WatchlistsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [showFlow, setShowFlow] = useState(false);
@@ -40,27 +40,27 @@ export default function NichesPage() {
 
   if (loading) {
     return (
-      <DashboardShell title="Niches" subtitle="Choose the opportunity space you want to inspect.">
-        <LoadingPanel label="Loading niches" />
+      <DashboardShell title="Watchlists" subtitle="Choose the product or category you want to inspect.">
+        <LoadingPanel label="Loading watchlists" />
       </DashboardShell>
     );
   }
 
   return (
-    <DashboardShell title="Niches" subtitle="Pick a template or define your own market to start surfacing gaps.">
+    <DashboardShell title="Watchlists" subtitle="Pick a template or define your own product/category scope.">
       <div className="rounded-xl border border-dashed border-slate-800 px-8 py-20 text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-slate-600">
           <IconPlus />
         </div>
-        <p className="font-medium text-slate-300">Add your first market</p>
+        <p className="font-medium text-slate-300">Add your first watchlist</p>
         <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-slate-600">
-          Start from a curated template — companies, sources, and a research brief are pre-configured — or define your own.
+          Start from a focused template with products and public sources pre-configured, or define your own.
         </p>
         <button
           onClick={() => setShowFlow(true)}
           className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500"
         >
-          <IconPlus /> Add market
+          <IconPlus /> Add watchlist
         </button>
       </div>
 

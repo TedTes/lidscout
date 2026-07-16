@@ -11,14 +11,10 @@ from pydantic import BaseModel, Field
 from application.agent import (
     AgentColdStartPlan,
     AgentColdStartService,
-    AgentActionExecutor,
-    AgentPlannerInput,
-    AgentPlannerService,
     build_agent_feedback_summary,
     build_agent_memory_summary,
     rank_opportunities_with_feedback,
 )
-from application.agent.action_keys import agent_action_dedupe_key
 from application.opportunity import (
     OpportunitySynthesisContext,
     merge_near_duplicate_opportunities,
@@ -26,11 +22,8 @@ from application.opportunity import (
 )
 from application.ingestion import SourceAdapter
 from application.ports import (
-    AgentActionRepository,
     AgentActivityRepository,
-    AgentAlertRepository,
     AgentFeedbackRepository,
-    AgentFollowUpRepository,
     AgentPreferencesRepository,
     ClusterRepository,
     FindingRepository,
@@ -52,15 +45,11 @@ from application.ports import (
 from application.reporting import MarketSignalReport, ReportingService
 from application.source_catalog import EffectiveSource, SourceCatalogResolver
 from application.source_quality import source_quality_status, source_scan_eligibility
-from application.source_suggestions import SourceReplacementSuggestionService
 from domain.cluster import SignalCluster
 from domain.finding import Finding
 from domain.agent import (
-    AgentAction,
     AgentActivity,
-    AgentAlert,
     AgentFeedback,
-    AgentFollowUp,
     AgentPreferences,
 )
 from domain.niche import (
@@ -79,17 +68,12 @@ from domain.pipeline import PipelineRunMetrics
 from domain.signal import Signal
 from domain.source import (
     Source,
-    SourceCandidate,
     SourceInput,
-    SourceReplacementSuggestion,
 )
 from domain.theme import Theme
 from infrastructure.db import (
-    InMemoryAgentActionRepository,
     InMemoryAgentActivityRepository,
-    InMemoryAgentAlertRepository,
     InMemoryAgentFeedbackRepository,
-    InMemoryAgentFollowUpRepository,
     InMemoryAgentPreferencesRepository,
     InMemoryClusterRepository,
     InMemoryNicheCompanyRepository,
@@ -195,21 +179,6 @@ class AgentFeedbackRequest(BaseModel):
     comment: str | None = Field(default=None, max_length=1000)
 
 
-class AgentFollowUpRequest(BaseModel):
-    """HTTP request body for storing a follow-up research question."""
-
-    question: str = Field(min_length=1)
-    opportunity_id: str | None = None
-    cluster_id: str | None = None
-
-
-class AgentFollowUpAnswerRequest(BaseModel):
-    """HTTP request body for answering a follow-up question."""
-
-    response: str = Field(min_length=1)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
 class NicheSourceRequest(BaseModel):
     """HTTP request body for adding a source to a niche."""
 
@@ -253,15 +222,6 @@ class SignalApiDependencies:
     )
     agent_activity_repository: AgentActivityRepository = field(
         default_factory=InMemoryAgentActivityRepository
-    )
-    agent_alert_repository: AgentAlertRepository = field(
-        default_factory=InMemoryAgentAlertRepository
-    )
-    agent_follow_up_repository: AgentFollowUpRepository = field(
-        default_factory=InMemoryAgentFollowUpRepository
-    )
-    agent_action_repository: AgentActionRepository = field(
-        default_factory=InMemoryAgentActionRepository
     )
     niche_repository: NicheRepository = field(
         default_factory=InMemoryNicheRepository
@@ -799,7 +759,6 @@ async def list_market_sources(
     )
     app_config = get_app_config()
     allow_auth_sources = bool(app_config.REDDIT_CLIENT_ID and app_config.REDDIT_CLIENT_SECRET)
-    replacement_service = SourceReplacementSuggestionService()
     return {
         "sources": [
             _serialize_niche_source(
@@ -807,12 +766,6 @@ async def list_market_sources(
                 stats_by_source.get(s.id),
                 allow_auth_sources=allow_auth_sources,
                 contribution=contributions_by_source.get(s.id),
-                replacement_suggestions=replacement_service.suggest_for_source(
-                    s,
-                    niche=user_niche,
-                    stats=stats_by_source.get(s.id),
-                    existing_sources=sources,
-                ),
             )
             for s in sources
         ],
@@ -1071,17 +1024,6 @@ async def list_company_sources(
     return {"sources": []}
 
 
-@router.get("/markets/{market_id}/source-suggestions")
-async def list_market_source_suggestions(
-    market_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Return source candidates for one market (placeholder)."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    return {"suggestions": []}
-
-
 @router.get("/markets/{market_id}/agent/cold-start")
 async def get_market_agent_cold_start(
     market_id: str,
@@ -1102,124 +1044,8 @@ async def get_market_agent_cold_start(
         user_niche=user_niche,
         companies=companies,
         sources=sources,
-        source_suggestions=[],
     )
     return _serialize_agent_cold_start_plan(plan)
-
-
-@router.get("/markets/{market_id}/agent/plan")
-async def get_market_agent_plan(
-    market_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Return the agent's current proposed next actions for one niche."""
-    planner_input = _agent_planner_input(market_id, dependencies, current_user)
-    actions = AgentPlannerService().plan_actions(planner_input)
-    return {"actions": [_serialize_agent_action(action) for action in actions]}
-
-
-@router.post("/markets/{market_id}/agent/actions/plan")
-async def propose_market_agent_actions(
-    market_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Persist the agent's current proposed next actions for one niche."""
-    planner_input = _agent_planner_input(market_id, dependencies, current_user)
-    planned_actions = AgentPlannerService().plan_actions(planner_input)
-    existing_keys = {
-        agent_action_dedupe_key(action)
-        for action in dependencies.agent_action_repository.list_agent_actions(
-            user_niche_id=market_id,
-            limit=100,
-        )
-    }
-    saved_actions: list[AgentAction] = []
-    for action in planned_actions:
-        key = agent_action_dedupe_key(action)
-        if key in existing_keys:
-            continue
-        dependencies.agent_action_repository.save_agent_action(action)
-        existing_keys.add(key)
-        saved_actions.append(action)
-    return {"actions": [_serialize_agent_action(action) for action in saved_actions]}
-
-
-@router.get("/markets/{market_id}/agent/actions")
-async def list_market_agent_actions(
-    market_id: str,
-    status: str | None = None,
-    action_type: str | None = None,
-    limit: int | None = None,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """List stored agent actions for one niche."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    actions = dependencies.agent_action_repository.list_agent_actions(
-        user_niche_id=market_id,
-        status=status,
-        action_type=action_type,
-        limit=limit,
-    )
-    return {"actions": [_serialize_agent_action(action) for action in actions]}
-
-
-@router.post("/markets/{market_id}/agent/actions/{action_id}/approve")
-async def approve_market_agent_action(
-    market_id: str,
-    action_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Approve a proposed agent action for one niche."""
-    return _update_market_agent_action_status(
-        market_id,
-        action_id,
-        "approved",
-        dependencies,
-        current_user,
-    )
-
-
-@router.post("/markets/{market_id}/agent/actions/{action_id}/dismiss")
-async def dismiss_market_agent_action(
-    market_id: str,
-    action_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Dismiss a proposed agent action for one niche."""
-    return _update_market_agent_action_status(
-        market_id,
-        action_id,
-        "dismissed",
-        dependencies,
-        current_user,
-    )
-
-
-@router.post("/markets/{market_id}/agent/actions/execute")
-async def execute_market_agent_actions(
-    market_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Execute approved agent actions for one niche."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    result = AgentActionExecutor(
-        dependencies.agent_action_repository,
-        follow_up_repository=dependencies.agent_follow_up_repository,
-        alert_repository=dependencies.agent_alert_repository,
-        source_repository=dependencies.source_repository,
-        user_source_repository=dependencies.user_source_repository,
-    ).execute_approved_actions(market_id)
-    return {
-        "executed_count": result.executed_count,
-        "failed_count": result.failed_count,
-        "skipped_count": result.skipped_count,
-    }
 
 
 @router.get("/markets/{market_id}/agent/brief")
@@ -1579,170 +1405,6 @@ async def list_market_agent_runs(
     return {"runs": [_serialize_agent_activity(item) for item in runs]}
 
 
-@router.get("/markets/{market_id}/agent/alerts")
-async def list_market_agent_alerts(
-    market_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-    status: str | None = None,
-    limit: int = 25,
-) -> dict[str, Any]:
-    """Return proactive threshold alerts for one niche agent."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    bounded_limit = min(max(limit, 1), 100)
-    alerts = dependencies.agent_alert_repository.list_agent_alerts(
-        user_niche_id=market_id,
-        status=status,
-        limit=bounded_limit,
-    )
-    return {"alerts": [_serialize_agent_alert(item) for item in alerts]}
-
-
-@router.patch("/markets/{market_id}/agent/alerts/{alert_id}/acknowledge")
-async def acknowledge_market_agent_alert(
-    market_id: str,
-    alert_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Mark one proactive alert as acknowledged."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    alert = dependencies.agent_alert_repository.get_agent_alert(alert_id)
-    if alert is None or alert.user_niche_id != market_id:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    acknowledged = dependencies.agent_alert_repository.acknowledge_agent_alert(
-        alert_id,
-    )
-    if acknowledged is None:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    return _serialize_agent_alert(acknowledged)
-
-
-@router.get("/markets/{market_id}/agent/follow-ups")
-async def list_market_agent_follow_ups(
-    market_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-    status: str | None = None,
-    limit: int = 25,
-) -> dict[str, Any]:
-    """Return stored follow-up questions for one niche agent."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    bounded_limit = min(max(limit, 1), 100)
-    follow_ups = dependencies.agent_follow_up_repository.list_agent_follow_ups(
-        user_niche_id=market_id,
-        status=status,
-        limit=bounded_limit,
-    )
-    return {"follow_ups": [_serialize_agent_follow_up(item) for item in follow_ups]}
-
-
-@router.post("/markets/{market_id}/agent/follow-ups")
-async def create_market_agent_follow_up(
-    market_id: str,
-    request: AgentFollowUpRequest,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Store a follow-up question or instruction for future agent work."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    if (
-        request.opportunity_id is not None
-        and dependencies.opportunity_repository.get_opportunity(request.opportunity_id)
-        is None
-    ):
-        raise HTTPException(status_code=404, detail="Opportunity not found")
-    if (
-        request.cluster_id is not None
-        and dependencies.cluster_repository.get_cluster(request.cluster_id) is None
-    ):
-        raise HTTPException(status_code=404, detail="Cluster not found")
-
-    try:
-        follow_up = AgentFollowUp.create(
-            user_niche_id=market_id,
-            question=request.question,
-            opportunity_id=request.opportunity_id,
-            cluster_id=request.cluster_id,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    dependencies.agent_follow_up_repository.save_agent_follow_up(follow_up)
-    _record_agent_activity(
-        dependencies,
-        user_niche_id=market_id,
-        event_type="follow_up_recorded",
-        title="Follow-up recorded",
-        detail=follow_up.question,
-        metadata={
-            "follow_up_id": follow_up.id,
-            "opportunity_id": follow_up.opportunity_id,
-            "cluster_id": follow_up.cluster_id,
-        },
-    )
-    return _serialize_agent_follow_up(follow_up)
-
-
-@router.post("/markets/{market_id}/agent/follow-ups/{follow_up_id}/answer")
-async def answer_market_agent_follow_up(
-    market_id: str,
-    follow_up_id: str,
-    request: AgentFollowUpAnswerRequest,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Store an answer for one follow-up question."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    if _find_market_follow_up(dependencies, market_id, follow_up_id) is None:
-        raise HTTPException(status_code=404, detail="Follow-up not found")
-    updated = dependencies.agent_follow_up_repository.update_agent_follow_up(
-        follow_up_id,
-        status="answered",
-        response=request.response,
-        metadata=request.metadata,
-    )
-    if updated is None:
-        raise HTTPException(status_code=400, detail="Follow-up could not be answered")
-    _record_agent_activity(
-        dependencies,
-        user_niche_id=market_id,
-        event_type="follow_up_answered",
-        title="Follow-up answered",
-        detail=updated.question,
-        metadata={"follow_up_id": updated.id},
-    )
-    return _serialize_agent_follow_up(updated)
-
-
-@router.post("/markets/{market_id}/agent/follow-ups/{follow_up_id}/dismiss")
-async def dismiss_market_agent_follow_up(
-    market_id: str,
-    follow_up_id: str,
-    dependencies: SignalApiDependencies = Depends(get_signal_api_dependencies),
-    current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Dismiss one follow-up question."""
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    if _find_market_follow_up(dependencies, market_id, follow_up_id) is None:
-        raise HTTPException(status_code=404, detail="Follow-up not found")
-    updated = dependencies.agent_follow_up_repository.update_agent_follow_up(
-        follow_up_id,
-        status="dismissed",
-    )
-    if updated is None:
-        raise HTTPException(status_code=400, detail="Follow-up could not be dismissed")
-    _record_agent_activity(
-        dependencies,
-        user_niche_id=market_id,
-        event_type="follow_up_dismissed",
-        title="Follow-up dismissed",
-        detail=updated.question,
-        metadata={"follow_up_id": updated.id},
-    )
-    return _serialize_agent_follow_up(updated)
-
-
 @router.get("/markets/{market_id}/agent/memory")
 async def get_market_agent_memory(
     market_id: str,
@@ -1822,7 +1484,6 @@ async def run_pipeline(
             ),
             agent_preferences_repository=dependencies.agent_preferences_repository,
             agent_activity_repository=dependencies.agent_activity_repository,
-            agent_alert_repository=dependencies.agent_alert_repository,
             source_repository=dependencies.source_repository,
             template_source_binding_repository=(
                 dependencies.template_source_binding_repository
@@ -2373,7 +2034,7 @@ def _active_source_ids_for_market(
             dependencies.user_source_preference_repository
         ),
     )
-    return {
+    source_ids = {
         source.source_id
         for source in resolver.list_effective_sources(
             template_niche_id=user_niche.template_niche_id,
@@ -2382,6 +2043,7 @@ def _active_source_ids_for_market(
             include_muted=False,
         )
     }
+    return source_ids or None
 
 
 def _finding_is_visible_for_sources(
@@ -2506,62 +2168,6 @@ def _serialize_display_source_for_user_niche(
             source,
         ),
     )
-
-
-def _agent_planner_input(
-    market_id: str,
-    dependencies: SignalApiDependencies,
-    current_user: User | Any,
-) -> AgentPlannerInput:
-    user_niche = _get_owned_user_niche(market_id, dependencies, current_user)
-    sources = _list_market_display_sources(user_niche, dependencies)
-    return AgentPlannerInput(
-        user_niche=user_niche,
-        preferences=dependencies.agent_preferences_repository.get_agent_preferences(
-            market_id,
-        ),
-        sources=sources,
-        recent_activity=dependencies.agent_activity_repository.list_agent_activity(
-            user_niche_id=market_id,
-            limit=25,
-        ),
-        alerts=dependencies.agent_alert_repository.list_agent_alerts(
-            user_niche_id=market_id,
-            limit=25,
-        ),
-        follow_ups=dependencies.agent_follow_up_repository.list_agent_follow_ups(
-            user_niche_id=market_id,
-            limit=25,
-        ),
-        opportunities=dependencies.opportunity_repository.list_opportunities(),
-    )
-
-
-def _update_market_agent_action_status(
-    market_id: str,
-    action_id: str,
-    status: str,
-    dependencies: SignalApiDependencies,
-    current_user: User | Any,
-) -> dict[str, Any]:
-    _get_owned_user_niche(market_id, dependencies, current_user)
-    matching_actions = [
-        action
-        for action in dependencies.agent_action_repository.list_agent_actions(
-            user_niche_id=market_id,
-            limit=100,
-        )
-        if action.id == action_id
-    ]
-    if not matching_actions:
-        raise HTTPException(status_code=404, detail="Agent action not found")
-    updated_action = dependencies.agent_action_repository.update_agent_action_status(
-        action_id,
-        status,
-    )
-    if updated_action is None:
-        raise HTTPException(status_code=404, detail="Agent action not found")
-    return {"action": _serialize_agent_action(updated_action)}
 
 
 def _scoped_signal_ids(
@@ -2934,7 +2540,7 @@ _MARKET_VALIDATION_SCHEMA = {
 
 _MARKET_SOURCES_PROMPT = """
 Given a market niche and buyer, suggest {count} online communities or sources where
-this buyer discusses their problems and frustrations. Think about where HIGH-SIGNAL
+this buyer discusses their problems and pain points. Think about where HIGH-SIGNAL
 conversations actually happen — Reddit communities, Discourse forums, GitHub issue
 trackers, Indie Hackers, review platforms, niche community sites, etc.
 Do not default to the same platforms for every niche.
@@ -3512,7 +3118,6 @@ def _serialize_niche_source(
     allow_proxy_sources: bool = False,
     allow_auth_sources: bool = False,
     contribution: dict[str, int] | None = None,
-    replacement_suggestions: list[SourceReplacementSuggestion] | None = None,
 ) -> dict[str, Any]:
     lifecycle = _source_lifecycle(source)
     quality = source_quality_status(source, stats)
@@ -3568,10 +3173,6 @@ def _serialize_niche_source(
         "requires_proxy": source.requires_proxy,
         "requires_auth": source.requires_auth,
         "recommended_cadence": source.recommended_cadence,
-        "replacement_suggestions": [
-            _serialize_source_replacement_suggestion(suggestion)
-            for suggestion in replacement_suggestions or []
-        ],
         "options": source.options,
     }
 
@@ -3604,38 +3205,6 @@ def _source_management_hint(
 
 def _source_is_excluded(source: NicheSource) -> bool:
     return bool(source.options.get("excluded") or source.options.get("muted"))
-
-
-def _serialize_source_replacement_suggestion(
-    suggestion: SourceReplacementSuggestion,
-) -> dict[str, Any]:
-    return {
-        "candidate": _serialize_source_candidate(suggestion.candidate),
-        "trigger": suggestion.trigger,
-        "reason": suggestion.reason,
-        "replaces_source_id": suggestion.replaces_source_id,
-    }
-
-
-def _serialize_source_candidate(candidate: SourceCandidate) -> dict[str, Any]:
-    return {
-        "locator": candidate.locator,
-        "source_type": candidate.source_type,
-        "label": candidate.label,
-        "rationale": candidate.rationale,
-        "source_family": candidate.source_family,
-        "company_id": candidate.competitor_id,
-        "company_name": candidate.competitor_name,
-        "market_id": candidate.market_id,
-        "market_name": candidate.market_name,
-        "limit": candidate.limit,
-        "options": candidate.options,
-        "template_id": candidate.template_id,
-        "already_monitored": candidate.already_monitored,
-        "rank_score": candidate.rank_score,
-        "validation_status": candidate.validation_status,
-        "validation_error": candidate.validation_error,
-    }
 
 
 def _serialize_niche_source_health(
@@ -4174,37 +3743,6 @@ def _source_text_for_signal(signal: Signal) -> str:
     return signal.post_id.split(":", 1)[0].lower() if ":" in signal.post_id else ""
 
 
-def _find_market_follow_up(
-    dependencies: SignalApiDependencies,
-    market_id: str,
-    follow_up_id: str,
-) -> AgentFollowUp | None:
-    matching = [
-        item
-        for item in dependencies.agent_follow_up_repository.list_agent_follow_ups(
-            user_niche_id=market_id,
-            limit=100,
-        )
-        if item.id == follow_up_id
-    ]
-    return matching[0] if matching else None
-
-
-def _serialize_agent_action(action: AgentAction) -> dict[str, Any]:
-    return {
-        "id": action.id,
-        "market_id": action.user_niche_id,
-        "action_type": action.action_type,
-        "status": action.status,
-        "reason": action.reason,
-        "metadata": action.metadata,
-        "created_at": action.created_at.isoformat() if action.created_at else None,
-        "completed_at": (
-            action.completed_at.isoformat() if action.completed_at else None
-        ),
-    }
-
-
 def _serialize_agent_activity(activity: AgentActivity) -> dict[str, Any]:
     return {
         "id": activity.id,
@@ -4232,42 +3770,6 @@ def _user_visible_agent_activity(activity: list[AgentActivity]) -> list[AgentAct
         for item in activity
         if item.event_type not in _DIAGNOSTIC_AGENT_ACTIVITY_TYPES
     ]
-
-
-def _serialize_agent_alert(alert: AgentAlert) -> dict[str, Any]:
-    return {
-        "id": alert.id,
-        "market_id": alert.user_niche_id,
-        "alert_type": alert.alert_type,
-        "title": alert.title,
-        "severity": alert.severity,
-        "status": alert.status,
-        "detail": alert.detail,
-        "metadata": alert.metadata,
-        "created_at": alert.created_at.isoformat() if alert.created_at else None,
-        "acknowledged_at": (
-            alert.acknowledged_at.isoformat() if alert.acknowledged_at else None
-        ),
-    }
-
-
-def _serialize_agent_follow_up(follow_up: AgentFollowUp) -> dict[str, Any]:
-    return {
-        "id": follow_up.id,
-        "market_id": follow_up.user_niche_id,
-        "question": follow_up.question,
-        "opportunity_id": follow_up.opportunity_id,
-        "cluster_id": follow_up.cluster_id,
-        "status": follow_up.status,
-        "response": follow_up.response,
-        "metadata": follow_up.metadata,
-        "created_at": (
-            follow_up.created_at.isoformat() if follow_up.created_at else None
-        ),
-        "updated_at": (
-            follow_up.updated_at.isoformat() if follow_up.updated_at else None
-        ),
-    }
 
 
 def _serialize_agent_brief(
@@ -4565,7 +4067,7 @@ def _serialize_report(
     *,
     market_id: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    serialized = {
         "title": report.title,
         "generated_at": report.generated_at.isoformat(),
         "top_clusters": [
@@ -4578,6 +4080,7 @@ def _serialize_report(
             for opportunity in report.recommended_opportunities
         ],
     }
+    return serialized
 
 
 def _serialize_email_result(result: EmailSendResult) -> dict[str, Any]:

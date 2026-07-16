@@ -3,8 +3,8 @@ import ScanPanelLive from './animations/ScanPanelLive';
 const STEPS = [
   {
     title: 'Define your market once',
-    body: 'Set your scope: the niche, the companies you care about, and the public sources to watch. The agent takes it from there.',
-    aside: 'Reddit · HN · G2 · forums · GitHub · review sites',
+    body: 'Set your scope: the product or category to watch, the companies you care about, and the public sources that actually work today.',
+    aside: 'GitHub issues · HN · Discourse · Stack Overflow · community forums',
   },
   {
     title: 'The agent loop runs continuously',
@@ -12,14 +12,14 @@ const STEPS = [
     aside: '~80% of posts are discarded before a finding is extracted.',
   },
   {
-    title: 'Delivered three ways',
-    body: 'Gaps land in your dashboard when you want to look, in a weekly digest pushed to your inbox, and as threshold alerts when a theme crosses a significance spike.',
-    aside: 'Daily fetch · weekly synthesis · event-driven alerts',
+    title: 'Ranked with receipts',
+    body: 'The output is a short list of recurring complaints, each backed by a real quote and a link to the original public post.',
+    aside: 'Finding → theme → ranked gap → source link',
   },
   {
     title: 'Feedback trains future runs',
     body: 'Save a gap, dismiss noise — every action is stored. The next run adjusts its ranking, source weights, and priorities based on what you\'ve already signaled matters.',
-    aside: 'The agent learns which sources are reliable, which themes to dig deeper on, and what you\'ve already acted on.',
+    aside: 'The agent learns which sources and themes are worth prioritizing.',
   },
 ];
 

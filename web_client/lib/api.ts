@@ -7,13 +7,7 @@ import { clearToken, getToken } from '@/lib/auth';
 import { SearchCriteria, SearchResponse } from '@/lib/types/business';
 import { InteractionExtractionRequest, InteractionExtractionResponse } from '@/lib/types/interaction';
 import {
-  AgentAction,
-  AgentActionsResponse,
   AgentActivityResponse,
-  AgentFollowUp,
-  AgentFollowUpRequest,
-  AgentFollowUpsResponse,
-  AgentPlan,
   AgentRunsResponse,
   PipelineLiveFeedResponse,
   AgentColdStartPlan,
@@ -36,7 +30,6 @@ import {
   NicheTemplatesResponse,
   OpportunitiesResponse,
   SignalsResponse,
-  SourceSuggestionsResponse,
   ThemesResponse,
 } from '@/lib/types/signals';
 
@@ -184,7 +177,7 @@ class SignalApiService {
       this._marketCache.set(marketId, { data: response.data, exp: Date.now() + 30_000 });
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load niche');
+      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load watchlist');
       throw error;
     }
   }
@@ -215,7 +208,7 @@ class SignalApiService {
       return await request;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load niches');
+        throw new Error(error.response?.data?.detail || 'Failed to load watchlists');
       }
       throw error;
     }
@@ -331,7 +324,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to create niche');
+        throw new Error(error.response?.data?.detail || 'Failed to create watchlist');
       }
       throw error;
     }
@@ -357,7 +350,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load niche templates');
+        throw new Error(error.response?.data?.detail || 'Failed to load watchlist templates');
       }
       throw error;
     }
@@ -371,7 +364,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load niche sources');
+        throw new Error(error.response?.data?.detail || 'Failed to load watchlist sources');
       }
       throw error;
     }
@@ -396,7 +389,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to create niche source');
+        throw new Error(error.response?.data?.detail || 'Failed to create watchlist source');
       }
       throw error;
     }
@@ -439,7 +432,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load niche companies');
+        throw new Error(error.response?.data?.detail || 'Failed to load watchlist products');
       }
       throw error;
     }
@@ -463,7 +456,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to add niche company');
+        throw new Error(error.response?.data?.detail || 'Failed to add watchlist product');
       }
       throw error;
     }
@@ -478,38 +471,6 @@ class SignalApiService {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.detail || 'Failed to load monitored sources');
-      }
-      throw error;
-    }
-  }
-
-  async getCompanySourceSuggestions(
-    companyId: string
-  ): Promise<SourceSuggestionsResponse> {
-    try {
-      const response = await api.get<SourceSuggestionsResponse>(
-        `/companies/${companyId}/source-suggestions`
-      );
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load source suggestions');
-      }
-      throw error;
-    }
-  }
-
-  async getMarketSourceSuggestions(
-    marketId: string
-  ): Promise<SourceSuggestionsResponse> {
-    try {
-      const response = await api.get<SourceSuggestionsResponse>(
-        `/markets/${marketId}/source-suggestions`
-      );
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to load niche source suggestions');
       }
       throw error;
     }
@@ -610,7 +571,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to update niche');
+        throw new Error(error.response?.data?.detail || 'Failed to update watchlist');
       }
       throw error;
     }
@@ -624,7 +585,7 @@ class SignalApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.detail || 'Failed to delete niche');
+        throw new Error(error.response?.data?.detail || 'Failed to delete watchlist');
       }
       throw error;
     }
@@ -799,42 +760,6 @@ class SignalApiService {
     }
   }
 
-  async getMarketAgentPlan(marketId: string): Promise<AgentPlan> {
-    try {
-      const response = await api.get<AgentPlan>(`/markets/${marketId}/agent/plan`);
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load agent plan');
-      throw error;
-    }
-  }
-
-  async getMarketAgentActions(
-    marketId: string,
-    params?: { status?: string; action_type?: string; limit?: number }
-  ): Promise<AgentActionsResponse> {
-    try {
-      const response = await api.get<AgentActionsResponse>(
-        `/markets/${marketId}/agent/actions`,
-        { params }
-      );
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load agent actions');
-      throw error;
-    }
-  }
-
-  async proposeMarketAgentActions(marketId: string): Promise<AgentPlan> {
-    try {
-      const response = await api.post<AgentPlan>(`/markets/${marketId}/agent/actions/plan`);
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to plan agent actions');
-      throw error;
-    }
-  }
-
   async getMarketAgentRuns(marketId: string): Promise<AgentRunsResponse> {
     try {
       const response = await api.get<AgentRunsResponse>(`/markets/${marketId}/agent/runs`);
@@ -845,45 +770,6 @@ class SignalApiService {
     }
   }
 
-  async getMarketAgentFollowUps(marketId: string): Promise<AgentFollowUpsResponse> {
-    try {
-      const response = await api.get<AgentFollowUpsResponse>(`/markets/${marketId}/agent/follow-ups`);
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to load follow-ups');
-      throw error;
-    }
-  }
-
-  async createMarketAgentFollowUp(marketId: string, request: AgentFollowUpRequest): Promise<AgentFollowUp> {
-    try {
-      const response = await api.post<AgentFollowUp>(`/markets/${marketId}/agent/follow-ups`, request);
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to submit question');
-      throw error;
-    }
-  }
-
-  async approveAgentAction(marketId: string, actionId: string): Promise<AgentAction> {
-    try {
-      const response = await api.post<{ action: AgentAction }>(`/markets/${marketId}/agent/actions/${actionId}/approve`);
-      return response.data.action;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to approve action');
-      throw error;
-    }
-  }
-
-  async dismissAgentAction(marketId: string, actionId: string): Promise<AgentAction> {
-    try {
-      const response = await api.post<{ action: AgentAction }>(`/markets/${marketId}/agent/actions/${actionId}/dismiss`);
-      return response.data.action;
-    } catch (error) {
-      if (axios.isAxiosError(error)) throw new Error(error.response?.data?.detail || 'Failed to dismiss action');
-      throw error;
-    }
-  }
 }
 
 

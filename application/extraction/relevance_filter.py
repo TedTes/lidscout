@@ -444,7 +444,7 @@ def _has_pain_marker(text: str) -> bool:
             "bug",
             "issue",
             "problem",
-            "frustrating",
+            "painful",
             "annoying",
             "confusing",
             "hard to",

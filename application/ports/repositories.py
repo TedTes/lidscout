@@ -12,11 +12,8 @@ from domain.niche import (
     UserSourceRunStats,
 )
 from domain.agent import (
-    AgentAction,
     AgentActivity,
-    AgentAlert,
     AgentFeedback,
-    AgentFollowUp,
     AgentPreferences,
 )
 from domain.cluster import SignalCluster
@@ -255,88 +252,6 @@ class AgentActivityRepository(Protocol):
         limit: int | None = None,
     ) -> list[AgentActivity]:
         """Load activity events, optionally filtered by scope."""
-        ...
-
-
-class AgentAlertRepository(Protocol):
-    """Persistence boundary for proactive agent alerts."""
-
-    def save_agent_alert(self, alert: AgentAlert) -> bool:
-        """Persist one agent alert."""
-        ...
-
-    def get_agent_alert(self, alert_id: str) -> AgentAlert | None:
-        """Load one agent alert by id."""
-        ...
-
-    def list_agent_alerts(
-        self,
-        *,
-        user_niche_id: str | None = None,
-        status: str | None = None,
-        limit: int | None = None,
-    ) -> list[AgentAlert]:
-        """Load alerts, optionally filtered by scope and status."""
-        ...
-
-    def acknowledge_agent_alert(self, alert_id: str) -> AgentAlert | None:
-        """Mark one alert acknowledged and return the updated alert."""
-        ...
-
-
-class AgentFollowUpRepository(Protocol):
-    """Persistence boundary for user follow-up questions and instructions."""
-
-    def save_agent_follow_up(self, follow_up: AgentFollowUp) -> bool:
-        """Persist one follow-up intent."""
-        ...
-
-    def list_agent_follow_ups(
-        self,
-        *,
-        user_niche_id: str | None = None,
-        status: str | None = None,
-        limit: int | None = None,
-    ) -> list[AgentFollowUp]:
-        """Load follow-ups, optionally filtered by scope and status."""
-        ...
-
-    def update_agent_follow_up(
-        self,
-        follow_up_id: str,
-        *,
-        status: str,
-        response: str | None = None,
-        metadata: dict | None = None,
-    ) -> AgentFollowUp | None:
-        """Update one follow-up state and return the updated follow-up."""
-        ...
-
-
-class AgentActionRepository(Protocol):
-    """Persistence boundary for planned agent actions."""
-
-    def save_agent_action(self, action: AgentAction) -> bool:
-        """Persist one planned action and return whether it changed."""
-        ...
-
-    def list_agent_actions(
-        self,
-        *,
-        user_niche_id: str | None = None,
-        status: str | None = None,
-        action_type: str | None = None,
-        limit: int | None = None,
-    ) -> list[AgentAction]:
-        """Load planned actions, optionally filtered by scope and state."""
-        ...
-
-    def update_agent_action_status(
-        self,
-        action_id: str,
-        status: str,
-    ) -> AgentAction | None:
-        """Update one planned action status and return the updated action."""
         ...
 
 

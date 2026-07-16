@@ -3,7 +3,7 @@
 alter table niches
     add column if not exists display_label text;
 
--- Backfill: truncate job to 32 chars as a reasonable default.
+-- Populate display labels by truncating job to 32 chars as a reasonable default.
 update niches
 set display_label = left(btrim(job), 32)
 where display_label is null;

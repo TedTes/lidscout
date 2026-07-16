@@ -6,7 +6,6 @@ const FEATURES = [
   'company watchlists',
   'continuous agent loop',
   'feedback-trained ranking',
-  'weekly digest + threshold alerts',
   'source links on every finding',
 ];
 

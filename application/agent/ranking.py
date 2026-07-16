@@ -3,7 +3,7 @@ from domain.agent import AgentFeedback
 from domain.opportunity import Opportunity
 
 
-MIN_FEEDBACK_FOR_PERSONALIZATION = 3
+MIN_FEEDBACK_FOR_PERSONALIZATION = 1
 SAVE_BOOST = 0.25
 MORE_LIKE_THIS_BOOST = 0.15
 LESS_LIKE_THIS_PENALTY = 0.25

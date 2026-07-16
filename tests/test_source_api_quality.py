@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -834,65 +835,6 @@ def test_pipeline_diagnostics_returns_sanitized_runtime_warnings() -> None:
     assert any("No source adapters are configured" in message for message in messages)
 
 
-def test_market_sources_include_replacement_suggestions_for_blocked_sources() -> None:
-    user = User(id="user-1", email="user@example.com")
-    user_niche_repository = InMemoryUserNicheRepository()
-    user_niche_repository.save_user_niche(
-        UserNiche.create(
-            id="market-1",
-            user_id=user.id,
-            job="Build internal tools",
-            buyer="Engineering teams",
-            category="devtools",
-            template_niche_id="template-1",
-        )
-    )
-    source_repository = InMemorySourceRepository()
-    source_repository.save_sources(
-        [
-            Source.create(
-                id="source-1",
-                locator="https://www.reddit.com/search.json?q=retool&sort=new",
-                source_type="reddit_search",
-                source_family="social",
-                is_gate_free=False,
-                access_mode="api_auth",
-                requires_auth=True,
-            )
-        ]
-    )
-    binding_repository = InMemoryTemplateSourceBindingRepository()
-    binding_repository.save_template_source_bindings(
-        [
-            TemplateSourceBinding.create(
-                id="binding-1",
-                template_niche_id="template-1",
-                source_id="source-1",
-                default_enabled=False,
-            )
-        ]
-    )
-    dependencies = SignalApiDependencies(
-        user_niche_repository=user_niche_repository,
-        source_repository=source_repository,
-        template_source_binding_repository=binding_repository,
-    )
-
-    response = asyncio.run(
-        list_market_sources("market-1", dependencies, current_user=user)
-    )
-
-    suggestions = response["sources"][0]["replacement_suggestions"]
-    assert response["sources"][0]["quality_status"] == "blocked"
-    assert response["sources"][0]["scan_eligible"] is False
-    assert response["sources"][0]["scan_ineligible_reason"] == "Source is disabled."
-    assert response["sources"][0]["management"]["recommended_action"] == "enable_or_remove"
-    assert suggestions[0]["trigger"] == "blocked_source"
-    assert suggestions[0]["replaces_source_id"] == "source-1"
-    assert suggestions[0]["candidate"]["source_type"] == "hackernews_search"
-    assert suggestions[0]["candidate"]["market_name"] == "Build internal tools"
-
-
 def test_updates_owned_source_enabled_state() -> None:
     user = User(id="user-1", email="user@example.com")
     user_niche_repository = InMemoryUserNicheRepository()
@@ -1040,6 +982,28 @@ class FakeFindingRepository:
                 if finding.user_niche_id == user_niche_id
             ]
         return findings
+
+
+def _finding(
+    post_id: str,
+    user_niche_id: str,
+    category: str,
+    detected_at: datetime,
+    source_id: str,
+) -> Finding:
+    return Finding.create(
+        user_niche_id=user_niche_id,
+        post_id=post_id,
+        pain=f"{category} complaint",
+        evidence_text=f"{category} evidence",
+        structured_embedding_text=f"{category} complaint",
+        urgency="medium",
+        severity="medium",
+        confidence=0.8,
+        category=category,
+        detected_at=detected_at,
+        source_id=source_id,
+    )
 
 
 class FakeThemeRepository:

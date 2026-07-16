@@ -6,13 +6,6 @@ from datetime import UTC, datetime
 import json
 from urllib.parse import urlparse
 
-from application.agent import (
-    AgentActionExecutor,
-    AgentPlannerInput,
-    AgentPlannerService,
-    generate_threshold_alerts,
-)
-from application.agent.action_keys import agent_action_dedupe_key
 from application.extraction import ExtractionService
 from application.extraction import LLMRelevanceFilter, RuleBasedRelevanceFilter
 from application.ingestion import (
@@ -22,10 +15,7 @@ from application.ingestion import (
 )
 from application.opportunity import OpportunitySynthesisContext
 from application.ports import (
-    AgentActionRepository,
     AgentActivityRepository,
-    AgentAlertRepository,
-    AgentFollowUpRepository,
     AgentPreferencesRepository,
     FindingRepository,
     OpportunityRepository,
@@ -49,7 +39,7 @@ from application.theme_memory import (
     ThemeOpportunitySynthesisService,
     qualify_theme_for_opportunity,
 )
-from domain.agent import AgentAction, AgentActivity
+from domain.agent import AgentActivity
 from domain.finding import Finding
 from domain.opportunity import Opportunity
 from domain.pipeline import PipelineRunMetrics
@@ -91,9 +81,6 @@ class PipelineConfig:
     pipeline_run_metrics_repository: PipelineRunMetricsRepository | None = None
     agent_preferences_repository: AgentPreferencesRepository | None = None
     agent_activity_repository: AgentActivityRepository | None = None
-    agent_alert_repository: AgentAlertRepository | None = None
-    agent_follow_up_repository: AgentFollowUpRepository | None = None
-    agent_action_repository: AgentActionRepository | None = None
     source_repository: SourceRepository | None = None
     template_source_binding_repository: TemplateSourceBindingRepository | None = None
     user_source_repository: UserSourceRepository | None = None
@@ -162,7 +149,6 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         title="Agent scan started",
         detail="The research agent started a scheduled scan.",
     )
-    _execute_approved_agent_actions(config)
     fetch_result = _fetch_posts(config)
     posts = fetch_result.posts
 
@@ -279,9 +265,7 @@ def run_daily_pipeline(config: PipelineConfig) -> PipelineRunResult:
         email_result=email_result,
     )
     _save_pipeline_run_metrics(config.pipeline_run_metrics_repository, result)
-    _record_threshold_alerts(config, all_opportunities)
     _record_pipeline_activity(config, result)
-    _persist_planned_agent_actions(config)
     return result
 
 
@@ -425,146 +409,6 @@ def _record_pipeline_activity(
             "email_error": result.email_result.error,
         },
     )
-
-
-def _execute_approved_agent_actions(config: PipelineConfig) -> None:
-    if (
-        config.user_niche_id is None
-        or config.agent_action_repository is None
-        or config.source_repository is None
-        or config.user_source_repository is None
-    ):
-        return
-    result = AgentActionExecutor(
-        config.agent_action_repository,
-        follow_up_repository=config.agent_follow_up_repository,
-        alert_repository=config.agent_alert_repository,
-        source_repository=config.source_repository,
-        user_source_repository=config.user_source_repository,
-    ).execute_approved_actions(config.user_niche_id)
-    if result.executed_count or result.failed_count:
-        _record_agent_activity(
-            config.agent_activity_repository,
-            user_niche_id=config.user_niche_id,
-            event_type="actions_executed",
-            title=f"Applied {result.executed_count} approved action(s)",
-            detail=(
-                f"{result.executed_count} action(s) completed. "
-                f"{result.failed_count} action(s) failed."
-            ),
-            metadata={
-                "executed_count": result.executed_count,
-                "failed_count": result.failed_count,
-                "skipped_count": result.skipped_count,
-            },
-        )
-
-
-def _persist_planned_agent_actions(config: PipelineConfig) -> None:
-    if (
-        config.user_niche_id is None
-        or config.user_niche_repository is None
-        or config.agent_action_repository is None
-    ):
-        return
-    user_niche = config.user_niche_repository.get_user_niche(config.user_niche_id)
-    if user_niche is None:
-        return
-    sources = _resolved_sources_for_user_niche(config, user_niche, enabled=None)
-    planner_input = AgentPlannerInput(
-        user_niche=user_niche,
-        preferences=(
-            config.agent_preferences_repository.get_agent_preferences(
-                config.user_niche_id,
-            )
-            if config.agent_preferences_repository is not None
-            else None
-        ),
-        sources=sources,
-        recent_activity=(
-            config.agent_activity_repository.list_agent_activity(
-                user_niche_id=config.user_niche_id,
-                limit=25,
-            )
-            if config.agent_activity_repository is not None
-            else []
-        ),
-        alerts=(
-            config.agent_alert_repository.list_agent_alerts(
-                user_niche_id=config.user_niche_id,
-                limit=25,
-            )
-            if config.agent_alert_repository is not None
-            else []
-        ),
-        follow_ups=(
-            config.agent_follow_up_repository.list_agent_follow_ups(
-                user_niche_id=config.user_niche_id,
-                limit=25,
-            )
-            if config.agent_follow_up_repository is not None
-            else []
-        ),
-        opportunities=(
-            config.opportunity_repository.list_opportunities()
-            if config.opportunity_repository is not None
-            else []
-        ),
-    )
-    proposed_actions = AgentPlannerService().plan_actions(planner_input)
-    existing_keys = {
-        agent_action_dedupe_key(action)
-        for action in config.agent_action_repository.list_agent_actions(
-            user_niche_id=config.user_niche_id,
-            limit=100,
-        )
-    }
-    saved_count = 0
-    for action in proposed_actions:
-        key = agent_action_dedupe_key(action)
-        if key in existing_keys:
-            continue
-        if config.agent_action_repository.save_agent_action(action):
-            saved_count += 1
-            existing_keys.add(key)
-    if saved_count:
-        _record_agent_activity(
-            config.agent_activity_repository,
-            user_niche_id=config.user_niche_id,
-            event_type="actions_proposed",
-            title=f"Proposed {saved_count} next action(s)",
-            detail="The research agent planned follow-up work after this scan.",
-            metadata={"action_count": saved_count},
-        )
-
-
-def _record_threshold_alerts(
-    config: PipelineConfig,
-    opportunities: list[Opportunity],
-) -> None:
-    if config.agent_alert_repository is None or config.user_niche_id is None:
-        return
-    alerts = generate_threshold_alerts(
-        user_niche_id=config.user_niche_id,
-        clusters=[],
-        opportunities=opportunities,
-    )
-    for alert in alerts:
-        inserted = config.agent_alert_repository.save_agent_alert(alert)
-        if not inserted:
-            continue
-        _record_agent_activity(
-            config.agent_activity_repository,
-            user_niche_id=config.user_niche_id,
-            event_type="alert_created",
-            title="Threshold alert created",
-            detail=alert.title,
-            metadata={
-                "alert_id": alert.id,
-                "alert_type": alert.alert_type,
-                "severity": alert.severity,
-            },
-        )
 
 
 def _fetch_posts(config: PipelineConfig) -> PipelineFetchResult:
@@ -927,10 +771,12 @@ def _post_source_label(post: RawPost) -> str:
 
 
 def _post_event_metadata(post: RawPost) -> dict[str, object]:
+    source_id = _post_source_id(post)
     return {
         "title": post.title[:120] if post.title else "",
         "source_label": _post_source_label(post),
-        "source_id": _post_source_id(post),
+        "source_id": source_id,
+        "niche_source_id": source_id,
         "url": post.url,
         "post_date": post.created_at.isoformat() if post.created_at else None,
     }

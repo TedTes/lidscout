@@ -175,7 +175,7 @@ export default function NicheWorkspacePage({ params }: Props) {
 
       setStatus('ready');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load niche');
+      setError(err instanceof Error ? err.message : 'Failed to load watchlist');
       setStatus('error');
     }
   };
@@ -581,7 +581,7 @@ function currentRunEvents(activity: AgentActivity[]): AgentActivity[] {
 
 const SETUP_ACTION_LABELS: Record<string, string> = {
   refine_research_brief: 'Refine the research brief',
-  add_companies: 'Add companies to this niche',
+  add_companies: 'Add products to this watchlist',
   add_sources: 'Improve research coverage',
   review_suggested_sources: 'Review research coverage',
   run_first_scan: 'Ready for first scan',
@@ -599,7 +599,7 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
         <h2 className="text-sm font-semibold text-amber-300">Agent needs setup</h2>
       </div>
       <p className="mb-4 text-xs leading-relaxed text-slate-500">
-        This niche doesn&apos;t have enough data to surface gaps yet. Complete the steps below to start the research agent.
+        This watchlist doesn&apos;t have enough data to surface gaps yet. Complete the steps below to start the research agent.
       </p>
       {coldStart.next_actions.length > 0 && (
         <ul className="mb-4 space-y-1.5">
@@ -1025,7 +1025,12 @@ function GapCard({
   const hasEvidenceItems = (opportunity.evidence_items?.length ?? 0) > 0;
 
   return (
-    <article className={`overflow-hidden rounded-xl border bg-slate-900/40 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition hover:border-slate-700/70 ${dismissed ? 'border-slate-800/40 opacity-40' : 'border-slate-800/80'}`}>
+    <article
+      id={`gap-${opportunity.id}`}
+      className={`overflow-hidden rounded-xl border bg-slate-900/40 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition hover:border-slate-700/70 ${
+        dismissed ? 'border-slate-800/40 opacity-40' : 'border-slate-800/80'
+      }`}
+    >
 
       {/* ── Card header (always visible, clickable to expand reasoning) ── */}
       <div

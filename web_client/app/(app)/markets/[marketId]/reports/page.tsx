@@ -42,7 +42,7 @@ export default function NicheReportPage({ params }: Props) {
   return (
     <DashboardShell
       title="Report"
-      subtitle={`Latest evidence summary for ${niche?.name ?? 'this niche'}.`}
+      subtitle={`Latest evidence summary for ${niche?.name ?? 'this watchlist'}.`}
       actions={<NicheViewSwitcher marketId={marketId} />}
     >
       {status === 'loading' && <LoadingPanel label="Loading report" />}

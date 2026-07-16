@@ -1,4 +1,4 @@
--- Backfill HackerNews Algolia search sources for templates that have none or only one.
+-- Populate HackerNews Algolia search sources for templates that have none or only one.
 -- Uses subqueries on niches.job so UUIDs don't need to be hardcoded.
 -- All rows are is_gate_free=true; ON CONFLICT DO NOTHING is safe to re-run.
 -- Remove any previously inserted tags=story rows (story titles → low pain signal yield).

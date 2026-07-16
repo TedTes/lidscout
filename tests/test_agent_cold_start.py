@@ -19,7 +19,6 @@ class AgentColdStartServiceTests(unittest.TestCase):
             user_niche=user_niche,
             companies=[],
             sources=[],
-            source_suggestions=[],
         )
 
         self.assertEqual(plan.status, "setup_needed")
@@ -73,7 +72,6 @@ class AgentColdStartServiceTests(unittest.TestCase):
             user_niche=user_niche,
             companies=[company],
             sources=sources,
-            source_suggestions=[],
         )
 
         self.assertEqual(plan.status, "ready_for_scan")

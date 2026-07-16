@@ -20,6 +20,7 @@ def _app_config(**overrides):
         "PIPELINE_EMAIL_ENABLED": False,
         "PIPELINE_SCHEDULE": "0 8 * * *",
         "PIPELINE_COORDINATOR_LOCK_SECONDS": 900,
+        "PIPELINE_MANUAL_TRIGGER_COOLDOWN_SECONDS": 300,
         "JWT_SECRET": "test-secret",
         "JWT_EXPIRY_MINUTES": 60,
         "GOOGLE_CLIENT_ID": None,
@@ -66,15 +67,6 @@ class ApiDependencyTests(unittest.TestCase):
             )
             agent_activity_repository = stack.enter_context(
                 patch("api.dependencies.PostgresAgentActivityRepository")
-            )
-            agent_alert_repository = stack.enter_context(
-                patch("api.dependencies.PostgresAgentAlertRepository")
-            )
-            agent_follow_up_repository = stack.enter_context(
-                patch("api.dependencies.PostgresAgentFollowUpRepository")
-            )
-            agent_action_repository = stack.enter_context(
-                patch("api.dependencies.PostgresAgentActionRepository")
             )
             niche_repository = stack.enter_context(
                 patch("api.dependencies.PostgresNicheRepository")
@@ -130,9 +122,6 @@ class ApiDependencyTests(unittest.TestCase):
         agent_preferences_repository.assert_called_once_with(connection=connection)
         agent_feedback_repository.assert_called_once_with(connection=connection)
         agent_activity_repository.assert_called_once_with(connection=connection)
-        agent_alert_repository.assert_called_once_with(connection=connection)
-        agent_follow_up_repository.assert_called_once_with(connection=connection)
-        agent_action_repository.assert_called_once_with(connection=connection)
         niche_repository.assert_called_once_with(connection=connection)
         niche_company_repository.assert_called_once_with(connection=connection)
         source_repository.assert_called_once_with(connection=connection)
@@ -179,14 +168,6 @@ class ApiDependencyTests(unittest.TestCase):
         self.assertIs(
             dependencies.agent_activity_repository,
             agent_activity_repository.return_value,
-        )
-        self.assertIs(
-            dependencies.agent_alert_repository,
-            agent_alert_repository.return_value,
-        )
-        self.assertIs(
-            dependencies.agent_follow_up_repository,
-            agent_follow_up_repository.return_value,
         )
         self.assertIs(
             dependencies.niche_company_repository,
@@ -248,7 +229,6 @@ class ApiDependencyTests(unittest.TestCase):
         )
         self.assertIs(dependencies.finding_repository.connection, supplied_connection)
         self.assertIs(dependencies.theme_repository.connection, supplied_connection)
-
     def test_leaves_llm_client_empty_without_key(self):
         database_url = "postgresql://postgres.example/lidscout"
         config = _app_config(
@@ -264,9 +244,6 @@ class ApiDependencyTests(unittest.TestCase):
                 "api.dependencies.PostgresAgentPreferencesRepository",
                 "api.dependencies.PostgresAgentFeedbackRepository",
                 "api.dependencies.PostgresAgentActivityRepository",
-                "api.dependencies.PostgresAgentAlertRepository",
-                "api.dependencies.PostgresAgentFollowUpRepository",
-                "api.dependencies.PostgresAgentActionRepository",
                 "api.dependencies.PostgresNicheRepository",
                 "api.dependencies.PostgresNicheCompanyRepository",
                 "api.dependencies.PostgresSourceRepository",

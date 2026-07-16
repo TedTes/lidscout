@@ -1,11 +1,8 @@
-"""Deterministic source-URL generators for each source type.
+"""Deterministic source-URL generators for working public source types.
 
-This module is template application, NOT an intelligent discovery agent.
-For each company + niche, it generates candidate NicheSource rows using
-fixed URL patterns per source type.
-
-Intelligent source discovery (searching for long-tail sources, evaluating
-relevance, verifying buyer voice) is explicitly deferred to future work.
+This module is template application, not an intelligent discovery agent. For
+each watched company/product it generates canonical source candidates using
+fixed URL patterns that the pipeline can scan today.
 """
 from __future__ import annotations
 
@@ -19,9 +16,7 @@ class CandidateSource:
     locator: str
     source_type: str
     source_family: str
-    # True for sources accessible without account gating or paid proxy:
-    # GitHub, HN, Stack Overflow, Discourse.
-    # False for Reddit (requires OAuth app), G2/Capterra (require proxy).
+    # True for sources accessible without account gating or a paid proxy.
     is_gate_free: bool
     enabled: bool = True
     tier: int | None = None
@@ -41,20 +36,6 @@ def github_issues(repo_slug: str) -> CandidateSource:
             f"?q=repo:{encoded_repo}+is%3Aissue&sort=updated&order=desc"
         ),
         source_type="github_issues_search",
-        source_family="technical_forum",
-        is_gate_free=True,
-        tier=1,
-        signal_quality_score=0.95,
-        access_mode="api",
-        recommended_cadence="daily",
-    )
-
-
-def github_discussions(repo_slug: str) -> CandidateSource:
-    """GitHub Discussions for a public repo."""
-    return CandidateSource(
-        locator=f"https://github.com/{repo_slug}/discussions",
-        source_type="github_discussions",
         source_family="technical_forum",
         is_gate_free=True,
         tier=1,
@@ -115,99 +96,25 @@ def discourse_forum(base_url: str) -> CandidateSource:
     )
 
 
-def reddit_search(query: str) -> CandidateSource:
-    """Reddit keyword search — is_gate_free=False until OAuth is confirmed working."""
-    encoded = query.replace(" ", "+")
-    return CandidateSource(
-        locator=f"https://www.reddit.com/search.json?q={encoded}&sort=new&limit=25",
-        source_type="reddit_search",
-        source_family="social",
-        is_gate_free=False,
-        enabled=False,
-        tier=2,
-        signal_quality_score=0.82,
-        access_mode="api_auth",
-        requires_auth=True,
-        recommended_cadence="daily",
-    )
-
-
-def reddit_subreddit(subreddit: str) -> CandidateSource:
-    """A specific subreddit — is_gate_free=False (requires Reddit OAuth app)."""
-    return CandidateSource(
-        locator=f"https://www.reddit.com/r/{subreddit}/new.json?limit=25",
-        source_type="reddit_subreddit",
-        source_family="social",
-        is_gate_free=False,
-        enabled=False,
-        tier=2,
-        signal_quality_score=0.82,
-        access_mode="api_auth",
-        requires_auth=True,
-        recommended_cadence="daily",
-    )
-
-
-def g2_reviews(slug: str) -> CandidateSource:
-    """G2 review page — is_gate_free=False, requires scraping proxy."""
-    return CandidateSource(
-        locator=f"https://www.g2.com/products/{slug}/reviews",
-        source_type="g2_reviews",
-        source_family="reviews",
-        is_gate_free=False,
-        enabled=False,
-        tier=1,
-        signal_quality_score=0.9,
-        access_mode="proxy_required",
-        requires_proxy=True,
-    )
-
-
-def capterra_reviews(slug: str) -> CandidateSource:
-    """Capterra review page — is_gate_free=False, requires scraping proxy."""
-    return CandidateSource(
-        locator=f"https://www.capterra.com/p/{slug}/reviews",
-        source_type="capterra_reviews",
-        source_family="reviews",
-        is_gate_free=False,
-        enabled=False,
-        tier=1,
-        signal_quality_score=0.9,
-        access_mode="proxy_required",
-        requires_proxy=True,
-    )
-
-
 def generate_company_sources(
     company_name: str,
     *,
     github_repo: str | None = None,
-    subreddit: str | None = None,
     discourse_url: str | None = None,
-    g2_slug: str | None = None,
-    capterra_slug: str | None = None,
     include_stackoverflow: bool = False,
 ) -> list[CandidateSource]:
     """Generate all candidate sources for one company.
 
-    Always includes HN search and Reddit search (standard baseline).
-    Adds optional sources based on the provided metadata.
+    Always includes Hacker News search as a starter source. Adds optional
+    sources based on provided metadata.
     """
     sources: list[CandidateSource] = [
         hackernews_search(company_name),
-        reddit_search(company_name),
     ]
     if github_repo:
         sources.append(github_issues(github_repo))
-        sources.append(github_discussions(github_repo))
-    if subreddit:
-        sources.append(reddit_subreddit(subreddit))
     if discourse_url:
         sources.append(discourse_forum(discourse_url))
     if include_stackoverflow:
         sources.append(stackoverflow_search(company_name))
-    if g2_slug:
-        sources.append(g2_reviews(g2_slug))
-    if capterra_slug:
-        sources.append(capterra_reviews(capterra_slug))
     return sources

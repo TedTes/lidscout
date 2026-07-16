@@ -12,7 +12,7 @@ interface TemplateCard {
   sourceFamilies: string[];
 }
 
-type CategoryFilter = 'all' | 'devtools' | 'data' | 'vertical_saas' | 'sales' | 'marketing' | 'more';
+type CategoryFilter = 'all' | 'devtools' | 'creator_tools' | 'more';
 type Step = 'pick' | 'custom';
 
 type Props = {
@@ -25,10 +25,7 @@ type Props = {
 const CATEGORY_LABELS: Record<CategoryFilter, string> = {
   all: 'All',
   devtools: 'Devtools',
-  data: 'Data',
-  vertical_saas: 'Vertical SaaS',
-  sales: 'Sales',
-  marketing: 'Marketing',
+  creator_tools: 'Creator tools',
   more: 'More',
 };
 
@@ -47,19 +44,13 @@ function normalize(value: string | null | undefined) {
 
 function categoryForTemplate(template: TemplateCard): CategoryFilter {
   const text = `${template.id} ${template.name} ${template.description} ${template.sourceFamilies.join(' ')}`.toLowerCase();
-  if (/dbt|warehouse|data|analytics|etl|pipeline|sql/.test(text)) return 'data';
-  if (/crm|sales|pipeline|revenue|lead/.test(text)) return 'sales';
-  if (/marketing|campaign|seo|content|ads/.test(text)) return 'marketing';
-  if (/therapy|ehr|construction|clinic|dental|legal|vertical|practice|billing/.test(text)) return 'vertical_saas';
+  if (/podcast|creator|audio|media|transistor|buzzsprout|riverside|descript/.test(text)) return 'creator_tools';
   if (/devtool|developer|deploy|frontend|backend|admin|database|error|api|github|devops/.test(text)) return 'devtools';
   return 'more';
 }
 
 function sourceAccessLabel(template: TemplateCard) {
-  const hasProxyLikelySource = template.sourceFamilies.some(family =>
-    /review|g2|capterra|trust/.test(family.toLowerCase())
-  );
-  return hasProxyLikelySource ? 'Proxy required' : 'All sources gate-free';
+  return template.sourceFamilies.length > 0 ? 'Public sources' : 'No sources yet';
 }
 
 function IconX() {
@@ -98,7 +89,7 @@ function LoadingTemplates() {
             <path className="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
           </svg>
         </span>
-        Loading curated markets...
+        Loading watchlist templates...
       </div>
       <div className="space-y-3">
         {[0, 1, 2].map(index => (
@@ -181,10 +172,7 @@ function TemplatePickerStep({
     const next: Record<CategoryFilter, number> = {
       all: templatesWithCategory.length,
       devtools: 0,
-      data: 0,
-      vertical_saas: 0,
-      sales: 0,
-      marketing: 0,
+      creator_tools: 0,
       more: 0,
     };
     for (const item of templatesWithCategory) next[item.category] += 1;
@@ -243,7 +231,7 @@ function TemplatePickerStep({
             value={query}
             onChange={event => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search by job, tool, or buyer - e.g. 'shopify', 'devtools', 'therapy'"
+            placeholder="Search by product, tool, or source - e.g. 'Postgres', 'API', 'podcast'"
             className="w-full rounded-xl border border-white/10 bg-black/15 py-4 pl-11 pr-4 text-base font-medium text-slate-100 outline-none placeholder:text-slate-500 focus:border-violet-500/40"
           />
         </div>
@@ -281,7 +269,7 @@ function TemplatePickerStep({
           <LoadingTemplates />
         )}
         {!loading && filtered.length === 0 && (
-          <div className="px-8 py-12 text-sm text-slate-500">No curated markets match that search.</div>
+          <div className="px-8 py-12 text-sm text-slate-500">No watchlist templates match that search.</div>
         )}
         {!loading && filtered.map(({ template, category }) => {
           const accessLabel = sourceAccessLabel(template);
@@ -336,9 +324,9 @@ function TemplatePickerStep({
                     {CATEGORY_LABELS[category]}
                   </span>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    accessLabel === 'Proxy required'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-emerald-100 text-emerald-700'
+                    accessLabel === 'Public sources'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-100 text-slate-700'
                   }`}>
                     {accessLabel}
                   </span>
@@ -422,19 +410,19 @@ function CustomStep({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 pb-8 pt-2">
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-market-name" className={labelCls}>Market name *</label>
+          <label htmlFor="custom-market-name" className={labelCls}>Watchlist name *</label>
           <input
             ref={nameRef}
             id="custom-market-name"
             required
             value={name}
             onChange={handleNameChange}
-            placeholder="e.g. Manage customer support for a SaaS product"
+            placeholder="e.g. Track complaints about Postman alternatives"
             className={`${inputCls} ${nameHasError ? 'border-rose-500/60 focus:border-rose-500/80 focus:ring-rose-500/10' : ''}`}
             autoComplete="off"
           />
           {!nameHasError && (
-            <p className="text-[11px] text-slate-600">Describe a real job-to-be-done or problem space — e.g. "podcast hosting for indie creators".</p>
+            <p className="text-[11px] text-slate-600">Name the product group or category you want to monitor.</p>
           )}
           {nameHasError && (
             <div className="flex items-start gap-2 rounded-lg border border-rose-500/25 bg-rose-500/[0.07] px-3 py-2.5">
@@ -450,7 +438,7 @@ function CustomStep({
             id="custom-market-description"
             value={description}
             onChange={event => setDescription(event.target.value)}
-            placeholder="Problem space or market focus"
+            placeholder="Products, users, or category focus"
             className={inputCls}
             autoComplete="off"
           />
@@ -469,7 +457,7 @@ function CustomStep({
         </div>
 
         <p className="text-sm leading-relaxed text-slate-500">
-          You can add companies and sources after creating the market.
+          You can add products and sources after creating the watchlist.
         </p>
 
       </div>
@@ -486,7 +474,7 @@ function CustomStep({
               <path className="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
             </svg>
           )}
-          {saving ? 'Validating market…' : 'Create market'}
+          {saving ? 'Validating watchlist…' : 'Create watchlist'}
         </button>
         <button
           type="button"
@@ -557,7 +545,7 @@ export function AddNicheFlow({
       const market = await signalApi.applyTemplate(template.id);
       onCreated(market);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add market');
+      setError(err instanceof Error ? err.message : 'Failed to add watchlist');
       setCreatingTemplateId(null);
     }
   };
@@ -574,7 +562,7 @@ export function AddNicheFlow({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Add market"
+        aria-label="Add watchlist"
         className={`fixed inset-x-4 top-[7vh] z-40 mx-auto flex max-h-[86vh] max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#20211f] shadow-[0_24px_80px_rgba(0,0,0,0.75)] transition duration-200 ${
           isOpen
             ? 'translate-y-0 opacity-100'
@@ -595,13 +583,13 @@ export function AddNicheFlow({
                 </button>
               )}
               <h2 className="text-xl font-bold tracking-tight text-slate-100">
-                {step === 'custom' ? 'Create a custom market' : 'Add a market to monitor'}
+                {step === 'custom' ? 'Create a custom watchlist' : 'Add a watchlist'}
               </h2>
             </div>
             <p className="mt-2 max-w-xl text-sm font-medium leading-snug text-slate-400">
               {step === 'custom'
-                ? 'Define a market manually. You can add companies, sources, and research scope next.'
-                : 'Pick a curated template - companies, sources, and research brief are pre-configured'}
+                ? 'Define a product group manually. You can add products and sources next.'
+                : 'Pick a focused template with products and public sources pre-configured'}
             </p>
           </div>
           <button
