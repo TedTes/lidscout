@@ -89,9 +89,9 @@ const RUN_EVENT_META: Record<string, { label: string; dotCls: string; textCls: s
   run_started:       { label: 'Started',            dotCls: 'bg-violet-400',  textCls: 'text-violet-400' },
   sources_scanned:   { label: 'Sources scanned',    dotCls: 'bg-sky-400',     textCls: 'text-sky-400' },
   posts_filtered:    { label: 'Posts reviewed',     dotCls: 'bg-slate-500',   textCls: 'text-slate-500' },
-  signals_extracted: { label: 'Findings extracted', dotCls: 'bg-amber-400',   textCls: 'text-amber-400' },
-  clusters_formed:   { label: 'Patterns formed',    dotCls: 'bg-indigo-400',  textCls: 'text-indigo-400' },
-  gaps_synthesized:  { label: 'Opportunities found', dotCls: 'bg-emerald-400', textCls: 'text-emerald-400' },
+  signals_extracted: { label: 'Evidence extracted', dotCls: 'bg-amber-400',   textCls: 'text-amber-400' },
+  clusters_formed:   { label: 'Themes formed',      dotCls: 'bg-indigo-400',  textCls: 'text-indigo-400' },
+  gaps_synthesized:  { label: 'Gaps found',          dotCls: 'bg-emerald-400', textCls: 'text-emerald-400' },
   run_completed:     { label: 'Completed',           dotCls: 'bg-emerald-400', textCls: 'text-emerald-400' },
   source_failed:     { label: 'Source error',        dotCls: 'bg-rose-400',    textCls: 'text-rose-400' },
 };
@@ -104,7 +104,7 @@ function statLine(run: RunGroup): string | null {
   const parts: string[] = [];
   if (run.sourceCount != null) parts.push(`${run.sourceCount} source${run.sourceCount !== 1 ? 's' : ''}`);
   if (run.postCount != null) parts.push(`${run.postCount} post${run.postCount !== 1 ? 's' : ''}`);
-  if (run.signalCount != null) parts.push(`${run.signalCount} finding${run.signalCount !== 1 ? 's' : ''}`);
+  if (run.signalCount != null) parts.push(`${run.signalCount} evidence item${run.signalCount !== 1 ? 's' : ''}`);
   if (run.gapCount != null) parts.push(`${run.gapCount} gap${run.gapCount !== 1 ? 's' : ''}`);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -289,7 +289,7 @@ export default function NicheActivityPage({ params }: Props) {
               href={`/markets/${encodeURIComponent(marketId)}/sources`}
               className="text-[11px] text-slate-600 transition hover:text-slate-400"
             >
-              Research coverage →
+              Sources →
             </Link>
           </div>
 
@@ -302,10 +302,7 @@ export default function NicheActivityPage({ params }: Props) {
             <>
               {runs.length > 0 && (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Run history</p>
-                    <Link href={`/markets/${encodeURIComponent(marketId)}/reports`} className="text-[11px] text-slate-600 transition hover:text-slate-400">Latest report →</Link>
-                  </div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Run history</p>
                   {runs.map(run => <RunCard key={run.id} run={run} />)}
                 </section>
               )}

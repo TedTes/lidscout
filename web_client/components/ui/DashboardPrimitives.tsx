@@ -269,7 +269,7 @@ export function ClusterLink({ id, marketId: marketIdProp, children }: { id: stri
   const searchParams = useSearchParams();
   const marketId = marketIdProp ?? searchParams?.get('market') ?? undefined;
   const href = marketId
-    ? `/markets/${encodeURIComponent(marketId)}/themes/${encodeURIComponent(id)}`
+    ? `/markets/${encodeURIComponent(marketId)}/themes?theme=${encodeURIComponent(id)}`
     : `/themes/${encodeURIComponent(id)}`;
 
   return (

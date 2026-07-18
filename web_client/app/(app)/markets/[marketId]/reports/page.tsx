@@ -88,11 +88,11 @@ export default function NicheReportPage({ params }: Props) {
 
           <section className="rounded-xl border border-slate-800/80 bg-slate-900/40">
             <div className="border-b border-slate-800/70 px-5 py-4">
-              <h2 className="text-sm font-semibold text-slate-300">Top patterns</h2>
+              <h2 className="text-sm font-semibold text-slate-300">Top themes</h2>
             </div>
             {report.top_clusters.length === 0 ? (
               <div className="p-5">
-                <EmptyPanel title="No patterns in this report" />
+                <EmptyPanel title="No themes in this report" />
               </div>
             ) : (
               <div className="divide-y divide-slate-800/60">

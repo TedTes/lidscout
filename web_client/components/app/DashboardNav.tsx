@@ -455,7 +455,7 @@ function MobileNicheMenu({
             onClick={() => { setOpen(false); onAddNiche(); }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-violet-500 transition hover:bg-white/[0.04] hover:text-violet-400"
           >
-            <IconPlus /> Add watchlist
+            <IconPlus /> Create watchlist
           </button>
         </div>
       )}
@@ -535,7 +535,7 @@ export default function DashboardNav() {
             <button
               onClick={() => setShowAddNiche(true)}
               className="rounded p-1 text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200"
-              aria-label="Add watchlist"
+              aria-label="Create watchlist"
             >
               <IconPlus />
             </button>
@@ -549,7 +549,7 @@ export default function DashboardNav() {
             className="mt-2 flex w-full shrink-0 items-center gap-2 rounded-lg border border-dashed border-slate-800 px-3 py-2.5 text-left text-sm font-medium text-blue-400 transition hover:border-slate-700 hover:bg-white/[0.03] hover:text-blue-300"
           >
             <IconPlus />
-            <span className="min-w-0 flex-1 truncate">Add watchlist</span>
+            <span className="min-w-0 flex-1 truncate">Create watchlist</span>
             <span className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-slate-500">⌘K</span>
           </button>
         </nav>

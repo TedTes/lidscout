@@ -13,7 +13,17 @@ interface TemplateCard {
 }
 
 type CategoryFilter = 'all' | 'devtools' | 'creator_tools' | 'more';
-type Step = 'pick' | 'custom';
+type Step = 'create' | 'template';
+
+function githubIssuesLocatorFromUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
+  if (!match) return null;
+  const owner = match[1];
+  const repo = match[2].replace(/\.git$/, '');
+  return `https://api.github.com/search/issues?q=repo:${owner}/${repo}+is%3Aissue&sort=updated&order=desc`;
+}
 
 type Props = {
   isOpen: boolean;
@@ -124,7 +134,6 @@ function TemplatePickerStep({
   creatingTemplateId,
   error,
   onSelect,
-  onCustom,
 }: {
   loading: boolean;
   templates: TemplateCard[];
@@ -132,7 +141,6 @@ function TemplatePickerStep({
   creatingTemplateId: string | null;
   error: string | null;
   onSelect: (template: TemplateCard) => void;
-  onCustom: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
@@ -253,13 +261,6 @@ function TemplatePickerStep({
               <span className="ml-1 text-current opacity-65">· {counts[category]}</span>
             </button>
           ))}
-          <button
-            type="button"
-            onClick={onCustom}
-            className="ml-auto rounded-full border border-dashed border-white/10 px-4 py-1.5 text-sm font-semibold text-slate-500 transition hover:border-white/20 hover:text-slate-300"
-          >
-            Custom
-          </button>
         </div>
         {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
       </div>
@@ -357,17 +358,17 @@ function IconAlertCircle() {
   );
 }
 
-function CustomStep({
+function CreateStep({
   onCreated,
-  onBack,
+  onStartTemplate,
 }: {
   onCreated: (market: Market) => void;
-  onBack: () => void;
-  onClose: () => void;
+  onStartTemplate: () => void;
 }) {
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [targetUser, setTargetUser] = useState('');
+  const [githubUrl, setGithubUrl] = useState('');
+  const [forumUrl, setForumUrl] = useState('');
+  const [keywords, setKeywords] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -392,9 +393,27 @@ function CustomStep({
       const market = await signalApi.createMarket({
         id: toSlug(trimmedName),
         name: trimmedName,
-        description: description.trim() || null,
-        target_user: targetUser.trim() || null,
+        description: keywords.trim() || null,
       });
+
+      // Best-effort: attach the optional sources the user pasted in. A failure here
+      // shouldn't block watchlist creation — the watchlist itself already exists.
+      const githubLocator = githubIssuesLocatorFromUrl(githubUrl);
+      if (githubLocator) {
+        signalApi.createMarketSource(market.id, {
+          locator: githubLocator,
+          source_type: 'github_issues_search',
+          options: { source_family: 'technical_forum' },
+        }).catch(() => {});
+      }
+      if (forumUrl.trim()) {
+        signalApi.createMarketSource(market.id, {
+          locator: forumUrl.trim(),
+          source_type: 'forum',
+          options: { source_family: 'technical_forum' },
+        }).catch(() => {});
+      }
+
       onCreated(market);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong, please try again.');
@@ -410,19 +429,19 @@ function CustomStep({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 pb-8 pt-2">
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-market-name" className={labelCls}>Watchlist name *</label>
+          <label htmlFor="watchlist-name" className={labelCls}>What should we watch? *</label>
           <input
             ref={nameRef}
-            id="custom-market-name"
+            id="watchlist-name"
             required
             value={name}
             onChange={handleNameChange}
-            placeholder="e.g. Track complaints about Postman alternatives"
+            placeholder="e.g. Postman, Notion, a competitor's name"
             className={`${inputCls} ${nameHasError ? 'border-rose-500/60 focus:border-rose-500/80 focus:ring-rose-500/10' : ''}`}
             autoComplete="off"
           />
           {!nameHasError && (
-            <p className="text-[11px] text-slate-600">Name the product group or category you want to monitor.</p>
+            <p className="text-[11px] text-slate-600">The product, company, or community you want to monitor.</p>
           )}
           {nameHasError && (
             <div className="flex items-start gap-2 rounded-lg border border-rose-500/25 bg-rose-500/[0.07] px-3 py-2.5">
@@ -433,31 +452,46 @@ function CustomStep({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-market-description" className={labelCls}>Description</label>
+          <label htmlFor="watchlist-github" className={labelCls}>GitHub repo URL (optional)</label>
           <input
-            id="custom-market-description"
-            value={description}
-            onChange={event => setDescription(event.target.value)}
-            placeholder="Products, users, or category focus"
+            id="watchlist-github"
+            value={githubUrl}
+            onChange={event => setGithubUrl(event.target.value)}
+            placeholder="github.com/owner/repo"
             className={inputCls}
             autoComplete="off"
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="custom-market-target" className={labelCls}>Target user</label>
+          <label htmlFor="watchlist-forum" className={labelCls}>Forum or community URL (optional)</label>
           <input
-            id="custom-market-target"
-            value={targetUser}
-            onChange={event => setTargetUser(event.target.value)}
-            placeholder="e.g. Seed-stage founders"
+            id="watchlist-forum"
+            value={forumUrl}
+            onChange={event => setForumUrl(event.target.value)}
+            placeholder="e.g. a Discourse forum or support community"
+            className={inputCls}
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="watchlist-keywords" className={labelCls}>Search keywords (optional)</label>
+          <input
+            id="watchlist-keywords"
+            value={keywords}
+            onChange={event => setKeywords(event.target.value)}
+            placeholder="Terms that help find relevant discussion"
             className={inputCls}
             autoComplete="off"
           />
         </div>
 
         <p className="text-sm leading-relaxed text-slate-500">
-          You can add products and sources after creating the watchlist.
+          You can add more sources and review coverage after creating the watchlist.{' '}
+          <button type="button" onClick={onStartTemplate} className="font-medium text-violet-400 transition hover:text-violet-300">
+            Start from a template instead →
+          </button>
         </p>
 
       </div>
@@ -474,15 +508,7 @@ function CustomStep({
               <path className="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
             </svg>
           )}
-          {saving ? 'Validating watchlist…' : 'Create watchlist'}
-        </button>
-        <button
-          type="button"
-          onClick={onBack}
-          disabled={saving}
-          className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-40"
-        >
-          Back
+          {saving ? 'Creating watchlist…' : 'Create watchlist'}
         </button>
       </div>
     </form>
@@ -495,7 +521,7 @@ export function AddNicheFlow({
   onCreated,
   existingMarkets = [],
 }: Props) {
-  const [step, setStep] = useState<Step>('pick');
+  const [step, setStep] = useState<Step>('create');
   const [templates, setTemplates] = useState<TemplateCard[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
@@ -504,7 +530,7 @@ export function AddNicheFlow({
 
   useEffect(() => {
     if (!isOpen) return;
-    setStep('pick');
+    setStep('create');
     setCreatingTemplateId(null);
     setError(null);
     setTemplatesLoading(true);
@@ -562,7 +588,7 @@ export function AddNicheFlow({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Add watchlist"
+        aria-label="Create watchlist"
         className={`fixed inset-x-4 top-[7vh] z-40 mx-auto flex max-h-[86vh] max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#20211f] shadow-[0_24px_80px_rgba(0,0,0,0.75)] transition duration-200 ${
           isOpen
             ? 'translate-y-0 opacity-100'
@@ -572,10 +598,10 @@ export function AddNicheFlow({
         <div className="flex shrink-0 items-start justify-between px-8 pb-5 pt-7">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              {step === 'custom' && (
+              {step === 'template' && (
                 <button
                   type="button"
-                  onClick={() => setStep('pick')}
+                  onClick={() => setStep('create')}
                   className="rounded p-1 text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
                   aria-label="Back"
                 >
@@ -583,13 +609,13 @@ export function AddNicheFlow({
                 </button>
               )}
               <h2 className="text-xl font-bold tracking-tight text-slate-100">
-                {step === 'custom' ? 'Create a custom watchlist' : 'Add a watchlist'}
+                {step === 'template' ? 'Start from a template' : 'Create a watchlist'}
               </h2>
             </div>
             <p className="mt-2 max-w-xl text-sm font-medium leading-snug text-slate-400">
-              {step === 'custom'
-                ? 'Define a product group manually. You can add products and sources next.'
-                : 'Pick a focused template with products and public sources pre-configured'}
+              {step === 'template'
+                ? 'Pick a focused template with products and public sources pre-configured'
+                : 'What should we watch?'}
             </p>
           </div>
           <button
@@ -602,7 +628,14 @@ export function AddNicheFlow({
           </button>
         </div>
 
-        {step === 'pick' && (
+        {step === 'create' && (
+          <CreateStep
+            onCreated={onCreated}
+            onStartTemplate={() => setStep('template')}
+          />
+        )}
+
+        {step === 'template' && (
           <TemplatePickerStep
             loading={templatesLoading}
             templates={templates}
@@ -610,15 +643,6 @@ export function AddNicheFlow({
             creatingTemplateId={creatingTemplateId}
             error={error}
             onSelect={handleSelectTemplate}
-            onCustom={() => setStep('custom')}
-          />
-        )}
-
-        {step === 'custom' && (
-          <CustomStep
-            onCreated={onCreated}
-            onBack={() => setStep('pick')}
-            onClose={onClose}
           />
         )}
       </div>

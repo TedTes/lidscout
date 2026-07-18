@@ -165,8 +165,8 @@ export default function NicheSourcesPage({ params }: Props) {
 
   return (
     <DashboardShell
-      title="Research coverage"
-      subtitle={`Source coverage for ${niche?.name ?? 'this watchlist'}.`}
+      title="Sources"
+      subtitle={`Public sources monitored for ${niche?.name ?? 'this watchlist'}.`}
       actions={<NicheViewSwitcher marketId={marketId} active="sources" />}
     >
       {status === 'loading' && <LoadingPanel label="Loading sources" />}
@@ -219,7 +219,7 @@ export default function NicheSourcesPage({ params }: Props) {
               <div className="p-5">
                 <EmptyPanel
                   title="No sources configured"
-                  detail="Add or apply a watchlist with public sources, then run a scan to activate coverage."
+                  detail="This watchlist has no public sources yet. Sources you add when creating a watchlist (or that the agent proposes) will appear here."
                 />
               </div>
             ) : (
@@ -334,11 +334,11 @@ function SourceRow({
             )}
             {hasContribution && (
               <span className="text-[11px] text-slate-700">
-                {plural(contribution.findings_count, 'finding')}
+                {plural(contribution.findings_count, 'evidence item')}
                 {' · '}
                 {plural(contribution.themes_count, 'theme')}
                 {' · '}
-                {plural(contribution.opportunities_count, 'opportunity', 'opportunities')}
+                {plural(contribution.opportunities_count, 'gap')}
               </span>
             )}
             {source.health && source.health.last_fetched_count > 0 && (

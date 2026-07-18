@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 export default function LegacyClusterDetailRedirect({
+  params,
   searchParams,
 }: {
   params: { clusterId: string };
@@ -8,7 +9,7 @@ export default function LegacyClusterDetailRedirect({
 }) {
   redirect(
     searchParams.market
-      ? `/markets/${encodeURIComponent(searchParams.market)}/evidence?view=patterns`
+      ? `/markets/${encodeURIComponent(searchParams.market)}/themes?theme=${encodeURIComponent(params.clusterId)}`
       : '/markets'
   );
 }

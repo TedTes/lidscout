@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 
-type NicheView = 'gaps' | 'patterns' | 'evidence' | 'sources';
+type NicheView = 'gaps' | 'themes' | 'evidence' | 'sources';
 
 const VIEWS: Array<{ id: NicheView; label: string; href: (marketId: string) => string }> = [
-  { id: 'gaps',     label: 'Opportunities', href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
-  { id: 'patterns', label: 'Patterns',      href: marketId => `/markets/${encodeURIComponent(marketId)}/evidence?view=patterns` },
-  { id: 'evidence', label: 'Evidence',      href: marketId => `/markets/${encodeURIComponent(marketId)}/evidence?view=findings` },
-  { id: 'sources',  label: 'Sources',       href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
+  { id: 'gaps',     label: 'Gaps',     href: marketId => `/markets/${encodeURIComponent(marketId)}/gaps` },
+  { id: 'themes',   label: 'Themes',   href: marketId => `/markets/${encodeURIComponent(marketId)}/themes` },
+  { id: 'evidence', label: 'Evidence', href: marketId => `/markets/${encodeURIComponent(marketId)}/evidence` },
+  { id: 'sources',  label: 'Sources',  href: marketId => `/markets/${encodeURIComponent(marketId)}/sources` },
 ];
 
 export function NicheViewSwitcher({

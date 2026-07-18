@@ -40,27 +40,27 @@ export default function WatchlistsPage() {
 
   if (loading) {
     return (
-      <DashboardShell title="Watchlists" subtitle="Choose the product or category you want to inspect.">
+      <DashboardShell title="Watchlists" subtitle="What should we watch?">
         <LoadingPanel label="Loading watchlists" />
       </DashboardShell>
     );
   }
 
   return (
-    <DashboardShell title="Watchlists" subtitle="Pick a template or define your own product/category scope.">
+    <DashboardShell title="Watchlists" subtitle="What should we watch?">
       <div className="rounded-xl border border-dashed border-slate-800 px-8 py-20 text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-slate-600">
           <IconPlus />
         </div>
-        <p className="font-medium text-slate-300">Add your first watchlist</p>
+        <p className="font-medium text-slate-300">What should we watch?</p>
         <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-slate-600">
-          Start from a focused template with products and public sources pre-configured, or define your own.
+          Enter a product, company, or community to start monitoring public complaints — with quotes and source links.
         </p>
         <button
           onClick={() => setShowFlow(true)}
           className="mt-5 inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500"
         >
-          <IconPlus /> Add watchlist
+          <IconPlus /> Create watchlist
         </button>
       </div>
 

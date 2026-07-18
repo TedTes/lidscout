@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/app/DashboardShell';
 import { NicheViewSwitcher } from '@/components/app/NicheViewSwitcher';
 import { ClusterLink, EmptyPanel, ErrorPanel, LoadingPanel, relativeTime } from '@/components/ui/DashboardPrimitives';
@@ -104,6 +105,8 @@ function IconThumbDown() {
 
 export default function NicheWorkspacePage({ params }: Props) {
   const marketId = decodeURIComponent(params.marketId);
+  const searchParams = useSearchParams();
+  const highlightedGapId = searchParams.get('gap');
   const [niche, setNiche] = useState<Market | null>(null);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [themes, setThemes] = useState<AccumulatedTheme[]>([]);
@@ -190,6 +193,14 @@ export default function NicheWorkspacePage({ params }: Props) {
     fetchOpportunities(recencyFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recencyFilter]);
+
+  useEffect(() => {
+    if (status !== 'ready' || !highlightedGapId) return;
+    const timer = setTimeout(() => {
+      document.getElementById(`gap-${highlightedGapId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [status, highlightedGapId, opportunities]);
 
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
   const [lastEventAt, setLastEventAt] = useState<string | null>(null);
@@ -385,7 +396,7 @@ export default function NicheWorkspacePage({ params }: Props) {
         </div>
       }
     >
-      {status === 'loading' && <LoadingPanel label="Loading opportunities" />}
+      {status === 'loading' && <LoadingPanel label="Loading gaps" />}
       {status === 'error' && error && <ErrorPanel message={error} />}
 
       {status === 'ready' && (
@@ -406,16 +417,24 @@ export default function NicheWorkspacePage({ params }: Props) {
             /* ── Empty idle state: centered run scan ── */
             <div className="flex min-h-[420px] flex-col items-center justify-center gap-6 py-6 sm:min-h-[520px]">
               <div className="text-center">
-                <p className="text-base font-semibold text-slate-300">No candidates surfaced yet</p>
-                <p className="mt-1 text-sm text-slate-500">Run a scan to start finding opportunities.</p>
+                <p className="text-base font-semibold text-slate-300">No gaps surfaced yet</p>
+                <p className="mt-1 text-sm text-slate-500">Run a scan to inspect public sources for this watchlist.</p>
               </div>
-              <button
-                onClick={handleRunScan}
-                disabled={scanTriggering}
-                className="rounded-xl border border-violet-500/30 bg-violet-500/15 px-8 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/20 disabled:cursor-default disabled:opacity-60"
-              >
-                Run scan
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={handleRunScan}
+                  disabled={scanTriggering}
+                  className="rounded-xl border border-violet-500/30 bg-violet-500/15 px-8 py-3 text-sm font-semibold text-violet-300 transition hover:bg-violet-500/20 disabled:cursor-default disabled:opacity-60"
+                >
+                  Run scan
+                </button>
+                <Link
+                  href={`/markets/${encodeURIComponent(marketId)}/sources`}
+                  className="rounded-xl border border-slate-700/60 px-6 py-3 text-sm font-semibold text-slate-400 transition hover:border-slate-600 hover:text-slate-200"
+                >
+                  Review sources
+                </Link>
+              </div>
             </div>
           ) : (
             /* ── Has data: opportunities + live scan progress ── */
@@ -488,6 +507,7 @@ export default function NicheWorkspacePage({ params }: Props) {
                     rank={index + 1}
                     opportunity={opportunity}
                     marketId={marketId}
+                    highlighted={opportunity.id === highlightedGapId}
                     theme={
                       opportunity.source_theme_id
                         ? themeById.get(opportunity.source_theme_id)
@@ -583,7 +603,6 @@ const SETUP_ACTION_LABELS: Record<string, string> = {
   refine_research_brief: 'Refine the research brief',
   add_companies: 'Add products to this watchlist',
   add_sources: 'Improve research coverage',
-  review_suggested_sources: 'Review research coverage',
   run_first_scan: 'Ready for first scan',
 };
 
@@ -613,7 +632,7 @@ function ColdStartPanel({ coldStart, marketId }: { coldStart: AgentColdStartPlan
       )}
       <div className="flex flex-wrap gap-2">
         <Link href={`/markets/${encodeURIComponent(marketId)}/sources`} className="rounded-lg border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:text-slate-200">
-          Research coverage
+          Review sources
         </Link>
       </div>
     </div>
@@ -627,7 +646,7 @@ function OpportunitiesStatsBar({ count, lastEventAt, isRunning }: { count: numbe
   return (
     <div className="flex items-center gap-2 text-xs text-slate-500">
       <span className="font-semibold text-slate-300">
-        {count} {count === 1 ? 'Opportunity' : 'Opportunities'}
+        {count} {count === 1 ? 'Gap' : 'Gaps'}
       </span>
       {isRunning ? (
         <span className="flex items-center gap-1.5 text-violet-400">
@@ -646,7 +665,7 @@ const SCAN_STEPS: Array<{ eventType: string; label: string }> = [
   { eventType: 'sources_scanned',   label: 'Scanning sources' },
   { eventType: 'posts_filtered',    label: 'Reviewing posts' },
   { eventType: 'signals_extracted', label: 'Extracting evidence' },
-  { eventType: 'gaps_synthesized',  label: 'Identifying opportunities' },
+  { eventType: 'gaps_synthesized',  label: 'Identifying gaps' },
 ];
 
 function CenteredScanProgress({
@@ -978,6 +997,25 @@ function EvidenceItemRow({ item }: { item: EvidenceItem }) {
 
 // ── Gap card ───────────────────────────────────────────────────────────────────
 
+function mostRecentEvidenceAt(opportunity: Opportunity): string | null {
+  const items = opportunity.evidence_items ?? [];
+  let latest: string | null = null;
+  for (const item of items) {
+    if (!item.detected_at) continue;
+    if (!latest || Date.parse(item.detected_at) > Date.parse(latest)) latest = item.detected_at;
+  }
+  return latest;
+}
+
+function IconShare() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+
 function GapCard({
   rank,
   opportunity,
@@ -986,6 +1024,7 @@ function GapCard({
   meta,
   itemAction,
   trainingAction,
+  highlighted,
   onItemFeedback,
   onTrainingFeedback,
 }: {
@@ -996,16 +1035,30 @@ function GapCard({
   meta: typeof STRENGTH_META['early'];
   itemAction: ItemFeedbackAction | null;
   trainingAction: TrainingFeedbackAction | null;
+  highlighted?: boolean;
   onItemFeedback: (action: ItemFeedbackAction) => void;
   onTrainingFeedback: (action: TrainingFeedbackAction) => void;
 }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const saved = itemAction === 'save';
   const dismissed = itemAction === 'dismiss';
   const confidence = opportunity.confidence ? Math.round(opportunity.confidence * 100) : null;
   const needLabel = unmetNeedLabel(opportunity.unmet_need_type);
+  const recentEvidenceAt = mostRecentEvidenceAt(opportunity);
+
+  const handleShare = () => {
+    const url = `${window.location.origin}/markets/${encodeURIComponent(marketId)}/gaps?gap=${encodeURIComponent(opportunity.id)}`;
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      },
+      () => { /* clipboard write denied or unavailable — leave state unchanged */ }
+    );
+  };
 
   const bullets: string[] = [
     opportunity.pain_summary,
@@ -1013,7 +1066,7 @@ function GapCard({
     opportunity.suggested_wedge,
   ].filter(Boolean) as string[];
 
-  const evidenceHref = `/markets/${encodeURIComponent(marketId)}/evidence?view=findings`;
+  const evidenceHref = `/markets/${encodeURIComponent(marketId)}/evidence`;
 
   // Source attribution: prefer specific labels from evidence_items, fall back to family breakdown
   const sourceAttribution: string[] = opportunity.evidence_items?.length
@@ -1028,7 +1081,7 @@ function GapCard({
     <article
       id={`gap-${opportunity.id}`}
       className={`overflow-hidden rounded-xl border bg-slate-900/40 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transition hover:border-slate-700/70 ${
-        dismissed ? 'border-slate-800/40 opacity-40' : 'border-slate-800/80'
+        highlighted ? 'border-violet-500/50 ring-1 ring-violet-500/30' : dismissed ? 'border-slate-800/40 opacity-40' : 'border-slate-800/80'
       }`}
     >
 
@@ -1095,23 +1148,69 @@ function GapCard({
         </div>
       )}
 
-      {/* ── Footer: evidence toggle + source chips + actions ── */}
+      {/* ── Inline evidence: always show the first 1-2 quotes ── */}
+      {hasEvidenceItems && (
+        <div className="space-y-2 border-t border-white/[0.04] px-4 py-3">
+          {opportunity.evidence_items!.slice(0, 2).map(item => (
+            <EvidenceItemRow key={item.id} item={item} />
+          ))}
+        </div>
+      )}
+
+      {/* ── Expanded evidence (items 3-6) ── */}
+      {evidenceOpen && hasEvidenceItems && opportunity.evidence_items!.length > 2 && (
+        <div className="space-y-2 border-t border-white/[0.04] px-4 py-3">
+          {opportunity.evidence_items!.slice(2, 6).map(item => (
+            <EvidenceItemRow key={item.id} item={item} />
+          ))}
+          {opportunity.evidence_items!.length > 6 && (
+            <Link
+              href={evidenceHref}
+              className="block pt-1 text-center text-[11px] text-slate-600 transition hover:text-slate-400"
+            >
+              +{opportunity.evidence_items!.length - 6} more in Evidence tab →
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* ── Footer: evidence toggle + source chips + recency + actions ── */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-white/[0.04] px-4 py-2.5">
-        <button
-          onClick={() => setEvidenceOpen(v => !v)}
-          className="inline-flex items-center gap-1 rounded-md border border-blue-500/20 bg-blue-500/[0.07] px-2.5 py-1 text-[11px] font-semibold text-blue-300 transition hover:bg-blue-500/10"
-        >
-          View {plural(opportunity.evidence_count, 'quote')}
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-150 ${evidenceOpen ? '-rotate-180' : ''}`}>
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
+        {hasEvidenceItems && opportunity.evidence_items!.length > 2 ? (
+          <button
+            onClick={() => setEvidenceOpen(v => !v)}
+            className="inline-flex items-center gap-1 rounded-md border border-blue-500/20 bg-blue-500/[0.07] px-2.5 py-1 text-[11px] font-semibold text-blue-300 transition hover:bg-blue-500/10"
+          >
+            {evidenceOpen ? 'Hide evidence' : `View ${plural(opportunity.evidence_count, 'quote')}`}
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-150 ${evidenceOpen ? '-rotate-180' : ''}`}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+        ) : (
+          <Link
+            href={evidenceHref}
+            className="inline-flex items-center gap-1 rounded-md border border-blue-500/20 bg-blue-500/[0.07] px-2.5 py-1 text-[11px] font-semibold text-blue-300 transition hover:bg-blue-500/10"
+          >
+            View evidence
+          </Link>
+        )}
 
         {sourceAttribution.slice(0, 3).map(label => (
           <span key={label} className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[10px] text-slate-500">{label}</span>
         ))}
 
+        {recentEvidenceAt && (
+          <span className="text-[10px] text-slate-600">Latest {relativeTime(recentEvidenceAt)}</span>
+        )}
+
         <div className="ml-auto flex items-center gap-1.5">
+          <IconFeedbackButton
+            active={shareCopied}
+            onClick={handleShare}
+            icon={<IconShare />}
+            activeClass="border-violet-500/30 bg-violet-500/10 text-violet-400"
+            title={shareCopied ? 'Link copied' : 'Copy share link'}
+          />
           <FeedbackButton
             active={saved}
             onClick={() => onItemFeedback('save')}
@@ -1142,34 +1241,6 @@ function GapCard({
           />
         </div>
       </div>
-
-      {/* ── Evidence drawer ── */}
-      {evidenceOpen && (
-        <div className="border-t border-white/[0.04] px-4 py-3">
-          {hasEvidenceItems ? (
-            <div className="space-y-2">
-              {opportunity.evidence_items!.slice(0, 6).map(item => (
-                <EvidenceItemRow key={item.id} item={item} />
-              ))}
-              {opportunity.evidence_items!.length > 6 && (
-                <Link
-                  href={evidenceHref}
-                  className="block pt-1 text-center text-[11px] text-slate-600 transition hover:text-slate-400"
-                >
-                  +{opportunity.evidence_items!.length - 6} more in Evidence tab →
-                </Link>
-              )}
-            </div>
-          ) : (
-            <Link
-              href={evidenceHref}
-              className="block text-center text-[11px] text-slate-600 transition hover:text-slate-400"
-            >
-              View all evidence in Evidence tab →
-            </Link>
-          )}
-        </div>
-      )}
     </article>
   );
 }
